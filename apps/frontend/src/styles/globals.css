@@ -1,0 +1,93 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-nexus-50: #eef2ff;
+  --color-nexus-100: #e0e7ff;
+  --color-nexus-200: #c7d2fe;
+  --color-nexus-300: #a5b4fc;
+  --color-nexus-400: #818cf8;
+  --color-nexus-500: #6366f1;
+  --color-nexus-600: #4f46e5;
+  --color-nexus-700: #4338ca;
+  --color-nexus-800: #3730a3;
+  --color-nexus-900: #312e81;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 antialiased;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+
+/* Custom scrollbars for message lists */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-zinc-700;
+}
+*::-webkit-scrollbar-thumb:hover {
+  @apply bg-zinc-600;
+}
+
+/* Markdown rendering inside chat bubbles */
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+.markdown-body p {
+  margin: 0.5em 0;
+}
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.25rem;
+  margin: 0.5em 0;
+}
+.markdown-body ul {
+  list-style: disc;
+}
+.markdown-body ol {
+  list-style: decimal;
+}
+.markdown-body code {
+  @apply rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[0.85em];
+}
+.markdown-body pre {
+  @apply my-3 overflow-x-auto rounded-lg bg-zinc-900 p-3;
+}
+.markdown-body pre code {
+  @apply bg-transparent p-0;
+}
+.markdown-body blockquote {
+  @apply my-2 border-l-2 border-zinc-600 pl-3 text-zinc-400;
+}
+.markdown-body table {
+  @apply my-3 w-full border-collapse text-sm;
+}
+.markdown-body th,
+.markdown-body td {
+  @apply border border-zinc-700 px-2 py-1 text-left;
+}
+
+/* Streaming caret */
+.streaming-caret::after {
+  content: '▍';
+  @apply animate-pulse;
+}
