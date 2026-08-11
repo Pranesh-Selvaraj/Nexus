@@ -4,4 +4,10 @@ dist/
 *.tsbuildinfo
 .env
 .env.local
+*.log
+coverage/
+.DS_Store
+
+# Runtime uploads (never commit user documents)
 apps/backend/uploads/
+apps/backend/uploads/.env

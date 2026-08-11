@@ -1,2 +1,12 @@
+.git
+node_modules
+**/node_modules
+dist
+**/dist
+.turbo
+**/.turbo
+*.tsbuildinfo
 .env
-README.md
+.env.local
+apps/backend/uploads
+*.log

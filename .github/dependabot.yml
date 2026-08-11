@@ -1,0 +1,36 @@
+version: 2
+
+updates:
+  # npm / pnpm workspace dependencies (lockfile at repo root)
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: monthly
+      day: monday
+      time: '09:00'
+      timezone: 'Asia/Kolkata'
+    open-pull-requests-limit: 10
+    versioning-strategy: increase-if-necessary
+    groups:
+      patch-and-minor:
+        applies-to: version-updates
+        update-types: ['patch', 'minor']
+    reviewers:
+      - 'Pranesh-Selvaraj'
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ['*']
+    reviewers:
+      - 'Pranesh-Selvaraj'
+    commit-message:
+      prefix: 'chore(ci)'
