@@ -1,8 +1,8 @@
 import OpenAI from 'openai';
 import { sql } from 'drizzle-orm';
 
-import { db } from '../db';
-import { assertOpenAIConfigured, embedText } from './embedding.service';
+import { db } from '../db/index.js';
+import { assertOpenAIConfigured, embedText } from './embedding.service.js';
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
 

@@ -9,10 +9,10 @@ import {
   workspaceIdSchema,
 } from '@nexus/shared-types';
 
-import { db } from '../db';
-import { conversations, messages, workspaces } from '../db/schema';
-import { protectedProcedure, t } from '../middleware/auth';
-import { hybridRetrieveChunks, streamAnswer } from '../services/llm.service';
+import { db } from '../db/index.js';
+import { conversations, messages, workspaces } from '../db/schema.js';
+import { protectedProcedure, t } from '../middleware/auth.js';
+import { hybridRetrieveChunks, streamAnswer } from '../services/llm.service.js';
 
 function toConversationDTO(row: {
   id: string;

@@ -3,8 +3,8 @@ import { eq } from 'drizzle-orm';
 
 import type { UserDTO } from '@nexus/shared-types';
 
-import { db } from '../db';
-import { users } from '../db/schema';
+import { db } from '../db/index.js';
+import { users } from '../db/schema.js';
 
 // ---------------------------------------------------------------------------
 // Context

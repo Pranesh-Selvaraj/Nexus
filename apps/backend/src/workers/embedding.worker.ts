@@ -1,20 +1,20 @@
-import '../utils/env';
+import '../utils/env.js';
 
 import path from 'node:path';
 
 import { Worker } from 'bullmq';
 import { eq } from 'drizzle-orm';
 
-import { db } from '../db';
-import { chunks, documents } from '../db/schema';
-import type { EmbeddingJobData } from '../queues';
-import { redisConnection } from '../queues';
-import { extractPages, splitIntoChunks } from '../services/chunking.service';
+import { db } from '../db/index.js';
+import { chunks, documents } from '../db/schema.js';
+import type { EmbeddingJobData } from '../queues/index.js';
+import { redisConnection } from '../queues/index.js';
+import { extractPages, splitIntoChunks } from '../services/chunking.service.js';
 import {
   EMBEDDING_DIMENSIONS,
   embedTexts,
-} from '../services/embedding.service';
-import { UPLOAD_DIR } from '../utils/paths';
+} from '../services/embedding.service.js';
+import { UPLOAD_DIR } from '../utils/paths.js';
 
 async function processDocument(documentId: string): Promise<void> {
   const [doc] = await db

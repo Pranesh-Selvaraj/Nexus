@@ -10,12 +10,12 @@ import {
 } from '@nexus/shared-types';
 import type { DocumentDTO } from '@nexus/shared-types';
 
-import { db } from '../db';
-import { documents, workspaces } from '../db/schema';
-import { protectedProcedure, t } from '../middleware/auth';
-import { enqueueDocumentEmbedding } from '../queues';
-import { UPLOAD_DIR } from '../utils/paths';
-import { toDocumentDTO } from '../utils/dto';
+import { db } from '../db/index.js';
+import { documents, workspaces } from '../db/schema.js';
+import { protectedProcedure, t } from '../middleware/auth.js';
+import { enqueueDocumentEmbedding } from '../queues/index.js';
+import { UPLOAD_DIR } from '../utils/paths.js';
+import { toDocumentDTO } from '../utils/dto.js';
 
 /** Ensures the workspace exists and belongs to the authenticated user. */
 async function assertWorkspaceOwnership(

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { extractPages, splitIntoChunks } from './chunking.service';
+import { extractPages, splitIntoChunks } from './chunking.service.js';
 
 const tmpDirs: string[] = [];
 

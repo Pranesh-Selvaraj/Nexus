@@ -5,7 +5,7 @@ import {
   createWorkspaceInputSchema,
   updateWorkspaceInputSchema,
   workspaceIdSchema,
-} from './index';
+} from './index.js';
 
 describe('workspace schemas', () => {
   it('trims workspace names before validating min length (regression #18)', () => {
