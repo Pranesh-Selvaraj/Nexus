@@ -1,5 +1,7 @@
 import './utils/env';
 
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -8,17 +10,20 @@ import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { applyWSSHandler } from '@trpc/server/adapters/ws';
 import cors from 'cors';
 import express from 'express';
-import { eq, ne } from 'drizzle-orm';
+import rateLimit from 'express-rate-limit';
+import { and, eq, ne } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { WebSocketServer } from 'ws';
+import { workspaceIdSchema } from '@nexus/shared-types';
 
 import { db, pool } from './db';
 import { documents, users, workspaces } from './db/schema';
 import { createExpressContext, createWSSContext, LOCAL_USER_EMAIL } from './middleware/auth';
 import { enqueueDocumentEmbedding } from './queues';
 import { appRouter } from './routers/_app';
-import { UPLOAD_DIR, upload } from './utils/multer.config';
-import type { DocumentDTO } from '@nexus/shared-types';
+import { UPLOAD_DIR } from './utils/paths';
+import { sanitizeForLog, upload } from './utils/multer.config';
+import { toDocumentDTO } from './utils/dto';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const WS_PATH = '/ws';
@@ -43,18 +48,6 @@ async function waitForDatabase(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
   }
-}
-
-function toDocumentDTO(doc: typeof documents.$inferSelect): DocumentDTO {
-  return {
-    id: doc.id,
-    workspaceId: doc.workspaceId,
-    title: doc.title,
-    fileType: doc.fileType,
-    status: doc.status,
-    chunkCount: doc.chunkCount,
-    createdAt: new Date(doc.createdAt).toISOString(),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -92,55 +85,119 @@ async function main(): Promise<void> {
   app.use(express.json({ limit: '1mb' }));
 
   // --- File upload (multipart, multer) --------------------------------
-  app.post('/api/upload', upload.single('file'), async (req, res) => {
+  // Files arrive in memory (multer memoryStorage) and are written by the
+  // handler to a path built only from validated, server-controlled parts:
+  // <uploads>/<validated workspace uuid>/<server randomUUID>. Every failure
+  // path removes the written file so nothing is orphaned on disk.
+  const uploadLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 20,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many uploads, please retry in a minute' },
+  });
+  app.post('/api/upload', uploadLimiter, upload.single('file'), async (req, res) => {
+    let storedPath: string | null = null;
+    let success = false;
     try {
-      const workspaceId = String(req.body?.workspaceId ?? '');
+      // 1. Validate workspaceId as a UUID *before* touching the filesystem.
+      //    Raw input must never reach path construction (CWE-22).
+      const parsed = workspaceIdSchema.safeParse({
+        workspaceId: String(req.body?.workspaceId ?? ''),
+      });
+      if (!parsed.success) {
+        res.status(400).json({ error: 'Invalid workspaceId: expected a UUID' });
+        return;
+      }
+      const workspaceId = parsed.data.workspaceId;
+
+      // 2. Resolve the local user and verify workspace ownership (matches the
+      //    tRPC routers' behavior instead of trusting an unauthenticated body).
+      const [localUser] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, LOCAL_USER_EMAIL))
+        .limit(1);
+      if (!localUser) {
+        res.status(500).json({ error: 'Local user could not be resolved' });
+        return;
+      }
       const [workspace] = await db
         .select({ id: workspaces.id })
         .from(workspaces)
-        .where(eq(workspaces.id, workspaceId))
+        .where(
+          and(
+            eq(workspaces.id, workspaceId),
+            eq(workspaces.userId, localUser.id),
+          ),
+        )
         .limit(1);
       if (!workspace) {
         res.status(404).json({ error: 'Workspace not found' });
         return;
       }
-        if (!req.file) {
-          res.status(400).json({ error: 'No file provided' });
-          return;
-        }
 
-        const fileType =
-          path.extname(req.file.originalname).slice(1).toLowerCase() || 'txt';
-        const relativePath = path
-          .relative(UPLOAD_DIR, req.file.path)
-          .split(path.sep)
-          .join('/');
+      if (!req.file) {
+        res.status(400).json({ error: 'No file provided' });
+        return;
+      }
 
-        const [created] = await db
-          .insert(documents)
-          .values({
-            workspaceId: workspace.id,
-            title: req.file.originalname,
-            filePath: relativePath,
-            fileType,
-            status: 'processing',
-          })
-          .returning();
-        if (!created) {
-          res.status(500).json({ error: 'Failed to create document record' });
-          return;
-        }
+      // 3. Write the buffer under a path built from validated inputs only.
+      const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
+      await mkdir(workspaceDir, { recursive: true });
+      const finalPath = path.join(workspaceDir, randomUUID());
+      storedPath = finalPath;
+      await writeFile(finalPath, req.file.buffer);
 
+      // 4. Derive the stored file type from the original name (metadata only,
+      //    never a path).
+      const fileType =
+        path.extname(req.file.originalname).slice(1).toLowerCase() || 'txt';
+      const relativePath = path
+        .relative(UPLOAD_DIR, finalPath)
+        .split(path.sep)
+        .join('/');
+
+      const [created] = await db
+        .insert(documents)
+        .values({
+          workspaceId: workspace.id,
+          title: req.file.originalname,
+          filePath: relativePath,
+          fileType,
+          status: 'processing',
+        })
+        .returning();
+      if (!created) {
+        throw new Error('Failed to create document record');
+      }
+
+      try {
         await enqueueDocumentEmbedding(created.id);
-        res.status(201).json({ document: toDocumentDTO(created) });
-      } catch (err) {
-        console.error('[upload] failed:', err);
+      } catch (enqueueError) {
+        // No queue -> no processing -> roll back the DB row too.
+        await db
+          .delete(documents)
+          .where(eq(documents.id, created.id))
+          .catch(() => undefined);
+        throw enqueueError;
+      }
+
+      success = true;
+      res.status(201).json({ document: toDocumentDTO(created) });
+    } catch (err) {
+      console.error('[upload] failed:', sanitizeForLog(err));
+      if (!res.headersSent) {
         res.status(500).json({ error: 'Upload failed' });
       }
-    },
-  );
+    } finally {
+      if (!success && storedPath) {
+        await rm(storedPath, { force: true }).catch(() => undefined);
+      }
+    }
+  });
 
-  // multer errors -> JSON 400 instead of HTML stack
+  // multer errors -> JSON 400 instead of HTML stack (size limit, filter, ...)
   app.use(
     '/api/upload',
     (

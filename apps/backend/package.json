@@ -25,6 +25,7 @@
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.36.4",
     "express": "^4.21.1",
+    "express-rate-limit": "^8.6.2",
     "ioredis": "^5.4.1",
     "langchain": "^0.2.19",
     "multer": "^2.0.1",
