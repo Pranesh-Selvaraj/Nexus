@@ -154,8 +154,8 @@ importers:
         specifier: ^14.3.5
         version: 14.4.1(react@18.3.1)
       react-markdown:
-        specifier: ^9.0.1
-        version: 9.1.0(@types/react@18.3.31)(react@18.3.1)(supports-color@8.1.1)
+        specifier: ^10.1.0
+        version: 10.1.0(@types/react@18.3.31)(react@18.3.1)(supports-color@8.1.1)
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1(supports-color@8.1.1)
@@ -2459,8 +2459,8 @@ packages:
   react-is@16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
 
-  react-markdown@9.1.0:
-    resolution: {integrity: sha512-xaijuJB0kzGiUdG7nc2MOMDUDBWPyGAjZtUrow9XxUeua8IqeP+VlIfAZ3bphpcLTnSZXz6z9jcVC/TCwbfgdw==}
+  react-markdown@10.1.0:
+    resolution: {integrity: sha512-qKxVopLT/TyA6BX3Ue5NwabOsAzm0Q7kAPwq6L+wWDwisYs7R8vZ0nRXqq6rkueboxpkjvLGU9fWifiX/ZZFxQ==}
     peerDependencies:
       '@types/react': '>=18'
       react: '>=18'
@@ -5173,7 +5173,7 @@ snapshots:
 
   react-is@16.13.1: {}
 
-  react-markdown@9.1.0(@types/react@18.3.31)(react@18.3.1)(supports-color@8.1.1):
+  react-markdown@10.1.0(@types/react@18.3.31)(react@18.3.1)(supports-color@8.1.1):
     dependencies:
       '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
