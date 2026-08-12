@@ -23,7 +23,7 @@ import {
   createWSSContext,
   LOCAL_USER_EMAIL,
 } from './middleware/auth.js';
-import { enqueueDocumentEmbedding } from './queues/index.js';
+import { enqueueDocumentEmbedding, redisConnection } from './queues/index.js';
 import { appRouter } from './routers/_app.js';
 import { UPLOAD_DIR } from './utils/paths.js';
 import { sanitizeForLog, upload } from './utils/multer.config.js';
@@ -57,6 +57,46 @@ async function waitForDatabase(): Promise<void> {
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Health check
+//
+// Probes Postgres and Redis with memoized results (refreshed every 5s) so a
+// container orchestrator can distinguish 'process up' from 'actually healthy'.
+// ---------------------------------------------------------------------------
+
+interface DependencyStatus {
+  db: boolean;
+  redis: boolean;
+}
+
+let healthCache: { at: number; status: DependencyStatus } | null = null;
+
+async function checkDependencies(): Promise<DependencyStatus> {
+  const now = Date.now();
+  if (healthCache && now - healthCache.at < 5_000) {
+    return healthCache.status;
+  }
+
+  let db = false;
+  try {
+    await pool.query('SELECT 1');
+    db = true;
+  } catch {
+    // probe failed - reported below
+  }
+
+  let redis = false;
+  try {
+    const pong = await redisConnection.ping();
+    redis = pong === 'PONG';
+  } catch {
+    // probe failed - reported below
+  }
+
+  healthCache = { at: now, status: { db, redis } };
+  return healthCache.status;
+}
 
 async function main(): Promise<void> {
   await waitForDatabase();
@@ -233,8 +273,14 @@ async function main(): Promise<void> {
     }),
   );
 
-  app.get('/healthz', (_req, res) => {
-    res.json({ status: 'ok' });
+  app.get('/healthz', async (_req, res) => {
+    const deps = await checkDependencies();
+    const healthy = deps.db && deps.redis;
+    res.status(healthy ? 200 : 503).json({
+      status: healthy ? 'ok' : 'degraded',
+      db: deps.db ? 'up' : 'down',
+      redis: deps.redis ? 'up' : 'down',
+    });
   });
 
   // --- WebSocket transport for tRPC subscriptions (chat streaming) -----
