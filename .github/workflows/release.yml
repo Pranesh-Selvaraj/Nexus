@@ -80,4 +80,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --generate-notes \
             --title "Nexus $GITHUB_REF_NAME" \
-            --notes "Container images: ghcr.io/${{ github.repository }}-backend:$GITHUB_REF_NAME, ghcr.io/${{ github.repository }}-frontend:$GITHUB_REF_NAME. See the deployment section of the README to run the stack."
+            --notes "Container images (tags are semver, no v prefix): ghcr.io/${{ github.repository }}-backend:${GITHUB_REF_NAME#v}, ghcr.io/${{ github.repository }}-frontend:${GITHUB_REF_NAME#v}. See the deployment section of the README to run the stack."

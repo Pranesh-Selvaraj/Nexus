@@ -112,22 +112,14 @@ Postgres and Redis run through `docker-compose.yml`. For the full stack (UI + AP
 
 ### Option A — prebuilt images from GHCR (recommended)
 
-Every release publishes the images to the GitHub Container Registry. User-scoped GHCR packages require a one-time login even for public pulls:
+Every release publishes the images to the GitHub Container Registry. Pull them directly:
 
-```bash
-echo "$GITHUB_PAT" | docker login ghcr.io -u <your-github-username> --password-stdin
-```
+| Image        | Pull command                                                |
+| ------------ | ----------------------------------------------------------- |
+| API + worker | `docker pull ghcr.io/pranesh-selvaraj/nexus-backend:0.2.0`  |
+| Frontend     | `docker pull ghcr.io/pranesh-selvaraj/nexus-frontend:0.2.0` |
 
-(Or use the `gh` CLI: `gh auth login && echo "$(gh auth token)" | docker login ghcr.io -u <your-github-username> --password-stdin`.)
-
-Then pull the images:
-
-| Image        | Pull command                                                 |
-| ------------ | ------------------------------------------------------------ |
-| API + worker | `docker pull ghcr.io/pranesh-selvaraj/nexus-backend:v0.2.0`  |
-| Frontend     | `docker pull ghcr.io/pranesh-selvaraj/nexus-frontend:v0.2.0` |
-
-Pin a version in production; `latest` tracks the newest release.
+Pin a version in production; `latest` tracks the newest release. (Note: the container tags are semver without the `v` prefix — `0.2.0`, not `v0.2.0`.)
 
 ### Option B — build from source
 
