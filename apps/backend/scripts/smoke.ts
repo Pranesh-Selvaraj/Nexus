@@ -66,6 +66,22 @@ try {
   print('api healthz', healthy);
   if (!healthy) throw new Error('api did not start');
 
+  // dependency-aware health probe (Postgres + Redis)
+  const healthz = await fetch(`${BASE}/healthz`);
+  const healthzBody = (await healthz.json()) as {
+    status: string;
+    db: string;
+    redis: string;
+  };
+  print(
+    'healthz reports dependencies up',
+    healthz.status === 200 &&
+      healthzBody.status === 'ok' &&
+      healthzBody.db === 'up' &&
+      healthzBody.redis === 'up',
+    healthzBody,
+  );
+
   // create workspace (no authentication in single-user mode)
   const wsCreate = await fetchJson('/trpc/workspace.create', {
     method: 'POST',
