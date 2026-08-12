@@ -30,11 +30,22 @@ const storage = multer.diskStorage({
     mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
     cb(null, UPLOAD_TMP_DIR);
   },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${randomUUID()}${ext}`);
+  // Fully server-generated name: no part of the user's original filename
+  // (not even the extension) ever reaches the filesystem path. The real
+  // file type is derived from originalname separately and stored in the
+  // documents table, so user input never reaches path construction.
+  filename: (_req, _file, cb) => {
+    cb(null, randomUUID());
   },
 });
+
+/**
+ * Strips control characters before anything user-influenced reaches the log
+ * stream (CodeQL js/log-injection: terminal escape sequences in log lines).
+ */
+export function sanitizeForLog(value: unknown): string {
+  return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 2000);
+}
 
 export function fileFilter(
   _req: Express.Request,

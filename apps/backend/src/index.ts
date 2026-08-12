@@ -21,7 +21,7 @@ import { createExpressContext, createWSSContext, LOCAL_USER_EMAIL } from './midd
 import { enqueueDocumentEmbedding } from './queues';
 import { appRouter } from './routers/_app';
 import { UPLOAD_DIR } from './utils/paths';
-import { upload } from './utils/multer.config';
+import { sanitizeForLog, upload } from './utils/multer.config';
 import { toDocumentDTO } from './utils/dto';
 
 /**
@@ -204,7 +204,7 @@ async function main(): Promise<void> {
       success = true;
       res.status(201).json({ document: toDocumentDTO(created) });
     } catch (err) {
-      console.error('[upload] failed:', err);
+      console.error('[upload] failed:', sanitizeForLog(err));
       if (!res.headersSent) {
         res.status(500).json({ error: 'Upload failed' });
       }
