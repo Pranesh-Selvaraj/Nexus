@@ -1,6 +1,7 @@
 import './utils/env';
 
-import { mkdir, rename, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -23,19 +24,6 @@ import { appRouter } from './routers/_app';
 import { UPLOAD_DIR } from './utils/paths';
 import { sanitizeForLog, upload } from './utils/multer.config';
 import { toDocumentDTO } from './utils/dto';
-
-/**
- * Refuses any path that escapes the uploads directory. multer's staged file
- * path and the server-generated filename should always be inside UPLOAD_DIR,
- * but this containment check is the last line of defense if a future change
- * lets user input influence either (defense in depth, CWE-22).
- */
-function assertInsideUploads(p: string): void {
-  const rel = path.relative(UPLOAD_DIR, p);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new Error(`Refusing path outside uploads dir: ${p}`);
-  }
-}
 
 const PORT = Number(process.env.PORT ?? 3000);
 const WS_PATH = '/ws';
@@ -97,9 +85,10 @@ async function main(): Promise<void> {
   app.use(express.json({ limit: '1mb' }));
 
   // --- File upload (multipart, multer) --------------------------------
-  // Files are staged in UPLOAD_TMP_DIR by multer, then validated and
-  // relocated into <uploads>/<workspaceId>/ here. Every failure path removes
-  // the staged file so nothing is orphaned on disk.
+  // Files arrive in memory (multer memoryStorage) and are written by the
+  // handler to a path built only from validated, server-controlled parts:
+  // <uploads>/<validated workspace uuid>/<server randomUUID>. Every failure
+  // path removes the written file so nothing is orphaned on disk.
   const uploadLimiter = rateLimit({
     windowMs: 60_000,
     limit: 20,
@@ -108,10 +97,7 @@ async function main(): Promise<void> {
     message: { error: 'Too many uploads, please retry in a minute' },
   });
   app.post('/api/upload', uploadLimiter, upload.single('file'), async (req, res) => {
-    // multer may already have staged a file for any request that reached the
-    // handler (even ones rejected below) - track it so every non-success
-    // path removes it from disk (see finally).
-    let storedPath: string | null = req.file?.path ?? null;
+    let storedPath: string | null = null;
     let success = false;
     try {
       // 1. Validate workspaceId as a UUID *before* touching the filesystem.
@@ -156,19 +142,15 @@ async function main(): Promise<void> {
         return;
       }
 
-      // 3. Containment check before touching the filesystem: both the staged
-      //    path (from multer) and the target must stay inside UPLOAD_DIR.
-      assertInsideUploads(storedPath as string);
-
-      // 4. Relocate the staged file into the workspace directory. `rename` is
-      //    atomic on the same filesystem; both paths live under UPLOAD_DIR.
+      // 3. Write the buffer under a path built from validated inputs only.
       const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
       await mkdir(workspaceDir, { recursive: true });
-      const finalPath = path.join(workspaceDir, req.file.filename);
-      assertInsideUploads(finalPath);
-      await rename(storedPath as string, finalPath);
+      const finalPath = path.join(workspaceDir, randomUUID());
       storedPath = finalPath;
+      await writeFile(finalPath, req.file.buffer);
 
+      // 4. Derive the stored file type from the original name (metadata only,
+      //    never a path).
       const fileType =
         path.extname(req.file.originalname).slice(1).toLowerCase() || 'txt';
       const relativePath = path

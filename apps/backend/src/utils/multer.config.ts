@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import multer from 'multer';
 
-import { UPLOAD_TMP_DIR } from './paths';
+import { UPLOAD_DIR } from './paths';
 
 export const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25);
 
@@ -18,35 +17,23 @@ export const ALLOWED_EXTENSIONS = new Set([
 ]);
 
 /**
- * Files are staged in a flat `.tmp` directory with a server-generated name.
- * The route handler validates the workspace id and then relocates the file
- * into `<uploads>/<workspaceId>/`. Staging decouples multer's field-parsing
- * order from the destination directory (the frontend sends the file part
- * before the workspaceId part) and keeps unvalidated input away from any
- * path construction.
+ * Files are buffered in memory and written to disk by the route handler at a
+ * path built exclusively from server-controlled components (validated UUID
+ * workspace id + a fresh randomUUID). Deliberately NOT diskStorage: multer's
+ * staged path/filename are modeled as user-controlled by static analysis
+ * (CodeQL js/path-injection), and staging decoupled from validation buys
+ * nothing once the handler owns the write.
+ *
+ * Memory usage is bounded by MAX_UPLOAD_MB (default 25 MB) + the multipart
+ * overhead - acceptable for a single-user self-hosted app.
  */
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
-    cb(null, UPLOAD_TMP_DIR);
-  },
-  // Fully server-generated name: no part of the user's original filename
-  // (not even the extension) ever reaches the filesystem path. The real
-  // file type is derived from originalname separately and stored in the
-  // documents table, so user input never reaches path construction.
-  filename: (_req, _file, cb) => {
-    cb(null, randomUUID());
-  },
-});
+const storage = multer.memoryStorage();
 
 /**
- * Strips control characters before anything user-influenced reaches the log
- * stream (CodeQL js/log-injection: terminal escape sequences in log lines).
+ * Rejects files whose extension is not in ALLOWED_EXTENSIONS. The error
+ * message is deliberately static: the real extension must not end up in log
+ * output or error responses derived from it (log-injection hardening).
  */
-export function sanitizeForLog(value: unknown): string {
-  return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 2000);
-}
-
 export function fileFilter(
   _req: Express.Request,
   file: Express.Multer.File,
@@ -54,10 +41,18 @@ export function fileFilter(
 ): void {
   const ext = path.extname(file.originalname).slice(1).toLowerCase();
   if (!ALLOWED_EXTENSIONS.has(ext)) {
-    cb(new Error(`Unsupported file type: .${ext}`));
+    cb(new Error('Unsupported file type'));
     return;
   }
   cb(null, true);
+}
+
+/**
+ * Strips control characters and caps length before anything user-influenced
+ * reaches the log stream (CodeQL js/log-injection).
+ */
+export function sanitizeForLog(value: unknown): string {
+  return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 2000);
 }
 
 export const upload = multer({
@@ -68,3 +63,6 @@ export const upload = multer({
   },
   fileFilter,
 });
+
+// Re-exported for callers that need the resolved uploads directory.
+export { UPLOAD_DIR };
