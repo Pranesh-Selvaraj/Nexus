@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   customType,
   index,
   integer,
@@ -154,6 +155,16 @@ export const messages = pgTable(
   (table) => [index('messages_conversation_id_idx').on(table.conversationId)],
 );
 
+export const settings = pgTable('settings', {
+  key: text('key').primaryKey(),
+  // For secret settings this holds the AES-256-GCM ciphertext
+  // (see services/settings.service.ts); plaintext otherwise.
+  value: text('value').notNull(),
+  isSecret: boolean('is_secret').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 export const sessions = pgTable(
   'sessions',
   {

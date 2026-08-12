@@ -31,12 +31,13 @@ import { appRouter } from './routers/_app.js';
 import { UPLOAD_DIR } from './utils/paths.js';
 import { sanitizeForLog, upload } from './utils/multer.config.js';
 import { toDocumentDTO } from './utils/dto.js';
+import { getSettingNumber } from './services/settings.service.js';
 import {
   createSession,
   deleteSession,
   hashPassword,
   SESSION_COOKIE,
-  SESSION_TTL_MS,
+  sessionTtlMs,
   verifyPassword,
 } from './services/auth.service.js';
 
@@ -211,7 +212,7 @@ async function main(): Promise<void> {
       const { token, expiresAt } = await createSession(user.id);
       res.setHeader(
         'Set-Cookie',
-        sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000)),
+        sessionCookie(token, Math.floor((await sessionTtlMs()) / 1000)),
       );
       res.json({
         user: { id: user.id, email: user.email, name: user.name },
@@ -251,9 +252,29 @@ async function main(): Promise<void> {
     legacyHeaders: false,
     message: { error: 'Too many uploads, please retry in a minute' },
   });
+  // Size limit is read from settings per request so UI changes apply
+  // without a restart; multer's hard cap follows the env value.
+  const enforceUploadLimit: express.RequestHandler = async (req, res, next) => {
+    try {
+      const maxMb = await getSettingNumber('server.maxUploadMb');
+      const maxBytes = maxMb * 1024 * 1024;
+      const declared = Number(req.headers['content-length'] ?? 0);
+      if (declared > maxBytes) {
+        res
+          .status(413)
+          .json({ error: `File exceeds the ${maxMb} MB upload limit` });
+        return;
+      }
+      next();
+    } catch (err) {
+      console.error('[upload] limit check failed:', sanitizeForLog(err));
+      next();
+    }
+  };
   app.post(
     '/api/upload',
     uploadLimiter,
+    enforceUploadLimit,
     upload.single('file'),
     async (req, res) => {
       let storedPath: string | null = null;

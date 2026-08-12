@@ -2,6 +2,8 @@ import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import fs from 'node:fs/promises';
 import pdfParse from 'pdf-parse';
 
+import { getSettingNumber } from './settings.service.js';
+
 export interface SourcePage {
   page: number;
   text: string;
@@ -12,11 +14,6 @@ export interface TextChunk {
   index: number;
   page: number | null;
 }
-
-const splitter = new RecursiveCharacterTextSplitter({
-  chunkSize: 1000,
-  chunkOverlap: 200,
-});
 
 /**
  * Extract per-page text from an uploaded file.
@@ -50,9 +47,24 @@ export async function extractPages(
 /**
  * Split page texts into overlapping chunks for embedding.
  */
+export interface ChunkOptions {
+  chunkSize?: number;
+  chunkOverlap?: number;
+}
+
 export async function splitIntoChunks(
   pages: SourcePage[],
+  options: ChunkOptions = {},
 ): Promise<TextChunk[]> {
+  const [chunkSize, chunkOverlap] = await Promise.all([
+    options.chunkSize ?? getSettingNumber('rag.chunkSize'),
+    options.chunkOverlap ?? getSettingNumber('rag.chunkOverlap'),
+  ]);
+  const splitter = new RecursiveCharacterTextSplitter({
+    chunkSize,
+    chunkOverlap,
+  });
+
   const chunks: TextChunk[] = [];
   let index = 0;
 
