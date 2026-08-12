@@ -24,7 +24,7 @@
     "@trpc/server": "^10.45.2",
     "bullmq": "^5.34.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
+    "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^4.21.1",
     "express-rate-limit": "^8.6.2",
