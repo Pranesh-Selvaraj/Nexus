@@ -140,7 +140,7 @@ async function main(): Promise<void> {
       const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
       await mkdir(workspaceDir, { recursive: true });
       const finalPath = path.join(workspaceDir, req.file.filename);
-      await rename(storedPath, finalPath);
+      await rename(storedPath as string, finalPath);
       storedPath = finalPath;
 
       const fileType =
