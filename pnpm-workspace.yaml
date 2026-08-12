@@ -8,3 +8,12 @@ allowBuilds:
   '@tailwindcss/oxide': true
   msgpackr-extract: true
   langchain: true
+
+minimumReleaseAgeExclude:
+  - langsmith@0.8.10
+
+overrides:
+  '@langchain/core': 0.3.80
+  langsmith: 0.8.10
+  uuid: 11.1.1
+  esbuild: 0.25.0
