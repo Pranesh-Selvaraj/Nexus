@@ -11,6 +11,13 @@ updates:
       timezone: 'Asia/Kolkata'
     open-pull-requests-limit: 10
     versioning-strategy: increase-if-necessary
+    ignore:
+      # Major bumps are reviewed manually (tRPC v10->v11, zod 3->4, ...
+      # needed code migration). Ignoring semver-major keeps the PR list
+      # free of CI-failing churn; security updates are NOT affected by
+      # ignore rules and still open automatically.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       patch-and-minor:
         applies-to: version-updates

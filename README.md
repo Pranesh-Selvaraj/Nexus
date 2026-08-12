@@ -57,12 +57,12 @@ Nexus is a single-user, self-hosted RAG (Retrieval-Augmented Generation) workspa
 
 ## Tech stack
 
-| Layer    | Technology                                                           |
-| -------- | -------------------------------------------------------------------- |
-| Frontend | React 18, Vite, TypeScript, Tailwind CSS 4, tRPC v10, TanStack Query |
-| Backend  | Node.js, Express, tRPC, Drizzle ORM, BullMQ, LangChain, OpenAI       |
-| Data     | PostgreSQL 16 + pgvector, Redis 7                                    |
-| Tooling  | pnpm, Turborepo, Docker Compose                                      |
+| Layer    | Technology                                                                |
+| -------- | ------------------------------------------------------------------------- |
+| Frontend | React 18, Vite 8, TypeScript, Tailwind CSS 4, tRPC v11, TanStack Query v5 |
+| Backend  | Node.js, Express, tRPC, Drizzle ORM, BullMQ, LangChain, OpenAI            |
+| Data     | PostgreSQL 16 + pgvector, Redis 7                                         |
+| Tooling  | pnpm, Turborepo, Docker Compose                                           |
 
 ## Getting started
 
