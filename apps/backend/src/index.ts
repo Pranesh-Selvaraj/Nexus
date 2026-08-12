@@ -9,6 +9,7 @@ import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { applyWSSHandler } from '@trpc/server/adapters/ws';
 import cors from 'cors';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { and, eq, ne } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { WebSocketServer } from 'ws';
@@ -22,6 +23,19 @@ import { appRouter } from './routers/_app';
 import { UPLOAD_DIR } from './utils/paths';
 import { upload } from './utils/multer.config';
 import { toDocumentDTO } from './utils/dto';
+
+/**
+ * Refuses any path that escapes the uploads directory. multer's staged file
+ * path and the server-generated filename should always be inside UPLOAD_DIR,
+ * but this containment check is the last line of defense if a future change
+ * lets user input influence either (defense in depth, CWE-22).
+ */
+function assertInsideUploads(p: string): void {
+  const rel = path.relative(UPLOAD_DIR, p);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(`Refusing path outside uploads dir: ${p}`);
+  }
+}
 
 const PORT = Number(process.env.PORT ?? 3000);
 const WS_PATH = '/ws';
@@ -86,7 +100,14 @@ async function main(): Promise<void> {
   // Files are staged in UPLOAD_TMP_DIR by multer, then validated and
   // relocated into <uploads>/<workspaceId>/ here. Every failure path removes
   // the staged file so nothing is orphaned on disk.
-  app.post('/api/upload', upload.single('file'), async (req, res) => {
+  const uploadLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 20,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many uploads, please retry in a minute' },
+  });
+  app.post('/api/upload', uploadLimiter, upload.single('file'), async (req, res) => {
     // multer may already have staged a file for any request that reached the
     // handler (even ones rejected below) - track it so every non-success
     // path removes it from disk (see finally).
@@ -135,11 +156,16 @@ async function main(): Promise<void> {
         return;
       }
 
-      // 3. Relocate the staged file into the workspace directory. `rename` is
+      // 3. Containment check before touching the filesystem: both the staged
+      //    path (from multer) and the target must stay inside UPLOAD_DIR.
+      assertInsideUploads(storedPath as string);
+
+      // 4. Relocate the staged file into the workspace directory. `rename` is
       //    atomic on the same filesystem; both paths live under UPLOAD_DIR.
       const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
       await mkdir(workspaceDir, { recursive: true });
       const finalPath = path.join(workspaceDir, req.file.filename);
+      assertInsideUploads(finalPath);
       await rename(storedPath as string, finalPath);
       storedPath = finalPath;
 
