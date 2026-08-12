@@ -100,6 +100,33 @@ jobs:
         run: pnpm format:check
 
   # ---------------------------------------------------------------------------
+  # Unit tests (Vitest)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+  # ---------------------------------------------------------------------------
   # Dependency vulnerability audit
   # NOTE: report-only for now. The pipeline currently surfaces high-severity
   # transitive advisories via langchain@0.2.x -> langsmith (GHSA-3644-q5cj-c5c7).

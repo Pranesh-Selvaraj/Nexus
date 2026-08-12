@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src scripts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "test": "vitest run"
   },
   "dependencies": {
     "@nexus/shared-types": "workspace:*",
@@ -47,6 +48,7 @@
     "concurrently": "^9.1.0",
     "drizzle-kit": "^0.28.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.10"
   }
 }
