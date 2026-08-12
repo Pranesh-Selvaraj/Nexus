@@ -112,7 +112,15 @@ Postgres and Redis run through `docker-compose.yml`. For the full stack (UI + AP
 
 ### Option A — prebuilt images from GHCR (recommended)
 
-Every release publishes the images to the GitHub Container Registry:
+Every release publishes the images to the GitHub Container Registry. User-scoped GHCR packages require a one-time login even for public pulls:
+
+```bash
+echo "$GITHUB_PAT" | docker login ghcr.io -u <your-github-username> --password-stdin
+```
+
+(Or use the `gh` CLI: `gh auth login && echo "$(gh auth token)" | docker login ghcr.io -u <your-github-username> --password-stdin`.)
+
+Then pull the images:
 
 | Image        | Pull command                                                 |
 | ------------ | ------------------------------------------------------------ |
