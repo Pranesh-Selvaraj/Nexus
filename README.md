@@ -2,8 +2,9 @@
 
 > Full-stack AI RAG workspace with hybrid search, real-time streaming, and queue-based document indexing.
 
-Nexus is a single-user, self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload documents into workspaces, have them chunked, embedded, and indexed asynchronously, then chat with your documents over a real-time WebSocket connection backed by hybrid (vector + keyword) search.
+Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload documents into workspaces, have them chunked, embedded, and indexed asynchronously, then chat with your documents over a real-time WebSocket connection backed by hybrid (vector + keyword) search.
 
+[![Release](https://img.shields.io/github/v/release/Pranesh-Selvaraj/Nexus?sort=semver)](https://github.com/Pranesh-Selvaraj/Nexus/releases)
 [![CI](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/codeql.yml/badge.svg)](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -32,6 +33,7 @@ Nexus is a single-user, self-hosted RAG (Retrieval-Augmented Generation) workspa
 - 🔄 **Queue-based indexing** — documents are chunked and embedded by a background BullMQ worker, so the API stays responsive.
 - 🔍 **Hybrid search** — combines vector similarity (pgvector) with keyword search for robust retrieval.
 - 💬 **RAG chat** — streamed, context-grounded answers over WebSocket.
+- 🔐 **Optional authentication** — set `AUTH_PASSWORD` for a login screen with httpOnly session cookies; unset for single-user dev mode.
 - 🧱 **Monorepo** — pnpm workspaces + Turborepo for fast, cached builds.
 
 ## Architecture
@@ -86,7 +88,7 @@ pnpm db:up        # starts postgres (pgvector) + redis in Docker
 cp .env.example .env
 ```
 
-Then edit `.env` and set a real `OPENAI_API_KEY`. The defaults work out of the box for local development.
+Then edit `.env` and set a real `OPENAI_API_KEY`. The defaults work out of the box for local development (optionally set `AUTH_PASSWORD` to enable the login screen).
 
 ### 3. Migrate the database
 
@@ -108,32 +110,57 @@ Postgres and Redis run through `docker-compose.yml`. For the full stack (UI + AP
 
 ## Deployment
 
-### Production stack (Docker)
+### Option A — prebuilt images from GHCR (recommended)
 
-The production stack builds the backend, worker, and a static nginx-served frontend:
+Every release publishes the images to the GitHub Container Registry:
+
+| Image        | Pull command                                                 |
+| ------------ | ------------------------------------------------------------ |
+| API + worker | `docker pull ghcr.io/pranesh-selvaraj/nexus-backend:v0.2.0`  |
+| Frontend     | `docker pull ghcr.io/pranesh-selvaraj/nexus-frontend:v0.2.0` |
+
+Pin a version in production; `latest` tracks the newest release.
+
+### Option B — build from source
 
 ```bash
-cp .env.example .env        # set OPENAI_API_KEY (and AUTH_* if enabled)
+cp .env.example .env        # set OPENAI_API_KEY (and AUTH_PASSWORD for login)
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-The UI is served at **http://localhost:8080** with `/trpc`, `/api` and `/ws` reverse-proxied to the backend (same origin, no CORS). The stack includes:
+### Running the stack
+
+Either way, the UI is served at **http://localhost:8080** with `/trpc`, `/api` and `/ws` reverse-proxied to the backend (same origin, no CORS):
 
 - `backend` — multi-stage `node:22-slim` image (non-root `node` user, native TS type-stripping for `@nexus/shared-types`, migrations run on boot, `/healthz` dependency probe)
 - `worker` — same image, BullMQ embedding worker (process-liveness healthcheck)
 - `frontend` — `nginx:1.27-alpine` serving the built SPA with SPA fallback
 - `postgres` (pgvector) and `redis` with healthchecks; uploaded documents persist in the `nexus-uploads` volume
 
+Stop/update:
+
 ```bash
-docker compose -f docker-compose.prod.yml down        # stop
-docker compose -f docker-compose.prod.yml up -d --build # rebuild after updates
+docker compose -f docker-compose.prod.yml down                         # stop
+docker compose -f docker-compose.prod.yml up -d --build                # rebuild from source
 ```
 
 > 💡 Point `UPLOAD_DIR` at the shared volume if you run the worker on a different host than the API.
 
+### Authentication in production
+
+Set `AUTH_PASSWORD` in `.env` **before** the first boot — the login screen appears automatically when auth is enabled. Behind TLS, also set `AUTH_COOKIE_SECURE=true`. See [SECURITY.md](SECURITY.md) for the full threat model.
+
 ### Keeping it private
 
-See [SECURITY.md](SECURITY.md) — without authentication enabled the app is single-user and should sit behind a reverse proxy.
+See [SECURITY.md](SECURITY.md) — without `AUTH_PASSWORD` the app runs in single-user no-auth mode and should sit behind a reverse proxy.
+
+## Releases
+
+Releases follow [SemVer](https://semver.org/), tagged `vX.Y.Z` and published automatically from the [release workflow](.github/workflows/release.yml): pushing a tag builds the images, publishes them to GHCR, and creates a GitHub Release with changelog notes.
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
 
 ## Scripts
 
