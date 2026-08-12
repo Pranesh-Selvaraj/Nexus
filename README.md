@@ -57,12 +57,12 @@ Nexus is a single-user, self-hosted RAG (Retrieval-Augmented Generation) workspa
 
 ## Tech stack
 
-| Layer        | Technology                                                        |
-| ------------ | ----------------------------------------------------------------- |
-| Frontend     | React 18, Vite, TypeScript, Tailwind CSS 4, tRPC v10, TanStack Query |
-| Backend      | Node.js, Express, tRPC, Drizzle ORM, BullMQ, LangChain, OpenAI    |
-| Data         | PostgreSQL 16 + pgvector, Redis 7                                 |
-| Tooling      | pnpm, Turborepo, Docker Compose                                   |
+| Layer    | Technology                                                           |
+| -------- | -------------------------------------------------------------------- |
+| Frontend | React 18, Vite, TypeScript, Tailwind CSS 4, tRPC v10, TanStack Query |
+| Backend  | Node.js, Express, tRPC, Drizzle ORM, BullMQ, LangChain, OpenAI       |
+| Data     | PostgreSQL 16 + pgvector, Redis 7                                    |
+| Tooling  | pnpm, Turborepo, Docker Compose                                      |
 
 ## Getting started
 
@@ -108,33 +108,33 @@ Postgres and Redis run through `docker-compose.yml`. There is no production cont
 
 ## Scripts
 
-| Command                              | Description                                    |
-| ------------------------------------ | ---------------------------------------------- |
-| `pnpm dev`                           | Run frontend, API, and worker in watch mode    |
-| `pnpm build`                         | Type-check and build all packages              |
-| `pnpm typecheck`                     | Type-check all packages                        |
-| `pnpm db:up` / `pnpm db:down`        | Start / stop Postgres + Redis (Docker)         |
-| `pnpm --filter @nexus/backend db:migrate` | Apply Drizzle migrations                  |
-| `pnpm --filter @nexus/backend db:generate` | Generate a new Drizzle migration          |
-| `pnpm --filter @nexus/backend dev:api`     | Run only the API in watch mode           |
+| Command                                    | Description                                 |
+| ------------------------------------------ | ------------------------------------------- |
+| `pnpm dev`                                 | Run frontend, API, and worker in watch mode |
+| `pnpm build`                               | Type-check and build all packages           |
+| `pnpm typecheck`                           | Type-check all packages                     |
+| `pnpm db:up` / `pnpm db:down`              | Start / stop Postgres + Redis (Docker)      |
+| `pnpm --filter @nexus/backend db:migrate`  | Apply Drizzle migrations                    |
+| `pnpm --filter @nexus/backend db:generate` | Generate a new Drizzle migration            |
+| `pnpm --filter @nexus/backend dev:api`     | Run only the API in watch mode              |
 | `pnpm --filter @nexus/backend dev:worker`  | Run only the embedding worker in watch mode |
 
 ## Environment variables
 
 All variables live in `.env` (see `.env.example`). The backend auto-discovers `.env` at the repo root or package root.
 
-| Variable                  | Default                | Description                                   |
-| ------------------------- | ---------------------- | --------------------------------------------- |
-| `DATABASE_URL`            | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string |
-| `REDIS_URL`               | `redis://localhost:6379` | Redis connection string (BullMQ)           |
-| `OPENAI_API_KEY`          | —                      | OpenAI API key (required for embeddings + chat) |
-| `OPENAI_MODEL`            | `gpt-4o-mini`          | Chat model                                   |
-| `OPENAI_EMBEDDING_MODEL`  | `text-embedding-3-small` | Embedding model                            |
-| `LOCAL_USER_EMAIL`        | `local@nexus.dev`      | Identity of the single local user             |
-| `PORT`                    | `3000`                 | Backend HTTP/WS port                          |
-| `UPLOAD_DIR`              | `./uploads`            | Directory for uploaded documents              |
-| `MAX_UPLOAD_MB`           | `25`                   | Per-file upload size limit                    |
-| `FRONTEND_ORIGIN`         | `http://localhost:5173` | Allowed CORS origin                         |
+| Variable                 | Default                                       | Description                                     |
+| ------------------------ | --------------------------------------------- | ----------------------------------------------- |
+| `DATABASE_URL`           | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string         |
+| `REDIS_URL`              | `redis://localhost:6379`                      | Redis connection string (BullMQ)                |
+| `OPENAI_API_KEY`         | —                                             | OpenAI API key (required for embeddings + chat) |
+| `OPENAI_MODEL`           | `gpt-4o-mini`                                 | Chat model                                      |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small`                      | Embedding model                                 |
+| `LOCAL_USER_EMAIL`       | `local@nexus.dev`                             | Identity of the single local user               |
+| `PORT`                   | `3000`                                        | Backend HTTP/WS port                            |
+| `UPLOAD_DIR`             | `./uploads`                                   | Directory for uploaded documents                |
+| `MAX_UPLOAD_MB`          | `25`                                          | Per-file upload size limit                      |
+| `FRONTEND_ORIGIN`        | `http://localhost:5173`                       | Allowed CORS origin                             |
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
 
@@ -153,15 +153,15 @@ packages/
 
 ## CI/CD and security
 
-| Guard                                   | Where                                  | Enforced on `main` |
-| --------------------------------------- | -------------------------------------- | ------------------ |
-| Type checking (`pnpm typecheck`)        | `ci.yml`                               | ✅ required        |
-| Production build (`pnpm build`)         | `ci.yml`                               | ✅ required        |
-| Secret scanning (gitleaks)              | `ci.yml`                               | ✅ required        |
-| Dependency review on PRs                | `ci.yml`                               | ✅ required        |
-| CodeQL static analysis (incl. weekly)   | `codeql.yml`                           | runs on push/PR    |
-| `pnpm audit` (dependency advisories)    | `ci.yml` — report-only*                | —                  |
-| Dependabot (npm + GitHub Actions)       | `dependabot.yml`                       | —                  |
+| Guard                                 | Where                   | Enforced on `main` |
+| ------------------------------------- | ----------------------- | ------------------ |
+| Type checking (`pnpm typecheck`)      | `ci.yml`                | ✅ required        |
+| Production build (`pnpm build`)       | `ci.yml`                | ✅ required        |
+| Secret scanning (gitleaks)            | `ci.yml`                | ✅ required        |
+| Dependency review on PRs              | `ci.yml`                | ✅ required        |
+| CodeQL static analysis (incl. weekly) | `codeql.yml`            | runs on push/PR    |
+| `pnpm audit` (dependency advisories)  | `ci.yml` — report-only* | —                  |
+| Dependabot (npm + GitHub Actions)     | `dependabot.yml`        | —                  |
 
 \* `pnpm audit` is currently report-only because of high-severity transitive advisories via `langchain@0.2.x → langsmith` (GHSA-3644-q5cj-c5c7). It will be switched to fail-closed once the `langchain` major upgrade is done. See [SECURITY.md](SECURITY.md).
 

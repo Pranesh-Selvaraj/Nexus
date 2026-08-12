@@ -10,7 +10,10 @@ import { chunks, documents } from '../db/schema';
 import type { EmbeddingJobData } from '../queues';
 import { redisConnection } from '../queues';
 import { extractPages, splitIntoChunks } from '../services/chunking.service';
-import { EMBEDDING_DIMENSIONS, embedTexts } from '../services/embedding.service';
+import {
+  EMBEDDING_DIMENSIONS,
+  embedTexts,
+} from '../services/embedding.service';
 import { UPLOAD_DIR } from '../utils/paths';
 
 async function processDocument(documentId: string): Promise<void> {

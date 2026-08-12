@@ -4,9 +4,9 @@ Nexus is a self-hosted, single-user tool — but we still take security seriousl
 
 ## Supported versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| main    | ✅ (active development) |
+| Version | Supported                                   |
+| ------- | ------------------------------------------- |
+| main    | ✅ (active development)                     |
 | < 0.1.0 | ❌ (pre-release, no releases published yet) |
 
 Since no tagged releases exist yet, fixes land on `main`. Once stable releases are published, this table will list them.

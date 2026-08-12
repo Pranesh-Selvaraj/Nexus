@@ -3,7 +3,11 @@ import type { KeyboardEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-import type { ChatHistoryMessage, MessageDTO, Source } from '@nexus/shared-types';
+import type {
+  ChatHistoryMessage,
+  MessageDTO,
+  Source,
+} from '@nexus/shared-types';
 
 import { trpc } from '../../lib/trpc';
 
@@ -28,16 +32,21 @@ interface PendingQuestion {
 
 export function ChatPanel({ workspaceId }: Props) {
   const utils = trpc.useContext();
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState<PendingQuestion | null>(null);
 
-  // Streaming buffers (refs avoid stale closures in the subscription handler)
+  // Streaming accumulation lives in refs (written/read only inside the
+  // subscription's event handlers), while liveText/liveSources are the
+  // render-safe mirrors (state) for the streaming bubble.
   const streamMessageId = useRef<string | null>(null);
   const streamText = useRef('');
   const streamSources = useRef<Source[]>([]);
-  const [streamTick, setStreamTick] = useState(0);
+  const [liveText, setLiveText] = useState('');
+  const [liveSources, setLiveSources] = useState<Source[]>([]);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -57,7 +66,8 @@ export function ChatPanel({ workspaceId }: Props) {
   // the streaming bubble.
   const streamingRef = useRef(false);
   useEffect(() => {
-    if (!activeConversationId || !historyMessages.data || streamingRef.current) return;
+    if (!activeConversationId || !historyMessages.data || streamingRef.current)
+      return;
     setMessages(historyMessages.data.map(toLocalMessage));
   }, [activeConversationId, historyMessages.data]);
   useEffect(() => {
@@ -81,8 +91,11 @@ export function ChatPanel({ workspaceId }: Props) {
     streamStartedFor.current = null;
   }, [pending]);
 
-  const subInput: PendingQuestion | undefined =
-    pending ?? { workspaceId, message: '', history: [] };
+  const subInput: PendingQuestion | undefined = pending ?? {
+    workspaceId,
+    message: '',
+    history: [],
+  };
 
   trpc.chat.stream.useSubscription(subInput, {
     enabled: pending !== null,
@@ -95,10 +108,11 @@ export function ChatPanel({ workspaceId }: Props) {
           break;
         case 'sources':
           streamSources.current = event.sources;
+          setLiveSources(event.sources);
           break;
         case 'token': {
           streamText.current += event.token;
-          setStreamTick((t) => t + 1);
+          setLiveText(streamText.current);
           break;
         }
         case 'done': {
@@ -108,6 +122,8 @@ export function ChatPanel({ workspaceId }: Props) {
           streamMessageId.current = null;
           streamText.current = '';
           streamSources.current = [];
+          setLiveText('');
+          setLiveSources([]);
           setPending(null);
           if (id) {
             setMessages((prev) =>
@@ -132,6 +148,8 @@ export function ChatPanel({ workspaceId }: Props) {
           streamMessageId.current = null;
           streamText.current = '';
           streamSources.current = [];
+          setLiveText('');
+          setLiveSources([]);
           setPending(null);
           if (id) {
             setMessages((prev) =>
@@ -142,7 +160,8 @@ export function ChatPanel({ workspaceId }: Props) {
               ),
             );
           }
-          if (convId) void utils.chat.messages.invalidate({ conversationId: convId });
+          if (convId)
+            void utils.chat.messages.invalidate({ conversationId: convId });
           break;
         }
       }
@@ -151,18 +170,22 @@ export function ChatPanel({ workspaceId }: Props) {
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages, streamTick]);
+  }, [messages, liveText]);
 
   function handleSend() {
     const message = input.trim();
     if (!message || pending) return;
 
-    const history = messages.slice(-10).map(({ role, content }) => ({ role, content }));
+    const history = messages
+      .slice(-10)
+      .map(({ role, content }) => ({ role, content }));
     const id = crypto.randomUUID();
 
     streamMessageId.current = id;
     streamText.current = '';
     streamSources.current = [];
+    setLiveText('');
+    setLiveSources([]);
     setPending({
       workspaceId,
       message,
@@ -191,14 +214,15 @@ export function ChatPanel({ workspaceId }: Props) {
     streamMessageId.current = null;
     streamText.current = '';
     streamSources.current = [];
+    setLiveText('');
+    setLiveSources([]);
   }
 
-  const activeTitle =
-    conversations.data?.find((c) => c.id === activeConversationId)?.title;
+  const activeTitle = conversations.data?.find(
+    (c) => c.id === activeConversationId,
+  )?.title;
 
   const streaming = pending !== null;
-  const liveText = streamText.current;
-  const liveSources = streamSources.current;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -268,7 +292,9 @@ export function ChatPanel({ workspaceId }: Props) {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
             <div>
-              <h1 className="text-lg font-bold">{activeTitle ?? workspaceName}</h1>
+              <h1 className="text-lg font-bold">
+                {activeTitle ?? workspaceName}
+              </h1>
               <p className="text-xs text-zinc-500">
                 {activeConversationId
                   ? 'Saved conversation · grounded in your documents'
@@ -297,7 +323,8 @@ export function ChatPanel({ workspaceId }: Props) {
                   </p>
                   {!activeConversationId && (
                     <p className="mt-1 text-xs text-zinc-600">
-                      Try: "Summarize the key points" or "What does the report say about X?"
+                      Try: "Summarize the key points" or "What does the report
+                      say about X?"
                     </p>
                   )}
                 </div>
@@ -467,7 +494,13 @@ function SourcesPanel({ sources }: { sources: Source[] }) {
 
 function PlusIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className={className}
+    >
       <path d="M12 5v14M5 12h14" strokeLinecap="round" />
     </svg>
   );
@@ -475,7 +508,13 @@ function PlusIcon({ className }: { className?: string }) {
 
 function TrashIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className={className}
+    >
       <path
         d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"
         strokeLinecap="round"
@@ -487,8 +526,18 @@ function TrashIcon({ className }: { className?: string }) {
 
 function SendIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-      <path d="m22 2-7 20-4-9-9-4z" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className={className}
+    >
+      <path
+        d="m22 2-7 20-4-9-9-4z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       <path d="M22 2 11 13" strokeLinecap="round" />
     </svg>
   );
@@ -496,7 +545,13 @@ function SendIcon({ className }: { className?: string }) {
 
 function SpinnerIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`animate-spin ${className ?? ''}`}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className={`animate-spin ${className ?? ''}`}
+    >
       <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
     </svg>
   );

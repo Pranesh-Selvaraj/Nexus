@@ -17,7 +17,10 @@ interface Props {
 export function UploadDropzone({ workspaceId }: Props) {
   const utils = trpc.useContext();
   const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [message, setMessage] = useState<{
+    kind: 'ok' | 'err';
+    text: string;
+  } | null>(null);
 
   const onDrop = useCallback(
     async (files: File[]) => {
@@ -39,15 +42,22 @@ export function UploadDropzone({ workspaceId }: Props) {
             body: form,
           });
           if (!response.ok) {
-            const body = (await response.json().catch(() => null)) as { error?: string } | null;
-            throw new Error(body?.error ?? `Upload failed (${response.status})`);
+            const body = (await response.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(
+              body?.error ?? `Upload failed (${response.status})`,
+            );
           }
         }),
       );
 
       const failed = results.filter((r) => r.status === 'rejected');
       if (failed.length === 0) {
-        setMessage({ kind: 'ok', text: `Queued ${files.length} file${files.length === 1 ? '' : 's'} for indexing.` });
+        setMessage({
+          kind: 'ok',
+          text: `Queued ${files.length} file${files.length === 1 ? '' : 's'} for indexing.`,
+        });
       } else {
         const first = (failed[0] as PromiseRejectedResult).reason as Error;
         setMessage({ kind: 'err', text: first.message });
@@ -58,13 +68,14 @@ export function UploadDropzone({ workspaceId }: Props) {
     [workspaceId, utils],
   );
 
-  const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
-    onDrop,
-    accept: ACCEPT,
-    multiple: true,
-    disabled: uploading,
-    maxSize: 25 * 1024 * 1024,
-  });
+  const { getRootProps, getInputProps, isDragActive, isDragReject } =
+    useDropzone({
+      onDrop,
+      accept: ACCEPT,
+      multiple: true,
+      disabled: uploading,
+      maxSize: 25 * 1024 * 1024,
+    });
 
   return (
     <div className="border-b border-zinc-800 p-3">
@@ -113,7 +124,13 @@ export function UploadDropzone({ workspaceId }: Props) {
 
 function UploadIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className={className}
+    >
       <path
         d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
         strokeLinecap="round"

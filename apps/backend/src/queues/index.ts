@@ -18,7 +18,9 @@ export const embeddingQueue = new Queue<EmbeddingJobData>('embedding', {
  * Queue a document for async embedding generation. Retried up to 3 times
  * (exponential backoff) before the document is marked as failed.
  */
-export async function enqueueDocumentEmbedding(documentId: string): Promise<void> {
+export async function enqueueDocumentEmbedding(
+  documentId: string,
+): Promise<void> {
   await embeddingQueue.add(
     'embed',
     { documentId },

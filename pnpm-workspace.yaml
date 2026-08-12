@@ -5,6 +5,6 @@ packages:
 allowBuilds:
   esbuild: true
   bcrypt: true
-  "@tailwindcss/oxide": true
+  '@tailwindcss/oxide': true
   msgpackr-extract: true
   langchain: true
