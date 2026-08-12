@@ -28,8 +28,12 @@ export function UploadDropzone({ workspaceId }: Props) {
       const results = await Promise.allSettled(
         files.map(async (file) => {
           const form = new FormData();
-          form.append('file', file);
+          // The workspaceId part must precede the file part: multer parses
+          // parts sequentially, and later fields are not available while the
+          // file is being written. (The backend also relocates the file after
+          // validation, but this keeps the staging dir deterministic.)
           form.append('workspaceId', workspaceId);
+          form.append('file', file);
           const response = await fetch('/api/upload', {
             method: 'POST',
             body: form,

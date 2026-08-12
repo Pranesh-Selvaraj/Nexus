@@ -1,3 +1,6 @@
+import { rm } from 'node:fs/promises';
+import path from 'node:path';
+
 import { TRPCError } from '@trpc/server';
 import { and, eq, sql } from 'drizzle-orm';
 
@@ -11,6 +14,7 @@ import {
 import { db } from '../db';
 import { documents, workspaces } from '../db/schema';
 import { protectedProcedure, t } from '../middleware/auth';
+import { UPLOAD_DIR } from '../utils/paths';
 
 interface WorkspaceRow {
   id: string;
@@ -132,6 +136,13 @@ export const workspaceRouter = t.router({
       if (!deleted) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
       }
+
+      // Remove the workspace's uploaded files from disk (the DB rows are
+      // cascade-deleted, but the files are not).
+      await rm(path.join(UPLOAD_DIR, deleted.id), {
+        recursive: true,
+        force: true,
+      }).catch(() => undefined);
       return { deleted: true };
     }),
 });

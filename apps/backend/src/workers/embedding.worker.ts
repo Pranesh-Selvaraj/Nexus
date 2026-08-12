@@ -11,8 +11,7 @@ import type { EmbeddingJobData } from '../queues';
 import { redisConnection } from '../queues';
 import { extractPages, splitIntoChunks } from '../services/chunking.service';
 import { embedTexts } from '../services/embedding.service';
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads';
+import { UPLOAD_DIR } from '../utils/paths';
 
 async function processDocument(documentId: string): Promise<void> {
   const [doc] = await db

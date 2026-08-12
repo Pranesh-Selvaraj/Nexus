@@ -4,27 +4,15 @@ import path from 'node:path';
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq, getTableColumns } from 'drizzle-orm';
 
-import type { DocumentDTO } from '@nexus/shared-types';
 import { documentIdSchema, listDocumentsInputSchema } from '@nexus/shared-types';
+import type { DocumentDTO } from '@nexus/shared-types';
 
 import { db } from '../db';
 import { documents, workspaces } from '../db/schema';
 import { protectedProcedure, t } from '../middleware/auth';
 import { enqueueDocumentEmbedding } from '../queues';
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads';
-
-function toDocumentDTO(doc: typeof documents.$inferSelect): DocumentDTO {
-  return {
-    id: doc.id,
-    workspaceId: doc.workspaceId,
-    title: doc.title,
-    fileType: doc.fileType,
-    status: doc.status,
-    chunkCount: doc.chunkCount,
-    createdAt: new Date(doc.createdAt).toISOString(),
-  };
-}
+import { UPLOAD_DIR } from '../utils/paths';
+import { toDocumentDTO } from '../utils/dto';
 
 /** Ensures the workspace exists and belongs to the authenticated user. */
 async function assertWorkspaceOwnership(
