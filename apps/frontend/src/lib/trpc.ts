@@ -1,5 +1,5 @@
 import { httpBatchLink, splitLink } from '@trpc/client';
-import { createWSClient, wsLink } from '@trpc/client/links/wsLink';
+import { createWSClient, wsLink } from '@trpc/client/links/wsLink/wsLink';
 import { createTRPCReact } from '@trpc/react-query';
 
 import type { AppRouter } from '@nexus/backend';

@@ -12,11 +12,11 @@ interface Props {
 }
 
 export function WorkspaceSidebar({ activeWorkspaceId, onSelect }: Props) {
-  const utils = trpc.useContext();
+  const utils = trpc.useUtils();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
 
-  const workspaces = trpc.workspace.list.useQuery();
+  const workspaces = trpc.workspace.list.useQuery(undefined);
   const createWorkspace = trpc.workspace.create.useMutation({
     onSuccess: (created) => {
       void utils.workspace.list.invalidate();
@@ -103,10 +103,10 @@ export function WorkspaceSidebar({ activeWorkspaceId, onSelect }: Props) {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={createWorkspace.isLoading || !newName.trim()}
+                disabled={createWorkspace.isPending || !newName.trim()}
                 className="flex-1 rounded-lg bg-nexus-600 py-1.5 text-xs font-semibold text-white hover:bg-nexus-500 disabled:opacity-50"
               >
-                {createWorkspace.isLoading ? 'Creating...' : 'Create'}
+                {createWorkspace.isPending ? 'Creating...' : 'Create'}
               </button>
               <button
                 type="button"

@@ -31,7 +31,7 @@ interface PendingQuestion {
 }
 
 export function ChatPanel({ workspaceId }: Props) {
-  const utils = trpc.useContext();
+  const utils = trpc.useUtils();
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
@@ -50,7 +50,7 @@ export function ChatPanel({ workspaceId }: Props) {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const workspace = trpc.workspace.list.useQuery();
+  const workspace = trpc.workspace.list.useQuery(undefined);
   const workspaceName =
     workspace.data?.find((w) => w.id === workspaceId)?.name ?? 'workspace';
 

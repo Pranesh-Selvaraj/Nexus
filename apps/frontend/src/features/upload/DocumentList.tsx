@@ -7,12 +7,15 @@ interface Props {
 }
 
 export function DocumentList({ workspaceId }: Props) {
-  const utils = trpc.useContext();
+  const utils = trpc.useUtils();
   const query = trpc.document.listByWorkspace.useQuery(
     { workspaceId },
     {
-      refetchInterval: (data) =>
-        data?.some((doc) => doc.status === 'processing') ? 2_000 : false,
+      // v5: refetchInterval receives the Query, not the data
+      refetchInterval: (query) =>
+        query.state.data?.some((doc) => doc.status === 'processing')
+          ? 2_000
+          : false,
     },
   );
 
@@ -51,7 +54,7 @@ export function DocumentList({ workspaceId }: Props) {
               doc={doc}
               onDelete={() => removeDocument.mutate({ documentId: doc.id })}
               onRetry={() => retryDocument.mutate({ documentId: doc.id })}
-              isDeleting={removeDocument.isLoading}
+              isDeleting={removeDocument.isPending}
             />
           ))}
         </ul>

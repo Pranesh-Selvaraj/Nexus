@@ -272,26 +272,19 @@ try {
     convsGone.body?.error?.data?.code === 'NOT_FOUND',
   );
 
-  // chat subscriptions only work over WebSocket; over HTTP the router
-  // returns NOT_FOUND for the missing mutation/query method
-  const chat = await fetchJson('/trpc/chat.stream', {
+  // chat subscriptions only work over WebSocket; over HTTP tRPC v11 responds
+  // with an SSE stream carrying a serialized METHOD_NOT_SUPPORTED error
+  const chat = await fetch(`${BASE}/trpc/chat.stream`, {
     method: 'POST',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ workspaceId, message: 'hi', history: [] }),
   });
-  print(
-    'chat.stream not callable over http',
-    chat.body?.error?.data?.code === 'NOT_FOUND',
-  );
-
-  // WS-only procedures report NOT_FOUND over HTTP (no query/mutation method)
-  const chatBad = await fetchJson('/trpc/chat.stream', {
-    method: 'POST',
-    body: JSON.stringify({ workspaceId, message: '', history: [] }),
-  });
-  print(
-    'chat.stream is websocket-only',
-    chatBad.body?.error?.data?.code === 'NOT_FOUND',
-  );
+  const chatBody = await chat.text();
+  const sseMethodNotSupported =
+    chatBody.includes('METHOD_NOT_SUPPORTED') &&
+    chatBody.includes('"httpStatus":405');
+  print('chat.stream not callable over http', sseMethodNotSupported);
+  print('chat.stream is websocket-only', sseMethodNotSupported);
 
   // --- hybrid search SQL verification (no OpenAI key required) -----------
   const seedResult = await seedChunksAndQuery();
