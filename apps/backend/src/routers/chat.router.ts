@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { observable } from '@trpc/server/observable';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 
 import type { ChatEvent, Source } from '@nexus/shared-types';
 import {
@@ -32,15 +32,46 @@ function toConversationDTO(row: {
   };
 }
 
+/**
+ * Ensures the conversation exists and belongs to the authenticated user
+ * (mirrors assertWorkspaceOwnership in document.router.ts). Joins through
+ * workspaces so ownership is derived from the workspace, not duplicated on
+ * the conversation row.
+ */
+async function assertConversationOwnership(
+  userId: string,
+  conversationId: string,
+): Promise<void> {
+  const [row] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .innerJoin(workspaces, eq(workspaces.id, conversations.workspaceId))
+    .where(
+      and(eq(conversations.id, conversationId), eq(workspaces.userId, userId)),
+    )
+    .limit(1);
+  if (!row) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Conversation not found',
+    });
+  }
+}
+
 export const chatRouter = t.router({
   /** Conversations for a workspace, most recently active first. */
   listByWorkspace: protectedProcedure
     .input(workspaceIdSchema)
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const [workspace] = await db
         .select({ id: workspaces.id })
         .from(workspaces)
-        .where(eq(workspaces.id, input.workspaceId))
+        .where(
+          and(
+            eq(workspaces.id, input.workspaceId),
+            eq(workspaces.userId, ctx.user.id),
+          ),
+        )
         .limit(1);
       if (!workspace) {
         throw new TRPCError({
@@ -70,25 +101,13 @@ export const chatRouter = t.router({
   /** Full message history of a conversation (oldest first). */
   messages: protectedProcedure
     .input(conversationIdSchema)
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      await assertConversationOwnership(ctx.user.id, input.conversationId);
       const rows = await db
         .select()
         .from(messages)
         .where(eq(messages.conversationId, input.conversationId))
-        .orderBy(messages.createdAt);
-      if (rows.length === 0) {
-        const [conversation] = await db
-          .select({ id: conversations.id })
-          .from(conversations)
-          .where(eq(conversations.id, input.conversationId))
-          .limit(1);
-        if (!conversation) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Conversation not found',
-          });
-        }
-      }
+        .orderBy(asc(messages.createdAt), asc(messages.id));
       return rows.map((m) => ({
         id: m.id,
         conversationId: m.conversationId,
@@ -101,7 +120,8 @@ export const chatRouter = t.router({
 
   delete: protectedProcedure
     .input(conversationIdSchema)
-    .mutation(async ({ input }): Promise<{ deleted: boolean }> => {
+    .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
+      await assertConversationOwnership(ctx.user.id, input.conversationId);
       const [deleted] = await db
         .delete(conversations)
         .where(eq(conversations.id, input.conversationId))
