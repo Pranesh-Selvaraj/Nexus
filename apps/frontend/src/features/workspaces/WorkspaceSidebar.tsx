@@ -1,17 +1,25 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
-import type { WorkspaceDTO } from '@nexus/shared-types';
+import type { UserDTO, WorkspaceDTO } from '@nexus/shared-types';
 
+import { logout } from '../../lib/auth';
 import { NexusLogo } from '../../App';
 import { trpc } from '../../lib/trpc';
 
 interface Props {
   activeWorkspaceId: string | null;
   onSelect: (workspaceId: string) => void;
+  user: UserDTO;
+  onLoggedOut: () => void;
 }
 
-export function WorkspaceSidebar({ activeWorkspaceId, onSelect }: Props) {
+export function WorkspaceSidebar({
+  activeWorkspaceId,
+  onSelect,
+  user,
+  onLoggedOut,
+}: Props) {
   const utils = trpc.useUtils();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -131,14 +139,42 @@ export function WorkspaceSidebar({ activeWorkspaceId, onSelect }: Props) {
             N
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">Local mode</p>
-            <p className="truncate text-xs text-zinc-500">
-              Single user · data stays in postgres
+            <p className="truncate text-sm font-medium">
+              {user.name ?? user.email}
             </p>
+            <p className="truncate text-xs text-zinc-500">{user.email}</p>
           </div>
+          <button
+            title="Sign out"
+            onClick={() => {
+              void logout().finally(onLoggedOut);
+            }}
+            className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+          >
+            <LogoutIcon className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </aside>
+  );
+}
+
+function LogoutIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className={className}
+      aria-hidden
+    >
+      <path
+        d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

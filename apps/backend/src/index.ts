@@ -19,15 +19,26 @@ import { workspaceIdSchema } from '@nexus/shared-types';
 import { db, pool } from './db/index.js';
 import { documents, users, workspaces } from './db/schema.js';
 import {
+  authEnabled,
   createExpressContext,
   createWSSContext,
   LOCAL_USER_EMAIL,
+  readSessionCookie,
+  resolveUser,
 } from './middleware/auth.js';
 import { enqueueDocumentEmbedding, redisConnection } from './queues/index.js';
 import { appRouter } from './routers/_app.js';
 import { UPLOAD_DIR } from './utils/paths.js';
 import { sanitizeForLog, upload } from './utils/multer.config.js';
 import { toDocumentDTO } from './utils/dto.js';
+import {
+  createSession,
+  deleteSession,
+  hashPassword,
+  SESSION_COOKIE,
+  SESSION_TTL_MS,
+  verifyPassword,
+} from './services/auth.service.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const WS_PATH = '/ws';
@@ -118,6 +129,27 @@ async function main(): Promise<void> {
     console.log('[boot] workspaces adopted by local user');
   }
 
+  // Optional authentication: when AUTH_PASSWORD is set, store its scrypt
+  // hash on the local user so login can verify against the database.
+  if (authEnabled()) {
+    if (!localUser) {
+      throw new Error(
+        `AUTH_PASSWORD is set but the local user (${LOCAL_USER_EMAIL}) could not be resolved`,
+      );
+    }
+    await db
+      .update(users)
+      .set({
+        passwordHash: await hashPassword(process.env.AUTH_PASSWORD as string),
+      })
+      .where(eq(users.id, localUser.id));
+    console.log('[boot] authentication enabled - login required');
+  } else {
+    console.warn(
+      '[boot] WARNING: AUTH_PASSWORD not set - running in single-user no-auth mode. Set AUTH_PASSWORD when exposing publicly (see SECURITY.md).',
+    );
+  }
+
   const app = express();
   app.disable('x-powered-by');
   // Behind the nginx reverse proxy (docker-compose.prod.yml) - lets
@@ -130,6 +162,82 @@ async function main(): Promise<void> {
     .filter(Boolean);
   app.use(cors({ origin: origins }));
   app.use(express.json({ limit: '1mb' }));
+
+  // --- Authentication (optional, see middleware/auth.ts) -----------------
+  // Cookie: httpOnly + SameSite=Lax; Secure only when explicitly enabled
+  // (behind a TLS-terminating proxy).
+  const secureCookie = process.env.AUTH_COOKIE_SECURE === 'true';
+  const sessionCookie = (token: string, maxAgeSec: number): string =>
+    `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAgeSec}${secureCookie ? '; Secure' : ''}`;
+
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60_000,
+    limit: 10,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts, please retry later' },
+  });
+
+  app.post('/api/auth/login', loginLimiter, async (req, res) => {
+    try {
+      if (!authEnabled()) {
+        res.status(403).json({ error: 'Authentication is disabled' });
+        return;
+      }
+      const { email, password } = (req.body ?? {}) as {
+        email?: unknown;
+        password?: unknown;
+      };
+      if (typeof email !== 'string' || typeof password !== 'string') {
+        res.status(400).json({ error: 'Email and password are required' });
+        return;
+      }
+
+      const [user] = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          passwordHash: users.passwordHash,
+        })
+        .from(users)
+        .where(eq(users.email, email.trim().toLowerCase()))
+        .limit(1);
+      if (!user || !(await verifyPassword(password, user.passwordHash))) {
+        res.status(401).json({ error: 'Invalid credentials' });
+        return;
+      }
+
+      const { token, expiresAt } = await createSession(user.id);
+      res.setHeader(
+        'Set-Cookie',
+        sessionCookie(token, Math.floor(SESSION_TTL_MS / 1000)),
+      );
+      res.json({
+        user: { id: user.id, email: user.email, name: user.name },
+        expiresAt: expiresAt.toISOString(),
+      });
+    } catch (err) {
+      console.error('[auth] login failed:', sanitizeForLog(err));
+      res.status(500).json({ error: 'Login failed' });
+    }
+  });
+
+  app.post('/api/auth/logout', async (req, res) => {
+    const token = readSessionCookie(req.headers);
+    await deleteSession(token);
+    res.setHeader('Set-Cookie', sessionCookie('', 0));
+    res.json({ ok: true });
+  });
+
+  app.get('/api/auth/me', async (req, res) => {
+    const user = await resolveUser(readSessionCookie(req.headers));
+    if (!user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    res.json({ user });
+  });
 
   // --- File upload (multipart, multer) --------------------------------
   // Files arrive in memory (multer memoryStorage) and are written by the
@@ -164,15 +272,12 @@ async function main(): Promise<void> {
         }
         const workspaceId = parsed.data.workspaceId;
 
-        // 2. Resolve the local user and verify workspace ownership (matches the
-        //    tRPC routers' behavior instead of trusting an unauthenticated body).
-        const [localUser] = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.email, LOCAL_USER_EMAIL))
-          .limit(1);
-        if (!localUser) {
-          res.status(500).json({ error: 'Local user could not be resolved' });
+        // 2. Resolve the session user (or the local user in no-auth mode)
+        //    and verify workspace ownership (matches the tRPC routers'
+        //    behavior instead of trusting an unauthenticated body).
+        const currentUser = await resolveUser(readSessionCookie(req.headers));
+        if (!currentUser) {
+          res.status(401).json({ error: 'Not authenticated' });
           return;
         }
         const [workspace] = await db
@@ -181,7 +286,7 @@ async function main(): Promise<void> {
           .where(
             and(
               eq(workspaces.id, workspaceId),
-              eq(workspaces.userId, localUser.id),
+              eq(workspaces.userId, currentUser.id),
             ),
           )
           .limit(1);

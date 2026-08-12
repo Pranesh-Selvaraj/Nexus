@@ -16,6 +16,16 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   return { status: res.status, body };
 }
 
+/** Like fetchJson but against an arbitrary base URL (auth-mode instance). */
+async function fetchJsonAuth(base: string, path: string, init?: RequestInit) {
+  const res = await fetch(`${base}${path}`, {
+    ...init,
+    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+  });
+  const body = await res.json().catch(() => null);
+  return { status: res.status, body };
+}
+
 function print(name: string, ok: boolean, detail?: unknown) {
   console.log(
     `${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  ${JSON.stringify(detail).slice(0, 220)}` : ''}`,
@@ -311,6 +321,135 @@ try {
     seedResult.fallback,
     seedResult.detail,
   );
+
+  // -------------------------------------------------------------------
+  // Authentication mode: a second API instance with AUTH_PASSWORD set
+  // -------------------------------------------------------------------
+  const AUTH_PORT = 3102;
+  const AUTH_BASE = `http://localhost:${AUTH_PORT}`;
+  const authChild = spawn('pnpm', ['exec', 'tsx', 'src/index.ts'], {
+    cwd: new URL('..', import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(AUTH_PORT),
+      AUTH_PASSWORD: 'smoke-secret',
+      LOCAL_USER_EMAIL: 'local@nexus.dev',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  authChild.stderr.on('data', (d) => (stdout += d.toString()));
+
+  let authHealthy = false;
+  for (let i = 0; i < 30; i++) {
+    try {
+      const res = await fetch(`${AUTH_BASE}/healthz`);
+      if (res.ok) {
+        authHealthy = true;
+        break;
+      }
+    } catch {
+      /* not up yet */
+    }
+    await sleep(500);
+  }
+  print('auth api healthz', authHealthy);
+
+  // unauthenticated requests are rejected everywhere
+  const meAnon = await fetch(`${AUTH_BASE}/api/auth/me`);
+  print('auth /me without cookie -> 401', meAnon.status === 401);
+
+  const trpcAnon = await fetchJsonAuth(AUTH_BASE, '/trpc/workspace.list', {
+    method: 'GET',
+  });
+  print(
+    'auth trpc without cookie -> UNAUTHORIZED',
+    trpcAnon.body?.error?.data?.code === 'UNAUTHORIZED',
+  );
+
+  // wrong password is rejected (rate limit is 10/15min - 1 attempt is fine)
+  const badLogin = await fetch(`${AUTH_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'local@nexus.dev', password: 'wrong' }),
+  });
+  print('auth login wrong password -> 401', badLogin.status === 401);
+
+  // correct credentials -> session cookie
+  const loginRes = await fetch(`${AUTH_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      email: 'local@nexus.dev',
+      password: 'smoke-secret',
+    }),
+  });
+  const setCookie = loginRes.headers.get('set-cookie') ?? '';
+  const cookie = setCookie.split(';')[0];
+  print(
+    'auth login success + httpOnly cookie',
+    loginRes.status === 200 &&
+      cookie.startsWith('nexus_session=') &&
+      setCookie.toLowerCase().includes('httponly'),
+  );
+
+  const meAuthed = await fetch(`${AUTH_BASE}/api/auth/me`, {
+    headers: { cookie },
+  });
+  print(
+    'auth /me with cookie -> user',
+    meAuthed.status === 200 &&
+      ((await meAuthed.json()) as { user?: { email?: string } }).user?.email ===
+        'local@nexus.dev',
+  );
+
+  // authenticated upload works, anonymous upload is rejected
+  const wsAuth = await fetchJsonAuth(AUTH_BASE, '/trpc/workspace.create', {
+    method: 'POST',
+    headers: { cookie },
+    body: JSON.stringify({ name: 'Auth Workspace' }),
+  });
+  const authWsId = wsAuth.body?.result?.data?.id;
+  print('auth workspace.create with cookie', !!authWsId);
+
+  const fdAuth = new FormData();
+  fdAuth.append('workspaceId', authWsId);
+  fdAuth.append(
+    'file',
+    new File(['auth test'], 'auth.txt', { type: 'text/plain' }),
+  );
+  const upAnon = await fetch(`${AUTH_BASE}/api/upload`, {
+    method: 'POST',
+    body: fdAuth,
+  });
+  print('auth upload without cookie -> 401', upAnon.status === 401);
+
+  const fdAuth2 = new FormData();
+  fdAuth2.append('workspaceId', authWsId);
+  fdAuth2.append(
+    'file',
+    new File(['auth test'], 'auth.txt', { type: 'text/plain' }),
+  );
+  const upAuthed = await fetch(`${AUTH_BASE}/api/upload`, {
+    method: 'POST',
+    headers: { cookie },
+    body: fdAuth2,
+  });
+  print('auth upload with cookie -> 201', upAuthed.status === 201);
+
+  // logout invalidates the session
+  const logoutRes = await fetch(`${AUTH_BASE}/api/auth/logout`, {
+    method: 'POST',
+    headers: { cookie },
+  });
+  const meAfterLogout = await fetch(`${AUTH_BASE}/api/auth/me`, {
+    headers: { cookie },
+  });
+  print(
+    'auth logout invalidates session',
+    logoutRes.status === 200 && meAfterLogout.status === 401,
+  );
+
+  authChild.kill('SIGTERM');
 } catch (e) {
   console.error('SMOKE ERROR:', (e as Error).message);
   ok = false;

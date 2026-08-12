@@ -152,18 +152,21 @@ See [SECURITY.md](SECURITY.md) — without authentication enabled the app is sin
 
 All variables live in `.env` (see `.env.example`). The backend auto-discovers `.env` at the repo root or package root.
 
-| Variable                 | Default                                       | Description                                     |
-| ------------------------ | --------------------------------------------- | ----------------------------------------------- |
-| `DATABASE_URL`           | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string         |
-| `REDIS_URL`              | `redis://localhost:6379`                      | Redis connection string (BullMQ)                |
-| `OPENAI_API_KEY`         | —                                             | OpenAI API key (required for embeddings + chat) |
-| `OPENAI_MODEL`           | `gpt-4o-mini`                                 | Chat model                                      |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small`                      | Embedding model                                 |
-| `LOCAL_USER_EMAIL`       | `local@nexus.dev`                             | Identity of the single local user               |
-| `PORT`                   | `3000`                                        | Backend HTTP/WS port                            |
-| `UPLOAD_DIR`             | `./uploads`                                   | Directory for uploaded documents                |
-| `MAX_UPLOAD_MB`          | `25`                                          | Per-file upload size limit                      |
-| `FRONTEND_ORIGIN`        | `http://localhost:5173`                       | Allowed CORS origin                             |
+| Variable                 | Default                                       | Description                                                                     |
+| ------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------- |
+| `DATABASE_URL`           | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string                                         |
+| `REDIS_URL`              | `redis://localhost:6379`                      | Redis connection string (BullMQ)                                                |
+| `OPENAI_API_KEY`         | —                                             | OpenAI API key (required for embeddings + chat)                                 |
+| `OPENAI_MODEL`           | `gpt-4o-mini`                                 | Chat model                                                                      |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small`                      | Embedding model                                                                 |
+| `LOCAL_USER_EMAIL`       | `local@nexus.dev`                             | Identity of the single local user                                               |
+| `AUTH_PASSWORD`          | _(unset)_                                     | When set, login is required (httpOnly session cookie); unset = no-auth dev mode |
+| `AUTH_COOKIE_SECURE`     | `false`                                       | `true` when serving over HTTPS (adds `Secure` to the session cookie)            |
+| `SESSION_TTL_DAYS`       | `30`                                          | Session lifetime in days                                                        |
+| `PORT`                   | `3000`                                        | Backend HTTP/WS port                                                            |
+| `UPLOAD_DIR`             | `./uploads`                                   | Directory for uploaded documents                                                |
+| `MAX_UPLOAD_MB`          | `25`                                          | Per-file upload size limit                                                      |
+| `FRONTEND_ORIGIN`        | `http://localhost:5173`                       | Allowed CORS origin                                                             |
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
 
@@ -216,7 +219,7 @@ Found a vulnerability? Please **do not open a public issue**. Report it privatel
 - [x] Add automated unit tests (Vitest) — wired into CI as a required check
 - [x] Add ESLint/Prettier and enforce in CI
 - [x] Production Docker images + deployment manifests
-- [ ] Real authentication (currently single-user by design)
+- [x] Real authentication (optional, `AUTH_PASSWORD`; httpOnly session cookies)
 
 ## License
 

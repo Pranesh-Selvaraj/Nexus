@@ -33,11 +33,12 @@ You will receive a response within **5 business days**. We will work with you to
 
 These are tracked internally and documented publicly so users can make informed decisions:
 
-- **No authentication** — by design, the app is a single-user tool with no auth. Do not expose it directly to the public internet; put it behind a reverse proxy (with e.g. SSO/basic auth) if you do.
+- **Optional authentication** — set `AUTH_PASSWORD` to require login; when unset the app runs in single-user no-auth mode. Either way, treat the app as a private tool: don't expose it to the public internet without a reverse proxy and TLS (`AUTH_COOKIE_SECURE=true`).
 
 ## Security features
 
 - `main` branch protection: only the repository owner can push directly; everyone else requires a reviewed PR with green CI
+- Optional session authentication: scrypt-hashed password, httpOnly+SameSite cookie, server-side sessions stored as sha256 token hashes, login rate limiting (10/15min), uploads also require the session
 - gitleaks secret scanning on every push and PR (blocking)
 - GitHub dependency review on PRs (blocking for high severity)
 - CodeQL static analysis on every push/PR plus a weekly schedule
