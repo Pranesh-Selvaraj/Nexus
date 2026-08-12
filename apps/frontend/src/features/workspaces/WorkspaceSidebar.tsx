@@ -12,6 +12,9 @@ interface Props {
   onSelect: (workspaceId: string) => void;
   user: UserDTO;
   onLoggedOut: () => void;
+  onOpenSettings: () => void;
+  settingsActive: boolean;
+  appName: string;
 }
 
 export function WorkspaceSidebar({
@@ -19,6 +22,9 @@ export function WorkspaceSidebar({
   onSelect,
   user,
   onLoggedOut,
+  onOpenSettings,
+  settingsActive,
+  appName,
 }: Props) {
   const utils = trpc.useUtils();
   const [creating, setCreating] = useState(false);
@@ -48,7 +54,7 @@ export function WorkspaceSidebar({
     <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/40">
       <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-4">
         <NexusLogo className="h-7 w-7 text-nexus-400" />
-        <span className="text-lg font-bold tracking-tight">Nexus</span>
+        <span className="text-lg font-bold tracking-tight">{appName}</span>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
@@ -134,6 +140,17 @@ export function WorkspaceSidebar({
           </button>
         )}
 
+        <button
+          onClick={onOpenSettings}
+          className={`mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+            settingsActive
+              ? 'bg-nexus-600/20 text-nexus-200 ring-1 ring-nexus-600/40'
+              : 'text-zinc-400 hover:bg-zinc-800'
+          }`}
+        >
+          <SettingsIcon className="h-4 w-4" /> Settings
+        </button>
+
         <div className="mt-3 flex items-center gap-2 border-t border-zinc-800 pt-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-nexus-700 text-xs font-bold text-white">
             N
@@ -156,6 +173,26 @@ export function WorkspaceSidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+function SettingsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className={className}
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path
+        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

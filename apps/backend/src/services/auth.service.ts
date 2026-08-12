@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { sessions, users } from '../db/schema.js';
+import { getSettingNumber } from './settings.service.js';
 
 const scryptAsync = promisify(scrypt) as (
   password: string,
@@ -19,8 +20,11 @@ const scryptAsync = promisify(scrypt) as (
 ) => Promise<Buffer>;
 
 export const SESSION_COOKIE = 'nexus_session';
-export const SESSION_TTL_MS =
-  Number(process.env.SESSION_TTL_DAYS ?? 30) * 24 * 60 * 60 * 1000;
+
+/** Effective session lifetime; read per login so UI settings apply live. */
+export async function sessionTtlMs(): Promise<number> {
+  return (await getSettingNumber('auth.sessionTtlDays')) * 24 * 60 * 60 * 1000;
+}
 
 // ---------------------------------------------------------------------------
 // Password hashing (node:crypto scrypt - no native dependencies)
@@ -67,7 +71,7 @@ export async function createSession(userId: string): Promise<{
 }> {
   const token =
     randomUUID().replace(/-/g, '') + randomBytes(24).toString('hex');
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const expiresAt = new Date(Date.now() + (await sessionTtlMs()));
   await db.insert(sessions).values({
     userId,
     tokenHash: hashToken(token),

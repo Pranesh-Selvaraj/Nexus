@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import type { UserDTO } from '@nexus/shared-types';
 
 import { fetchMe } from './lib/auth';
+import { trpc } from './lib/trpc';
 import { LoginScreen } from './features/auth/LoginScreen';
+import { SettingsPanel } from './features/settings/SettingsPanel';
 import { WorkspacePanel } from './features/workspaces/WorkspacePanel';
 import { WorkspaceSidebar } from './features/workspaces/WorkspaceSidebar';
 
@@ -17,6 +19,14 @@ export default function App() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
     null,
   );
+  const [view, setView] = useState<'workspace' | 'settings'>('workspace');
+
+  const settings = trpc.settings.list.useQuery(undefined);
+  const appName =
+    settings.data?.find((s) => s.key === 'ui.appName')?.value || 'Nexus';
+  useEffect(() => {
+    document.title = `${appName} - AI RAG Workspace`;
+  }, [appName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,12 +66,20 @@ export default function App() {
     <div className="flex h-full bg-zinc-950 text-zinc-100">
       <WorkspaceSidebar
         activeWorkspaceId={activeWorkspaceId}
-        onSelect={setActiveWorkspaceId}
+        onSelect={(id) => {
+          setActiveWorkspaceId(id);
+          setView('workspace');
+        }}
         user={gate.user}
         onLoggedOut={() => setGate({ status: 'anonymous' })}
+        onOpenSettings={() => setView('settings')}
+        settingsActive={view === 'settings'}
+        appName={appName}
       />
       <main className="flex min-w-0 flex-1 flex-col">
-        {activeWorkspaceId ? (
+        {view === 'settings' ? (
+          <SettingsPanel />
+        ) : activeWorkspaceId ? (
           <WorkspacePanel
             key={activeWorkspaceId}
             workspaceId={activeWorkspaceId}

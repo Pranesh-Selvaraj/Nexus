@@ -62,7 +62,10 @@ describe('splitIntoChunks', () => {
       { length: 80 },
       (_, i) => `paragraph ${i} `,
     ).join('');
-    const chunks = await splitIntoChunks([{ page: 3, text: longText }]);
+    const chunks = await splitIntoChunks([{ page: 3, text: longText }], {
+      chunkSize: 1000,
+      chunkOverlap: 200,
+    });
     const first = chunks[0];
 
     expect(chunks.length).toBeGreaterThan(1);
@@ -73,22 +76,31 @@ describe('splitIntoChunks', () => {
   });
 
   it('keeps short text as a single chunk', async () => {
-    const chunks = await splitIntoChunks([{ page: 1, text: 'short' }]);
+    const chunks = await splitIntoChunks([{ page: 1, text: 'short' }], {
+      chunkSize: 1000,
+      chunkOverlap: 200,
+    });
     expect(chunks).toHaveLength(1);
     expect(chunks[0]?.content).toBe('short');
     expect(chunks[0]?.page).toBe(1);
   });
 
   it('skips whitespace-only fragments', async () => {
-    const chunks = await splitIntoChunks([{ page: 1, text: '  \n\n ' }]);
+    const chunks = await splitIntoChunks([{ page: 1, text: '  \n\n ' }], {
+      chunkSize: 1000,
+      chunkOverlap: 200,
+    });
     expect(chunks).toHaveLength(0);
   });
 
   it('accumulates a global chunk index across pages', async () => {
-    const chunks = await splitIntoChunks([
-      { page: 1, text: 'a'.repeat(3000) },
-      { page: 2, text: 'b'.repeat(3000) },
-    ]);
+    const chunks = await splitIntoChunks(
+      [
+        { page: 1, text: 'a'.repeat(3000) },
+        { page: 2, text: 'b'.repeat(3000) },
+      ],
+      { chunkSize: 1000, chunkOverlap: 200 },
+    );
     const indices = chunks.map((c) => c.index);
     expect(indices).toEqual([...indices].sort((x, y) => x - y));
     // contiguous 0..n-1

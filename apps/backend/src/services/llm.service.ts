@@ -3,14 +3,7 @@ import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { assertOpenAIConfigured, embedText } from './embedding.service.js';
-
-const OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
-
-export const chatClient = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY ?? 'missing',
-  timeout: 120_000,
-  maxRetries: 2,
-});
+import { getSetting, getSettingNumber } from './settings.service.js';
 
 // ---------------------------------------------------------------------------
 // Retrieval
@@ -24,10 +17,6 @@ interface RetrievalRow {
   metadata: { page: number | null };
   similarity: string;
 }
-
-const SIMILARITY_WEIGHT = 0.6;
-const KEYWORD_WEIGHT = 0.4;
-const TOP_K = 6;
 
 export interface SourceHit {
   id: string;
@@ -59,6 +48,11 @@ export async function hybridRetrieveChunks(
   query: string,
 ): Promise<SourceHit[]> {
   const embedding = await embedText(query);
+  const [similarityWeight, keywordWeight, topK] = await Promise.all([
+    getSettingNumber('rag.similarityWeight'),
+    getSettingNumber('rag.keywordWeight'),
+    getSettingNumber('rag.topK'),
+  ]);
   // pgvector accepts array literals as strings: '[0.1,0.2,...]'
   const vectorLiteral = sql.raw(
     `[${embedding.map((n) => n.toFixed(6)).join(',')}]`,
@@ -76,9 +70,9 @@ export async function hybridRetrieveChunks(
       JOIN documents d ON d.id = c.document_id
       WHERE d.workspace_id = ${workspaceId}
         AND to_tsvector('english', c.content) @@ ${ftsQuery}
-      ORDER BY (${similarityExpr} * ${sql.raw(String(SIMILARITY_WEIGHT))}
-             + ${keywordExpr} * ${sql.raw(String(KEYWORD_WEIGHT))}) DESC
-      LIMIT ${TOP_K}
+      ORDER BY (${similarityExpr} * ${sql.raw(String(similarityWeight))}
+             + ${keywordExpr} * ${sql.raw(String(keywordWeight))}) DESC
+      LIMIT ${topK}
     `,
   );
 
@@ -94,7 +88,7 @@ export async function hybridRetrieveChunks(
         JOIN documents d ON d.id = c.document_id
         WHERE d.workspace_id = ${workspaceId}
         ORDER BY ${similarityExpr} DESC
-        LIMIT ${TOP_K}
+        LIMIT ${topK}
       `,
     );
     return (vectorOnly as unknown as { rows: RetrievalRow[] }).rows.map(
@@ -153,12 +147,19 @@ export async function streamAnswer(
 ): Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>> {
   // Fail fast with an actionable message instead of a confusing OpenAI
   // client error deep inside the stream.
-  assertOpenAIConfigured();
+  await assertOpenAIConfigured();
 
-  const stream = await chatClient.chat.completions.create({
-    model: OPENAI_MODEL,
+  const [model, temperature] = await Promise.all([
+    getSetting('openai.model'),
+    getSettingNumber('openai.temperature'),
+  ]);
+  const apiKey = await getSetting('openai.apiKey');
+  const client = new OpenAI({ apiKey, timeout: 120_000, maxRetries: 2 });
+
+  const stream = await client.chat.completions.create({
+    model,
     messages: buildMessages(req),
-    temperature: 0.2,
+    temperature,
     stream: true,
   });
   return stream;

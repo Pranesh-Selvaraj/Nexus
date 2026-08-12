@@ -197,6 +197,20 @@ All variables live in `.env` (see `.env.example`). The backend auto-discovers `.
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
 
+## Settings panel
+
+Most configuration can be managed from the **Settings** page in the UI (sidebar → Settings) — no `.env` edits or restarts needed:
+
+| Group      | Settings                                                                          |
+| ---------- | --------------------------------------------------------------------------------- |
+| OpenAI     | API key (AES-256-GCM encrypted at rest), chat model, embedding model, temperature |
+| Retrieval  | chunk size, chunk overlap, sources retrieved (top-K), vector/keyword weights      |
+| Server     | max upload size                                                                   |
+| Auth       | session lifetime (days)                                                           |
+| Appearance | app name (sidebar + browser title)                                                |
+
+Precedence: **UI value → environment variable → default**. Emptying a field resets it to the env/default. Secret settings require `SETTINGS_SECRET` in `.env` (the encryption key); the "Test OpenAI connection" button validates the effective key.
+
 ## Project structure
 
 ```

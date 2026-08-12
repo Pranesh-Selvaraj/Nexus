@@ -322,6 +322,91 @@ try {
     seedResult.detail,
   );
 
+  // --- settings router -------------------------------------------------
+  const settingsList = await fetchJson('/trpc/settings.list', {
+    method: 'GET',
+  });
+  const settingDefs = settingsList.body?.result?.data;
+  print(
+    'settings.list returns registry defs',
+    Array.isArray(settingDefs) && settingDefs.length >= 12,
+    { count: settingDefs?.length },
+  );
+
+  // update model -> ui source; empty -> reset to default
+  const setModel = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'openai.model', value: 'gpt-4.1-mini' }),
+  });
+  print(
+    'settings.update model',
+    setModel.body?.result?.data?.source === 'ui' &&
+      setModel.body?.result?.data?.value === 'gpt-4.1-mini',
+  );
+  const resetModel = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'openai.model', value: '' }),
+  });
+  print(
+    'settings.update empty resets to default',
+    resetModel.body?.result?.data?.value === 'gpt-4o-mini' &&
+      resetModel.body?.result?.data?.source === 'env',
+  );
+
+  // number settings are clamped to their bounds
+  const clampTopK = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'rag.topK', value: '999' }),
+  });
+  print(
+    'settings.update clamps numbers',
+    clampTopK.body?.result?.data?.value === '20',
+  );
+  await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'rag.topK', value: '' }),
+  });
+
+  // unknown keys and invalid values are rejected
+  const unknownKey = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'nope.missing', value: 'x' }),
+  });
+  print(
+    'settings.update unknown key rejected',
+    unknownKey.body?.error?.data?.code === 'NOT_FOUND',
+  );
+  const badNumber = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'rag.topK', value: 'abc' }),
+  });
+  print(
+    'settings.update non-numeric rejected',
+    badNumber.body?.error?.data?.code === 'BAD_REQUEST',
+  );
+
+  // secrets require SETTINGS_SECRET (unset in this instance)
+  const secretWithoutKey = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'openai.apiKey', value: 'sk-123456' }),
+  });
+  print(
+    'settings.update secret without SETTINGS_SECRET rejected',
+    secretWithoutKey.body?.error?.data?.code === 'BAD_REQUEST' &&
+      String(secretWithoutKey.body?.error?.message).includes('SETTINGS_SECRET'),
+  );
+
+  // testOpenAI reports the missing key clearly
+  const testNoKey = await fetchJson('/trpc/settings.testOpenAI', {
+    method: 'POST',
+  });
+  print(
+    'settings.testOpenAI reports failure clearly',
+    testNoKey.body?.result?.data?.ok === false &&
+      String(testNoKey.body?.result?.data?.message).length > 10,
+    { message: testNoKey.body?.result?.data?.message },
+  );
+
   // -------------------------------------------------------------------
   // Authentication mode: a second API instance with AUTH_PASSWORD set
   // -------------------------------------------------------------------
