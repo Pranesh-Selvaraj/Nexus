@@ -15,6 +15,13 @@
       "when": 1786353106567,
       "tag": "0001_deep_george_stacy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786533799520,
+      "tag": "0002_auth_sessions",
+      "breakpoints": true
     }
   ]
 }

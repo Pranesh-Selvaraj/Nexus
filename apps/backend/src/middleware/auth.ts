@@ -5,6 +5,10 @@ import type { UserDTO } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
+import {
+  getUserBySessionToken,
+  SESSION_COOKIE,
+} from '../services/auth.service.js';
 
 // ---------------------------------------------------------------------------
 // Context
@@ -12,18 +16,29 @@ import { users } from '../db/schema.js';
 
 export interface Context {
   user: UserDTO | null;
+  sessionToken: string | undefined;
 }
 
 export const t = initTRPC.context<Context>().create();
 
 // ---------------------------------------------------------------------------
-// Identity - this is a single-user, personal tool. There is no
-// authentication: every request is served as the local user.
+// Identity - single-user app with optional password authentication.
+//
+// * When AUTH_PASSWORD is set, every request must carry a valid session
+//   cookie obtained from POST /api/auth/login (email + password).
+// * When it is unset (local development), the app keeps the legacy
+//   behavior: every request is served as the local user, with a boot
+//   warning. See SECURITY.md before exposing the app publicly.
 // ---------------------------------------------------------------------------
 
 export const LOCAL_USER_EMAIL =
   process.env.LOCAL_USER_EMAIL ?? 'local@nexus.dev';
 
+export function authEnabled(): boolean {
+  return Boolean(process.env.AUTH_PASSWORD);
+}
+
+/** Returns the local user row, creating it on first boot. */
 async function getOrCreateLocalUser(): Promise<UserDTO> {
   const [row] = await db
     .select({ id: users.id, email: users.email, name: users.name })
@@ -47,16 +62,50 @@ async function getOrCreateLocalUser(): Promise<UserDTO> {
   return { id: created.id, email: created.email, name: created.name };
 }
 
+async function resolveUser(
+  sessionToken: string | undefined,
+): Promise<UserDTO | null> {
+  if (authEnabled()) {
+    return getUserBySessionToken(sessionToken);
+  }
+  return getOrCreateLocalUser();
+}
+
+export { resolveUser };
+
+function readSessionCookie(
+  headers: Record<string, string | string[] | undefined>,
+): string | undefined {
+  const cookieHeader = headers.cookie ?? headers.Cookie;
+  if (!cookieHeader) return undefined;
+  const cookies = Array.isArray(cookieHeader)
+    ? cookieHeader.join('; ')
+    : cookieHeader;
+  for (const part of cookies.split(';')) {
+    const [name, ...rest] = part.trim().split('=');
+    if (name === SESSION_COOKIE) return rest.join('=');
+  }
+  return undefined;
+}
+
+export { readSessionCookie };
+
 // ---------------------------------------------------------------------------
 // Context factories (HTTP + WebSocket)
 // ---------------------------------------------------------------------------
 
-export async function createExpressContext(): Promise<Context> {
-  return { user: await getOrCreateLocalUser() };
+export async function createExpressContext(opts: {
+  req: { headers: Record<string, string | string[] | undefined> };
+}): Promise<Context> {
+  const sessionToken = readSessionCookie(opts.req.headers);
+  return { user: await resolveUser(sessionToken), sessionToken };
 }
 
-export async function createWSSContext(): Promise<Context> {
-  return { user: await getOrCreateLocalUser() };
+export async function createWSSContext(opts: {
+  req: { headers: Record<string, string | string[] | undefined> };
+}): Promise<Context> {
+  const sessionToken = readSessionCookie(opts.req.headers);
+  return { user: await resolveUser(sessionToken), sessionToken };
 }
 
 // ---------------------------------------------------------------------------
@@ -66,8 +115,8 @@ export async function createWSSContext(): Promise<Context> {
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.user) {
     throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Local user could not be resolved',
+      code: 'UNAUTHORIZED',
+      message: 'Not authenticated',
     });
   }
   return next({ ctx: { ...ctx, user: ctx.user } });
