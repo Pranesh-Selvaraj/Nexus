@@ -1,18 +1,64 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import type { UserDTO } from '@nexus/shared-types';
+
+import { fetchMe } from './lib/auth';
+import { LoginScreen } from './features/auth/LoginScreen';
 import { WorkspacePanel } from './features/workspaces/WorkspacePanel';
 import { WorkspaceSidebar } from './features/workspaces/WorkspaceSidebar';
 
+type GateState =
+  | { status: 'checking' }
+  | { status: 'anonymous' }
+  | { status: 'authenticated'; user: UserDTO };
+
 export default function App() {
+  const [gate, setGate] = useState<GateState>({ status: 'checking' });
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
     null,
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchMe().then((user) => {
+      if (cancelled) return;
+      setGate(
+        user ? { status: 'authenticated', user } : { status: 'anonymous' },
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (gate.status === 'checking') {
+    return (
+      <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-500">
+        <span className="animate-pulse text-sm">Loading...</span>
+      </div>
+    );
+  }
+
+  if (gate.status === 'anonymous') {
+    return (
+      <LoginScreen
+        onAuthed={async () => {
+          const user = await fetchMe();
+          setGate(
+            user ? { status: 'authenticated', user } : { status: 'anonymous' },
+          );
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex h-full bg-zinc-950 text-zinc-100">
       <WorkspaceSidebar
         activeWorkspaceId={activeWorkspaceId}
         onSelect={setActiveWorkspaceId}
+        user={gate.user}
+        onLoggedOut={() => setGate({ status: 'anonymous' })}
       />
       <main className="flex min-w-0 flex-1 flex-col">
         {activeWorkspaceId ? (

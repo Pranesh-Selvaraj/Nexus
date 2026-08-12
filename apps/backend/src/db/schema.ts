@@ -154,6 +154,26 @@ export const messages = pgTable(
   (table) => [index('messages_conversation_id_idx').on(table.conversationId)],
 );
 
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // sha256 hex of the bearer token - the raw token is only ever sent to
+    // the browser as an httpOnly cookie
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('sessions_user_id_idx').on(table.userId)],
+);
+
 // ---------------------------------------------------------------------------
 // Inferred row types
 // ---------------------------------------------------------------------------
