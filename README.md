@@ -153,19 +153,17 @@ packages/
 
 ## CI/CD and security
 
-| Guard                                                   | Where                   | Enforced on `main` |
-| ------------------------------------------------------- | ----------------------- | ------------------ |
-| Type checking (`pnpm typecheck`)                        | `ci.yml`                | ✅ required        |
-| Production build (`pnpm build`)                         | `ci.yml`                | ✅ required        |
-| Linting + formatting (`pnpm lint`, `pnpm format:check`) | `ci.yml`                | ✅ required        |
-| Unit tests (`pnpm test`)                                | `ci.yml`                | ✅ required        |
-| Secret scanning (gitleaks)                              | `ci.yml`                | ✅ required        |
-| Dependency review on PRs                                | `ci.yml`                | ✅ required        |
-| CodeQL static analysis (incl. weekly)                   | `codeql.yml`            | runs on push/PR    |
-| `pnpm audit` (dependency advisories)                    | `ci.yml` — report-only* | —                  |
-| Dependabot (npm + GitHub Actions)                       | `dependabot.yml`        | —                  |
-
-\* `pnpm audit` is currently report-only because of high-severity transitive advisories via `langchain@0.2.x → langsmith` (GHSA-3644-q5cj-c5c7). It will be switched to fail-closed once the `langchain` major upgrade is done. See [SECURITY.md](SECURITY.md).
+| Guard                                                   | Where                  | Enforced on `main` |
+| ------------------------------------------------------- | ---------------------- | ------------------ |
+| Type checking (`pnpm typecheck`)                        | `ci.yml`               | ✅ required        |
+| Production build (`pnpm build`)                         | `ci.yml`               | ✅ required        |
+| Linting + formatting (`pnpm lint`, `pnpm format:check`) | `ci.yml`               | ✅ required        |
+| Unit tests (`pnpm test`)                                | `ci.yml`               | ✅ required        |
+| Secret scanning (gitleaks)                              | `ci.yml`               | ✅ required        |
+| Dependency review on PRs                                | `ci.yml`               | ✅ required        |
+| CodeQL static analysis (incl. weekly)                   | `codeql.yml`           | runs on push/PR    |
+| `pnpm audit` (dependency advisories)                    | `ci.yml` — fail-closed | ✅ required        |
+| Dependabot (npm + GitHub Actions)                       | `dependabot.yml`       | —                  |
 
 ### Branch protection
 
@@ -185,7 +183,7 @@ Found a vulnerability? Please **do not open a public issue**. Report it privatel
 
 ## Roadmap
 
-- [ ] Upgrade `langchain` to a supported major version and re-enable fail-closed `pnpm audit` (see [SECURITY.md](SECURITY.md))
+- [x] Upgrade `langchain` to a supported major version and re-enable fail-closed `pnpm audit` (done — zero known advisories)
 - [x] Add automated unit tests (Vitest) — wired into CI as a required check
 - [x] Add ESLint/Prettier and enforce in CI
 - [ ] Production Docker images + deployment manifests

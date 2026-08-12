@@ -33,7 +33,6 @@ You will receive a response within **5 business days**. We will work with you to
 
 These are tracked internally and documented publicly so users can make informed decisions:
 
-- **`langchain@0.2.x` transitive advisories** — `pnpm audit` currently reports high-severity advisories reachable via `langchain` → `langsmith` (e.g. GHSA-3644-q5cj-c5c7). The dependency audit job in CI is report-only until `langchain` is upgraded to a supported major. Tracked in the [README roadmap](README.md#roadmap).
 - **No authentication** — by design, the app is a single-user tool with no auth. Do not expose it directly to the public internet; put it behind a reverse proxy (with e.g. SSO/basic auth) if you do.
 
 ## Security features
@@ -44,3 +43,4 @@ These are tracked internally and documented publicly so users can make informed 
 - CodeQL static analysis on every push/PR plus a weekly schedule
 - Dependabot for npm and GitHub Actions updates
 - GitHub secret scanning with push protection enabled on the repository
+- `pnpm audit` runs fail-closed in CI (zero known advisories as of the langchain 0.3 upgrade)
