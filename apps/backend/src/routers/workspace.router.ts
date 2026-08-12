@@ -87,7 +87,10 @@ export const workspaceRouter = t.router({
         )
         .limit(1);
       if (!workspace) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Workspace not found',
+        });
       }
 
       const [updated] = await db
@@ -134,7 +137,10 @@ export const workspaceRouter = t.router({
         )
         .returning({ id: workspaces.id });
       if (!deleted) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Workspace not found',
+        });
       }
 
       // Remove the workspace's uploaded files from disk (the DB rows are

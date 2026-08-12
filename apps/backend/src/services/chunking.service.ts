@@ -50,7 +50,9 @@ export async function extractPages(
 /**
  * Split page texts into overlapping chunks for embedding.
  */
-export async function splitIntoChunks(pages: SourcePage[]): Promise<TextChunk[]> {
+export async function splitIntoChunks(
+  pages: SourcePage[],
+): Promise<TextChunk[]> {
   const chunks: TextChunk[] = [];
   let index = 0;
 

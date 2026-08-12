@@ -14,6 +14,7 @@
     "start": "tsx src/index.ts",
     "start:worker": "tsx src/workers/embedding.worker.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src scripts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },

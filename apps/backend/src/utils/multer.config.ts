@@ -51,7 +51,11 @@ export function fileFilter(
  * reaches the log stream (CodeQL js/log-injection).
  */
 export function sanitizeForLog(value: unknown): string {
-  return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 2000);
+  /* eslint-disable no-control-regex -- control-char class IS the sanitizer */
+  return String(value)
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .slice(0, 2000);
+  /* eslint-enable no-control-regex */
 }
 
 export const upload = multer({

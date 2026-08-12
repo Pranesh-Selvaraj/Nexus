@@ -4,7 +4,10 @@ import path from 'node:path';
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq, getTableColumns } from 'drizzle-orm';
 
-import { documentIdSchema, listDocumentsInputSchema } from '@nexus/shared-types';
+import {
+  documentIdSchema,
+  listDocumentsInputSchema,
+} from '@nexus/shared-types';
 import type { DocumentDTO } from '@nexus/shared-types';
 
 import { db } from '../db';
@@ -22,9 +25,7 @@ async function assertWorkspaceOwnership(
   const [workspace] = await db
     .select({ id: workspaces.id })
     .from(workspaces)
-    .where(
-      and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)),
-    )
+    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
     .limit(1);
   if (!workspace) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
@@ -48,13 +49,19 @@ export const documentRouter = t.router({
     .input(documentIdSchema)
     .mutation(async ({ ctx, input }): Promise<DocumentDTO> => {
       const [doc] = await db
-        .select({ ...getTableColumns(documents), workspaceUserId: workspaces.userId })
+        .select({
+          ...getTableColumns(documents),
+          workspaceUserId: workspaces.userId,
+        })
         .from(documents)
         .innerJoin(workspaces, eq(workspaces.id, documents.workspaceId))
         .where(eq(documents.id, input.documentId))
         .limit(1);
       if (!doc || doc.workspaceUserId !== ctx.user.id) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Document not found' });
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Document not found',
+        });
       }
 
       const [updated] = await db
@@ -73,13 +80,19 @@ export const documentRouter = t.router({
     .input(documentIdSchema)
     .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
       const [doc] = await db
-        .select({ ...getTableColumns(documents), workspaceUserId: workspaces.userId })
+        .select({
+          ...getTableColumns(documents),
+          workspaceUserId: workspaces.userId,
+        })
         .from(documents)
         .innerJoin(workspaces, eq(workspaces.id, documents.workspaceId))
         .where(eq(documents.id, input.documentId))
         .limit(1);
       if (!doc || doc.workspaceUserId !== ctx.user.id) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Document not found' });
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Document not found',
+        });
       }
 
       await db.delete(documents).where(eq(documents.id, doc.id));

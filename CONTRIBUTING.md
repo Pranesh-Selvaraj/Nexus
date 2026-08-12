@@ -70,7 +70,7 @@ Name branches descriptively, e.g.:
 1. **Fork** the repository (external contributors) or create a feature branch (collaborators).
 2. Make your changes with focused, well-named commits (see [Commit conventions](#commit-conventions)).
 3. Push the branch and open a pull request **against `main`**.
-   - Use a clear title and describe *what* changed, *why*, and *how you tested it*.
+   - Use a clear title and describe _what_ changed, _why_, and _how you tested it_.
    - Reference any related issue (e.g. `Closes #12`).
 4. Ensure CI passes: `typecheck`, `build`, `Secret scan`, and `Dependency review` are **required**.
 5. The repository owner (code owner) reviews and merges the PR. Your branch is auto-deleted on merge.

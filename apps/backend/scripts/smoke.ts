@@ -4,7 +4,6 @@ import '../src/utils/env';
 
 const API_PORT = 3100;
 const BASE = `http://localhost:${API_PORT}`;
-const WS_PORT = 3101;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -18,22 +17,20 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
 }
 
 function print(name: string, ok: boolean, detail?: unknown) {
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  ${JSON.stringify(detail).slice(0, 220)}` : ''}`);
+  console.log(
+    `${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  ${JSON.stringify(detail).slice(0, 220)}` : ''}`,
+  );
 }
 
-const child = spawn(
-  'pnpm',
-  ['exec', 'tsx', 'src/index.ts'],
-  {
-    cwd: new URL('..', import.meta.url).pathname,
-    env: {
-      ...process.env,
-      PORT: String(API_PORT),
-      WS_PATH: '/ws',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
+const child = spawn('pnpm', ['exec', 'tsx', 'src/index.ts'], {
+  cwd: new URL('..', import.meta.url).pathname,
+  env: {
+    ...process.env,
+    PORT: String(API_PORT),
+    WS_PATH: '/ws',
   },
-);
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
 
 const worker = spawn(
   'pnpm',
@@ -57,8 +54,13 @@ try {
   for (let i = 0; i < 30; i++) {
     try {
       const res = await fetch(`${BASE}/healthz`);
-      if (res.ok) { healthy = true; break; }
-    } catch { /* not up yet */ }
+      if (res.ok) {
+        healthy = true;
+        break;
+      }
+    } catch {
+      /* not up yet */
+    }
     await sleep(500);
   }
   print('api healthz', healthy);
@@ -70,7 +72,9 @@ try {
     body: JSON.stringify({ name: 'Smoke Workspace', description: 'test' }),
   });
   const workspaceId = wsCreate.body?.result?.data?.id;
-  print('workspace.create', !!workspaceId, { name: wsCreate.body?.result?.data?.name });
+  print('workspace.create', !!workspaceId, {
+    name: wsCreate.body?.result?.data?.name,
+  });
 
   // list workspaces (may include pre-existing workspaces adopted by the
   // local user on boot, so assert ours is present)
@@ -85,25 +89,42 @@ try {
   // upload a txt file (multipart)
   const fd = new FormData();
   fd.append('workspaceId', workspaceId);
-  fd.append('file', new File(['Nexus is a retrieval-augmented generation system.\n'.repeat(30)], 'about-nexus.txt', { type: 'text/plain' }));
+  fd.append(
+    'file',
+    new File(
+      ['Nexus is a retrieval-augmented generation system.\n'.repeat(30)],
+      'about-nexus.txt',
+      { type: 'text/plain' },
+    ),
+  );
   const up = await fetch(`${BASE}/api/upload`, {
     method: 'POST',
     body: fd,
   });
   const upBody = await up.json();
-  print('upload txt', up.status === 201 && upBody?.document?.status === 'processing', { doc: upBody?.document });
+  print(
+    'upload txt',
+    up.status === 201 && upBody?.document?.status === 'processing',
+    { doc: upBody?.document },
+  );
 
   // upload to a nonexistent workspace -> 404
   const fd3 = new FormData();
   fd3.append('workspaceId', '00000000-0000-4000-8000-000000000000');
   fd3.append('file', new File(['y'], 'y.txt', { type: 'text/plain' }));
-  const upMissing = await fetch(`${BASE}/api/upload`, { method: 'POST', body: fd3 });
+  const upMissing = await fetch(`${BASE}/api/upload`, {
+    method: 'POST',
+    body: fd3,
+  });
   print('upload to missing workspace rejected', upMissing.status === 404);
 
   // bogus extension -> 400
   const fd4 = new FormData();
   fd4.append('workspaceId', workspaceId);
-  fd4.append('file', new File(['z'], 'evil.exe', { type: 'application/octet-stream' }));
+  fd4.append(
+    'file',
+    new File(['z'], 'evil.exe', { type: 'application/octet-stream' }),
+  );
   const upExe = await fetch(`${BASE}/api/upload`, {
     method: 'POST',
     body: fd4,
@@ -118,7 +139,10 @@ try {
     { method: 'GET' },
   );
   const docsData = docs.body?.result?.data;
-  print('document.listByWorkspace', Array.isArray(docsData) && docsData.length === 1);
+  print(
+    'document.listByWorkspace',
+    Array.isArray(docsData) && docsData.length === 1,
+  );
 
   // wait for worker to embed -> 'ready' (with key) or 'failed' (without)
   let finalStatus: string | undefined;
@@ -158,9 +182,14 @@ try {
   // missing document -> NOT_FOUND
   const delMissing = await fetchJson('/trpc/document.remove', {
     method: 'POST',
-    body: JSON.stringify({ documentId: '00000000-0000-4000-8000-000000000000' }),
+    body: JSON.stringify({
+      documentId: '00000000-0000-4000-8000-000000000000',
+    }),
   });
-  print('document.remove missing document rejected', delMissing.body?.error?.data?.code === 'NOT_FOUND');
+  print(
+    'document.remove missing document rejected',
+    delMissing.body?.error?.data?.code === 'NOT_FOUND',
+  );
 
   // --- conversation persistence ---------------------------------------
   // The streaming path persists via WebSocket, so seed a conversation
@@ -198,11 +227,16 @@ try {
 
   const bogusConvo = await fetchJson(
     `/trpc/chat.messages?input=${encodeURIComponent(
-      JSON.stringify({ conversationId: '00000000-0000-4000-8000-000000000000' }),
+      JSON.stringify({
+        conversationId: '00000000-0000-4000-8000-000000000000',
+      }),
     )}`,
     { method: 'GET' },
   );
-  print('chat.messages missing conversation', bogusConvo.body?.error?.data?.code === 'NOT_FOUND');
+  print(
+    'chat.messages missing conversation',
+    bogusConvo.body?.error?.data?.code === 'NOT_FOUND',
+  );
 
   const convoDel = await fetchJson('/trpc/chat.delete', {
     method: 'POST',
@@ -212,9 +246,14 @@ try {
 
   const convoDelBogus = await fetchJson('/trpc/chat.delete', {
     method: 'POST',
-    body: JSON.stringify({ conversationId: '00000000-0000-4000-8000-000000000000' }),
+    body: JSON.stringify({
+      conversationId: '00000000-0000-4000-8000-000000000000',
+    }),
   });
-  print('chat.delete missing conversation', convoDelBogus.body?.error?.data?.code === 'NOT_FOUND');
+  print(
+    'chat.delete missing conversation',
+    convoDelBogus.body?.error?.data?.code === 'NOT_FOUND',
+  );
 
   // delete workspace
   const wsDel = await fetchJson('/trpc/workspace.delete', {
@@ -228,7 +267,10 @@ try {
     `/trpc/chat.listByWorkspace?input=${encodeURIComponent(JSON.stringify({ workspaceId }))}`,
     { method: 'GET' },
   );
-  print('chat.listByWorkspace on deleted workspace', convsGone.body?.error?.data?.code === 'NOT_FOUND');
+  print(
+    'chat.listByWorkspace on deleted workspace',
+    convsGone.body?.error?.data?.code === 'NOT_FOUND',
+  );
 
   // chat subscriptions only work over WebSocket; over HTTP the router
   // returns NOT_FOUND for the missing mutation/query method
@@ -236,20 +278,30 @@ try {
     method: 'POST',
     body: JSON.stringify({ workspaceId, message: 'hi', history: [] }),
   });
-  print('chat.stream not callable over http', chat.body?.error?.data?.code === 'NOT_FOUND');
+  print(
+    'chat.stream not callable over http',
+    chat.body?.error?.data?.code === 'NOT_FOUND',
+  );
 
   // WS-only procedures report NOT_FOUND over HTTP (no query/mutation method)
   const chatBad = await fetchJson('/trpc/chat.stream', {
     method: 'POST',
     body: JSON.stringify({ workspaceId, message: '', history: [] }),
   });
-  print('chat.stream is websocket-only', chatBad.body?.error?.data?.code === 'NOT_FOUND');
+  print(
+    'chat.stream is websocket-only',
+    chatBad.body?.error?.data?.code === 'NOT_FOUND',
+  );
 
   // --- hybrid search SQL verification (no OpenAI key required) -----------
-  const seedResult = await seedChunksAndQuery(workspaceId);
+  const seedResult = await seedChunksAndQuery();
   print('hybrid retrieval sql', seedResult.ok, seedResult.detail);
   print('hybrid retrieval ranking', seedResult.ranking, seedResult.detail);
-  print('hybrid retrieval fts fallback', seedResult.fallback, seedResult.detail);
+  print(
+    'hybrid retrieval fts fallback',
+    seedResult.fallback,
+    seedResult.detail,
+  );
 } catch (e) {
   console.error('SMOKE ERROR:', (e as Error).message);
   ok = false;
@@ -258,7 +310,10 @@ try {
 child.kill('SIGTERM');
 worker.kill('SIGTERM');
 await sleep(1200);
-if (stdout) console.log('\n--- server log (tail) ---\n' + stdout.split('\n').slice(-8).join('\n'));
+if (stdout)
+  console.log(
+    '\n--- server log (tail) ---\n' + stdout.split('\n').slice(-8).join('\n'),
+  );
 process.exit(ok ? 0 : 1);
 
 async function seedConversation(workspaceId: string): Promise<string> {
@@ -295,7 +350,7 @@ async function seedConversation(workspaceId: string): Promise<string> {
   }
 }
 
-async function seedChunksAndQuery(workspaceId: string) {
+async function seedChunksAndQuery() {
   const pg = await import('pg');
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
@@ -318,7 +373,8 @@ async function seedChunksAndQuery(workspaceId: string) {
       [seedWorkspaceId],
     );
     const docId = doc.rows[0].id;
-    const mk = (v: number) => `[${Array.from({ length: 1536 }, () => v).join(',')}]`;
+    const mk = (v: number) =>
+      `[${Array.from({ length: 1536 }, () => v).join(',')}]`;
     await client.query(
       `INSERT INTO chunks (document_id, content, embedding, metadata) VALUES
        ($1, 'Hybrid retrieval in Nexus combines postgres full text search with a vector similarity search', $2::vector, '{"page":1,"chunkIndex":0}'),
@@ -360,9 +416,12 @@ async function seedChunksAndQuery(workspaceId: string) {
       [mk(0.91), seedWorkspaceId],
     );
     const fallbackOk =
-      fallback.rows.length === 3 && fallback.rows[0].content.includes('capital of Mars');
+      fallback.rows.length === 3 &&
+      fallback.rows[0].content.includes('capital of Mars');
 
-    await client.query(`DELETE FROM workspaces WHERE id = $1`, [seedWorkspaceId]);
+    await client.query(`DELETE FROM workspaces WHERE id = $1`, [
+      seedWorkspaceId,
+    ]);
     return {
       ok,
       ranking: orderOk,

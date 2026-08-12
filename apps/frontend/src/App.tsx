@@ -4,7 +4,9 @@ import { WorkspacePanel } from './features/workspaces/WorkspacePanel';
 import { WorkspaceSidebar } from './features/workspaces/WorkspaceSidebar';
 
 export default function App() {
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
+    null,
+  );
 
   return (
     <div className="flex h-full bg-zinc-950 text-zinc-100">
@@ -31,7 +33,9 @@ function EmptyState() {
     <div className="flex flex-1 flex-col items-center justify-center gap-4 text-zinc-500">
       <NexusLogo className="h-16 w-16" />
       <div className="text-center">
-        <h2 className="text-lg font-semibold text-zinc-300">Welcome to Nexus</h2>
+        <h2 className="text-lg font-semibold text-zinc-300">
+          Welcome to Nexus
+        </h2>
         <p className="mt-1 max-w-sm text-sm">
           Select or create a workspace to upload documents and start chatting
           with them.

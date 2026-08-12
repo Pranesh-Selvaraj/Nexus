@@ -43,7 +43,10 @@ export const chatRouter = t.router({
         .where(eq(workspaces.id, input.workspaceId))
         .limit(1);
       if (!workspace) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Workspace not found',
+        });
       }
 
       const result = await db

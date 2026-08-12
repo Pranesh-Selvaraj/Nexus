@@ -21,7 +21,8 @@ export const t = initTRPC.context<Context>().create();
 // authentication: every request is served as the local user.
 // ---------------------------------------------------------------------------
 
-export const LOCAL_USER_EMAIL = process.env.LOCAL_USER_EMAIL ?? 'local@nexus.dev';
+export const LOCAL_USER_EMAIL =
+  process.env.LOCAL_USER_EMAIL ?? 'local@nexus.dev';
 
 async function getOrCreateLocalUser(): Promise<UserDTO> {
   const [row] = await db

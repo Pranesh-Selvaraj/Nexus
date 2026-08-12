@@ -60,7 +60,9 @@ export async function hybridRetrieveChunks(
 ): Promise<SourceHit[]> {
   const embedding = await embedText(query);
   // pgvector accepts array literals as strings: '[0.1,0.2,...]'
-  const vectorLiteral = sql.raw(`[${embedding.map((n) => n.toFixed(6)).join(',')}]`);
+  const vectorLiteral = sql.raw(
+    `[${embedding.map((n) => n.toFixed(6)).join(',')}]`,
+  );
   const ftsQuery = sql`plainto_tsquery('english', ${query})`;
 
   const similarityExpr = sql`(1 - (c.embedding <=> ${vectorLiteral}::vector))`;
@@ -95,7 +97,9 @@ export async function hybridRetrieveChunks(
         LIMIT ${TOP_K}
       `,
     );
-    return (vectorOnly as unknown as { rows: RetrievalRow[] }).rows.map(mapRowToSource);
+    return (vectorOnly as unknown as { rows: RetrievalRow[] }).rows.map(
+      mapRowToSource,
+    );
   }
 
   return rows.map(mapRowToSource);
@@ -116,7 +120,9 @@ export interface AnswerRequest {
   sources: SourceHit[];
 }
 
-export function buildMessages(req: AnswerRequest): OpenAI.Chat.ChatCompletionMessageParam[] {
+export function buildMessages(
+  req: AnswerRequest,
+): OpenAI.Chat.ChatCompletionMessageParam[] {
   const context = req.sources
     .map(
       (source, i) =>
@@ -126,7 +132,7 @@ export function buildMessages(req: AnswerRequest): OpenAI.Chat.ChatCompletionMes
 
   const systemContent = [
     'You are Nexus, a precise retrieval-augmented assistant.',
-    'Answer the user\'s question using ONLY the provided sources.',
+    "Answer the user's question using ONLY the provided sources.",
     'Cite sources inline with [1], [2], etc., where the numbers correspond to the source list.',
     'If the sources do not contain the answer, say so plainly instead of guessing.',
     'Format answers with Markdown: short paragraphs, bullet lists, fenced code blocks.',
