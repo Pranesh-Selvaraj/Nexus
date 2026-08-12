@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-import '../src/utils/env';
+import '../src/utils/env.js';
 
 const API_PORT = 3100;
 const BASE = `http://localhost:${API_PORT}`;

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import multer from 'multer';
 
-import { UPLOAD_DIR } from './paths';
+import { UPLOAD_DIR } from './paths.js';
 
 export const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25);
 

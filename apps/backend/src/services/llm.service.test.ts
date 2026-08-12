@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildMessages } from './llm.service';
-import type { SourceHit } from './llm.service';
+import { buildMessages } from './llm.service.js';
+import type { SourceHit } from './llm.service.js';
 
 const source = (overrides: Partial<SourceHit> = {}): SourceHit => ({
   id: '11111111-1111-4111-8111-111111111111',

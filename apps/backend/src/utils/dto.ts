@@ -1,6 +1,6 @@
 import type { DocumentDTO } from '@nexus/shared-types';
 
-import type { documents } from '../db/schema';
+import type { documents } from '../db/schema.js';
 
 export function toDocumentDTO(doc: typeof documents.$inferSelect): DocumentDTO {
   return {

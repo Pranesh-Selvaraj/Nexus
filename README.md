@@ -104,7 +104,36 @@ Open http://localhost:5173 and start a workspace.
 
 ### Docker-only quick start
 
-Postgres and Redis run through `docker-compose.yml`. There is no production container image yet — see [Roadmap](#roadmap).
+Postgres and Redis run through `docker-compose.yml`. For the full stack (UI + API + worker) in containers, see [Deployment](#deployment).
+
+## Deployment
+
+### Production stack (Docker)
+
+The production stack builds the backend, worker, and a static nginx-served frontend:
+
+```bash
+cp .env.example .env        # set OPENAI_API_KEY (and AUTH_* if enabled)
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+The UI is served at **http://localhost:8080** with `/trpc`, `/api` and `/ws` reverse-proxied to the backend (same origin, no CORS). The stack includes:
+
+- `backend` — multi-stage `node:22-slim` image (non-root `node` user, native TS type-stripping for `@nexus/shared-types`, migrations run on boot, `/healthz` dependency probe)
+- `worker` — same image, BullMQ embedding worker (process-liveness healthcheck)
+- `frontend` — `nginx:1.27-alpine` serving the built SPA with SPA fallback
+- `postgres` (pgvector) and `redis` with healthchecks; uploaded documents persist in the `nexus-uploads` volume
+
+```bash
+docker compose -f docker-compose.prod.yml down        # stop
+docker compose -f docker-compose.prod.yml up -d --build # rebuild after updates
+```
+
+> 💡 Point `UPLOAD_DIR` at the shared volume if you run the worker on a different host than the API.
+
+### Keeping it private
+
+See [SECURITY.md](SECURITY.md) — without authentication enabled the app is single-user and should sit behind a reverse proxy.
 
 ## Scripts
 
@@ -186,7 +215,7 @@ Found a vulnerability? Please **do not open a public issue**. Report it privatel
 - [x] Upgrade `langchain` to a supported major version and re-enable fail-closed `pnpm audit` (done — zero known advisories)
 - [x] Add automated unit tests (Vitest) — wired into CI as a required check
 - [x] Add ESLint/Prettier and enforce in CI
-- [ ] Production Docker images + deployment manifests
+- [x] Production Docker images + deployment manifests
 - [ ] Real authentication (currently single-user by design)
 
 ## License

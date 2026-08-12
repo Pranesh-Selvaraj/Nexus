@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ALLOWED_EXTENSIONS, fileFilter } from './multer.config';
+import { ALLOWED_EXTENSIONS, fileFilter } from './multer.config.js';
 
 function mockFile(name: string): Express.Multer.File {
   return {

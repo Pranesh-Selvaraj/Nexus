@@ -1,7 +1,7 @@
-import { chatRouter } from './chat.router';
-import { documentRouter } from './document.router';
-import { workspaceRouter } from './workspace.router';
-import { t } from '../middleware/auth';
+import { chatRouter } from './chat.router.js';
+import { documentRouter } from './document.router.js';
+import { workspaceRouter } from './workspace.router.js';
+import { t } from '../middleware/auth.js';
 
 export const appRouter = t.router({
   health: t.procedure.query(() => ({

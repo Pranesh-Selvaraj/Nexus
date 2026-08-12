@@ -11,10 +11,10 @@ import {
   workspaceIdSchema,
 } from '@nexus/shared-types';
 
-import { db } from '../db';
-import { documents, workspaces } from '../db/schema';
-import { protectedProcedure, t } from '../middleware/auth';
-import { UPLOAD_DIR } from '../utils/paths';
+import { db } from '../db/index.js';
+import { documents, workspaces } from '../db/schema.js';
+import { protectedProcedure, t } from '../middleware/auth.js';
+import { UPLOAD_DIR } from '../utils/paths.js';
 
 interface WorkspaceRow {
   id: string;
