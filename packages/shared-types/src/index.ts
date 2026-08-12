@@ -25,15 +25,15 @@ export const workspaceDTOSchema = z.object({
 export type WorkspaceDTO = z.infer<typeof workspaceDTOSchema>;
 
 export const createWorkspaceInputSchema = z.object({
-  name: z.string().min(1).max(80),
-  description: z.string().max(240).optional(),
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(240).optional(),
 });
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceInputSchema>;
 
 export const updateWorkspaceInputSchema = z.object({
   workspaceId: z.string().uuid(),
-  name: z.string().min(1).max(80).optional(),
-  description: z.string().max(240).optional(),
+  name: z.string().trim().min(1).max(80).optional(),
+  description: z.string().trim().max(240).optional(),
 });
 export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceInputSchema>;
 

@@ -157,9 +157,9 @@ export const chatRouter = t.router({
                 .values({
                   workspaceId: input.workspaceId,
                   title:
-                    input.message.length > 48
-                      ? `${input.message.slice(0, 48)}…`
-                      : input.message,
+                    input.message.trim().length > 48
+                      ? `${input.message.trim().slice(0, 48)}…`
+                      : input.message.trim(),
                 })
                 .returning();
               conversation = created?.id ?? null;

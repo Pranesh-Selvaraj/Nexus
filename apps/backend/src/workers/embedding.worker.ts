@@ -10,7 +10,7 @@ import { chunks, documents } from '../db/schema';
 import type { EmbeddingJobData } from '../queues';
 import { redisConnection } from '../queues';
 import { extractPages, splitIntoChunks } from '../services/chunking.service';
-import { embedTexts } from '../services/embedding.service';
+import { EMBEDDING_DIMENSIONS, embedTexts } from '../services/embedding.service';
 import { UPLOAD_DIR } from '../utils/paths';
 
 async function processDocument(documentId: string): Promise<void> {
@@ -41,6 +41,13 @@ async function processDocument(documentId: string): Promise<void> {
     throw new Error(
       `Embedding count mismatch: expected ${texts.length}, got ${embeddings.length}`,
     );
+  }
+  for (const [i, vec] of embeddings.entries()) {
+    if (vec.length !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `Embedding dimension mismatch for chunk ${i}: model returned ${vec.length} dimensions, expected ${EMBEDDING_DIMENSIONS}. Check OPENAI_EMBEDDING_MODEL (schema stores vector(1536)).`,
+      );
+    }
   }
 
   const rows = textChunks.map((chunk, i) => ({

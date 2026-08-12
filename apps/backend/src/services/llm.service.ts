@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { sql } from 'drizzle-orm';
 
 import { db } from '../db';
-import { embedText } from './embedding.service';
+import { assertOpenAIConfigured, embedText } from './embedding.service';
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
 
@@ -145,6 +145,10 @@ export function buildMessages(req: AnswerRequest): OpenAI.Chat.ChatCompletionMes
 export async function streamAnswer(
   req: AnswerRequest,
 ): Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>> {
+  // Fail fast with an actionable message instead of a confusing OpenAI
+  // client error deep inside the stream.
+  assertOpenAIConfigured();
+
   const stream = await chatClient.chat.completions.create({
     model: OPENAI_MODEL,
     messages: buildMessages(req),
