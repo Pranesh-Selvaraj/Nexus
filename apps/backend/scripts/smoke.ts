@@ -327,9 +327,9 @@ async function seedConversation(workspaceId: string): Promise<string> {
     );
     const conversationId = result.rows[0].id;
     await client.query(
-      `INSERT INTO messages (conversation_id, role, content, sources) VALUES
-       ($1, 'user', 'hello nexus', NULL::jsonb),
-       ($1, 'assistant', 'hi there', $2::jsonb)`,
+      `INSERT INTO messages (conversation_id, role, content, sources, created_at) VALUES
+       ($1, 'user', 'hello nexus', NULL::jsonb, now() - interval '1 second'),
+       ($1, 'assistant', 'hi there', $2::jsonb, now())`,
       [
         conversationId,
         JSON.stringify([
