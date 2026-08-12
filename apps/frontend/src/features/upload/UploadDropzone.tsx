@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function UploadDropzone({ workspaceId }: Props) {
-  const utils = trpc.useContext();
+  const utils = trpc.useUtils();
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<{
     kind: 'ok' | 'err';
