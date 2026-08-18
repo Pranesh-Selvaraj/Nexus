@@ -18,7 +18,8 @@ import { settings } from '../db/schema.js';
 // and the effective value is: DB (set from the UI) -> env var -> default.
 // ---------------------------------------------------------------------------
 
-export type SettingType = 'text' | 'textarea' | 'secret' | 'number' | 'slider' | 'select';
+export type SettingType =
+  'text' | 'textarea' | 'secret' | 'number' | 'slider' | 'select';
 
 export interface SettingDef {
   key: string;
