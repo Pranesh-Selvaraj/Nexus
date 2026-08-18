@@ -214,6 +214,7 @@ export async function streamAnswer(
     messages: buildMessages(req, systemPrompt),
     temperature,
     stream: true,
+    stream_options: { include_usage: true },
   });
   return stream;
 }

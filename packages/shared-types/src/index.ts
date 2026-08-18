@@ -112,12 +112,20 @@ export const sourceSchema = z.object({
 });
 export type Source = z.infer<typeof sourceSchema>;
 
+export const usageSchema = z.object({
+  promptTokens: z.number().int().nonnegative(),
+  completionTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+});
+export type Usage = z.infer<typeof usageSchema>;
+
 export const messageDTOSchema = z.object({
   id: z.string().uuid(),
   conversationId: z.string().uuid(),
   role: chatRoleSchema,
   content: z.string(),
   sources: z.array(sourceSchema).nullable(),
+  usage: usageSchema.nullable(),
   createdAt: z.string(),
 });
 export type MessageDTO = z.infer<typeof messageDTOSchema>;
