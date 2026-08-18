@@ -149,12 +149,18 @@ export async function streamAnswer(
   // client error deep inside the stream.
   await assertOpenAIConfigured();
 
-  const [model, temperature] = await Promise.all([
+  const [model, temperature, baseUrl] = await Promise.all([
     getSetting('openai.model'),
     getSettingNumber('openai.temperature'),
+    getSetting('openai.baseUrl'),
   ]);
   const apiKey = await getSetting('openai.apiKey');
-  const client = new OpenAI({ apiKey, timeout: 120_000, maxRetries: 2 });
+  const client = new OpenAI({
+    apiKey,
+    baseURL: baseUrl || undefined,
+    timeout: 120_000,
+    maxRetries: 2,
+  });
 
   const stream = await client.chat.completions.create({
     model,

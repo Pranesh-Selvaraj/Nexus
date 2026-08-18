@@ -197,6 +197,20 @@ All variables live in `.env` (see `.env.example`). The backend auto-discovers `.
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
 
+## LLM providers
+
+Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works — set **API base URL** in Settings (or `OPENAI_BASE_URL`):
+
+| Provider                                   | Base URL                         |
+| ------------------------------------------ | -------------------------------- |
+| OpenAI (default)                           | _(empty)_                        |
+| [Ollama](https://ollama.com) (local, free) | `http://localhost:11434/v1`      |
+| [LM Studio](https://lmstudio.ai) (local)   | `http://localhost:11434/v1`      |
+| [OpenRouter](https://openrouter.ai)        | `https://openrouter.ai/api/v1`   |
+| [Groq](https://groq.com)                   | `https://api.groq.com/openai/v1` |
+
+With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. The embedding dimensions must stay **1536** (the schema is `vector(1536)`). Use the **Test OpenAI connection** button to verify.
+
 ## Settings panel
 
 Most configuration can be managed from the **Settings** page in the UI (sidebar → Settings) — no `.env` edits or restarts needed:
