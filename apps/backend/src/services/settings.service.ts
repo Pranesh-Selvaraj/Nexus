@@ -18,7 +18,7 @@ import { settings } from '../db/schema.js';
 // and the effective value is: DB (set from the UI) -> env var -> default.
 // ---------------------------------------------------------------------------
 
-export type SettingType = 'text' | 'textarea' | 'secret' | 'number' | 'slider';
+export type SettingType = 'text' | 'textarea' | 'secret' | 'number' | 'slider' | 'select';
 
 export interface SettingDef {
   key: string;
@@ -31,6 +31,7 @@ export interface SettingDef {
   min?: number;
   max?: number;
   step?: number;
+  options?: string[];
 }
 
 export const SETTING_DEFS: SettingDef[] = [
@@ -117,6 +118,47 @@ export const SETTING_DEFS: SettingDef[] = [
     min: 1,
     max: 20,
     group: 'retrieval',
+  },
+  {
+    key: 'retrieval.language',
+    label: 'Search language',
+    description:
+      'Full-text search language (PostgreSQL text search config) used for keyword retrieval.',
+    type: 'select',
+    env: 'RETRIEVAL_LANGUAGE',
+    default: 'english',
+    group: 'retrieval',
+    options: [
+      'simple',
+      'english',
+      'danish',
+      'dutch',
+      'finnish',
+      'french',
+      'german',
+      'hungarian',
+      'italian',
+      'norwegian',
+      'portuguese',
+      'romanian',
+      'russian',
+      'spanish',
+      'swedish',
+      'turkish',
+      'arabic',
+      'greek',
+      'hindi',
+      'indonesian',
+      'irish',
+      'japanese',
+      'korean',
+      'nepali',
+      'tamil',
+      'thai',
+      'catalan',
+      'lithuanian',
+      'serbian',
+    ],
   },
   {
     key: 'rag.similarityWeight',
@@ -349,6 +391,9 @@ export async function updateSetting(
 
   // Type validation / clamping
   let stored = value;
+  if (def.type === 'select' && def.options && !def.options.includes(value)) {
+    throw new Error(`${def.label} must be one of: ${def.options.join(', ')}`);
+  }
   if (def.type === 'number' || def.type === 'slider') {
     const num = Number(value);
     if (Number.isNaN(num)) {
