@@ -2,7 +2,6 @@ import OpenAI from 'openai';
 
 import { getSetting } from './settings.service.js';
 
-export const EMBEDDING_DIMENSIONS = 1536;
 const BATCH_SIZE = 100;
 
 const EMBEDDING_MODEL_FALLBACK = 'text-embedding-3-small';
@@ -19,13 +18,22 @@ async function openAIConfig(): Promise<{
   return { apiKey, model: model || EMBEDDING_MODEL_FALLBACK, baseUrl };
 }
 
+/**
+ * Local providers (Ollama, LM Studio, ...) don't need an API key - it is
+ * only required when talking to OpenAI's cloud (no base URL).
+ */
 export async function assertOpenAIConfigured(): Promise<void> {
-  const { apiKey } = await openAIConfig();
-  if (!apiKey || apiKey === 'sk-your-key-here') {
+  const { apiKey, baseUrl } = await openAIConfig();
+  if (!baseUrl && (!apiKey || apiKey === 'sk-your-key-here')) {
     throw new Error(
-      'OPENAI_API_KEY is not configured. Set it in .env or the settings panel to enable embeddings and chat.',
+      'No API key configured. Set OPENAI_API_KEY, or set an API base URL for a local provider, in .env or the settings panel.',
     );
   }
+}
+
+/** Vector dimensions expected for stored embeddings (settings-driven). */
+export async function getEmbeddingDimensions(): Promise<number> {
+  return Number(await getSetting('embedding.dimensions')) || 1536;
 }
 
 /**
@@ -37,8 +45,9 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   await assertOpenAIConfigured();
   const { apiKey, model, baseUrl } = await openAIConfig();
 
+  // Local providers accept any key; OpenAI SDK requires a non-empty string.
   const client = new OpenAI({
-    apiKey,
+    apiKey: apiKey || 'local',
     baseURL: baseUrl,
     timeout: 60_000,
     maxRetries: 2,
@@ -50,6 +59,9 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
     const response = await client.embeddings.create({
       model,
       input: batch,
+      // The SDK defaults to base64-encoded embeddings (OpenAI-only). Local
+      // providers return plain floats, so request float explicitly.
+      encoding_format: 'float',
     });
     if (response.data.length !== batch.length) {
       throw new Error(

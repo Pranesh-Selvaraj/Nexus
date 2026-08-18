@@ -253,7 +253,16 @@ export const chatRouter = t.router({
             }
             emit.next({ type: 'error', message });
           } finally {
-            emit.complete();
+            // The observable may already be closed (client disconnected) -
+            // completing again throws ERR_INVALID_STATE and would crash the
+            // process.
+            if (!cancelled) {
+              try {
+                emit.complete();
+              } catch {
+                // already closed - nothing to do
+              }
+            }
           }
         };
 

@@ -212,6 +212,27 @@ Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works �
 
 With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. The embedding dimensions must stay **1536** (the schema is `vector(1536)`). Use the **Test OpenAI connection** button to verify.
 
+## Local LLMs (no API key needed)
+
+Point Nexus at any OpenAI-compatible local server — **no API key required**:
+
+1. **Settings → Provider → Ollama** (or set `OPENAI_BASE_URL` in `.env`)
+2. Pull a chat model and an embedding model, e.g.:
+   ```bash
+   ollama pull llama3.1
+   ollama pull nomic-embed-text     # 768-dim embeddings
+   ```
+3. In Settings: chat model = `llama3.1`, embedding model = `nomic-embed-text`, **Embedding dimensions = 768**, then **Fetch available models** to verify, and **Test OpenAI connection**
+4. Upload a document — chunks are embedded locally and indexed with the matching dimension
+
+Notes:
+
+- The `chunks.embedding` column is dimension-flexible (migration 0005); the worker validates every vector against the **Embedding dimensions** setting (default 1536 for OpenAI).
+- Embeddings are requested as `encoding_format: float` so plain-float local servers (Ollama/LM Studio) work with the OpenAI SDK's base64 default.
+- Changing the embedding model/dimensions re-indexes: delete the document and re-upload (or use the retry button after changing settings).
+- Retrieval uses exact vector scans (the fixed-dimension HNSW index was removed) — fine at personal-corpus scale.
+- **LM Studio**: base URL `http://localhost:1234/v1` (no key needed). **OpenRouter/Groq**: preset buttons, still require a key.
+
 ## Settings panel
 
 Most configuration can be managed from the **Settings** page in the UI (sidebar → Settings) — no `.env` edits or restarts needed:

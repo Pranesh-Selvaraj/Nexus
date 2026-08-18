@@ -76,6 +76,17 @@ export const SETTING_DEFS: SettingDef[] = [
     group: 'openai',
   },
   {
+    key: 'embedding.dimensions',
+    label: 'Embedding dimensions',
+    description:
+      'Vector dimensions of the embedding model. OpenAI text-embedding-3-small is 1536; local models vary (nomic-embed-text 768, bge-m3 1024).',
+    type: 'select',
+    env: null,
+    default: 1536,
+    group: 'openai',
+    options: ['256', '384', '512', '768', '1024', '1536', '2048'],
+  },
+  {
     key: 'openai.temperature',
     label: 'Temperature',
     description: 'LLM sampling temperature for chat.',

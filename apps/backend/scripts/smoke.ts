@@ -401,6 +401,39 @@ try {
     badNumber.body?.error?.data?.code === 'BAD_REQUEST',
   );
 
+  // select settings reject invalid options; embedding.dimensions accepted
+  const badLang = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'retrieval.language', value: 'klingon' }),
+  });
+  print(
+    'settings.update invalid select option rejected',
+    badLang.body?.error?.data?.code === 'BAD_REQUEST',
+  );
+  const dims = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'embedding.dimensions', value: '768' }),
+  });
+  print(
+    'settings.update embedding.dimensions',
+    dims.body?.result?.data?.value === '768',
+  );
+  await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'embedding.dimensions', value: '' }),
+  });
+
+  // model discovery reports a clear error when the provider is unreachable
+  const listModels = await fetchJson('/trpc/settings.listModels', {
+    method: 'POST',
+  });
+  print(
+    'settings.listModels returns models or clear error',
+    Array.isArray(listModels.body?.result?.data?.models) &&
+      (listModels.body?.result?.data?.error === null ||
+        String(listModels.body?.result?.data?.error).length > 0),
+  );
+
   // secrets require SETTINGS_SECRET (unset in this instance)
   const secretWithoutKey = await fetchJson('/trpc/settings.update', {
     method: 'POST',

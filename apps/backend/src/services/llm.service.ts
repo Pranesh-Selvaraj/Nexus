@@ -92,9 +92,10 @@ export async function hybridRetrieveChunks(
     getSettingNumber('rag.keywordWeight'),
     getSettingNumber('rag.topK'),
   ]);
-  // pgvector accepts array literals as strings: '[0.1,0.2,...]'
+  // pgvector accepts array literals as quoted strings: '[0.1,0.2,...]'
+  // (an unquoted literal is a SQL syntax error)
   const vectorLiteral = sql.raw(
-    `[${embedding.map((n) => n.toFixed(6)).join(',')}]`,
+    `'[${embedding.map((n) => n.toFixed(6)).join(',')}]'`,
   );
   // Language comes from the whitelisted settings options (see
   // safeFtsLanguage), so interpolating it as a regconfig literal is safe.
@@ -202,8 +203,9 @@ export async function streamAnswer(
     getSetting('prompt.system'),
   ]);
   const apiKey = await getSetting('openai.apiKey');
+  // Local providers accept any key; OpenAI SDK requires a non-empty string.
   const client = new OpenAI({
-    apiKey,
+    apiKey: apiKey || 'local',
     baseURL: baseUrl || undefined,
     timeout: 120_000,
     maxRetries: 2,

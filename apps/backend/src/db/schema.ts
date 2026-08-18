@@ -18,9 +18,11 @@ import type { Source } from '@nexus/shared-types';
 // Custom types
 // ---------------------------------------------------------------------------
 
-// pgvector extension type - OpenAI text-embedding-3-small (1536 dims)
-export const vector1536 = customType<{ data: number[]; driverData: string }>({
-  dataType: () => 'vector(1536)',
+// pgvector type without a fixed dimension so local embedding models
+// (768/1024/1536/2048 dims) all fit; the worker validates each vector
+// against the `embedding.dimensions` setting before insert.
+export const vectorDim = customType<{ data: number[]; driverData: string }>({
+  dataType: () => 'vector',
   toDriver: (value) => JSON.stringify(value),
   fromDriver: (value) => JSON.parse(value),
 });
@@ -107,7 +109,7 @@ export const chunks = pgTable(
       .notNull()
       .references(() => documents.id, { onDelete: 'cascade' }),
     content: text('content').notNull(),
-    embedding: vector1536('embedding').notNull(),
+    embedding: vectorDim('embedding').notNull(),
     metadata: jsonb('metadata').$type<ChunkMetadata>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
