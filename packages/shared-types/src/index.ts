@@ -153,3 +153,42 @@ export const chatEventSchema = z.discriminatedUnion('type', [
   }),
 ]);
 export type ChatEvent = z.infer<typeof chatEventSchema>;
+
+// ---------------------------------------------------------------------------
+// Usage (token tracking)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Workspace archive (export/import)
+// ---------------------------------------------------------------------------
+
+export const archiveMessageSchema = z.object({
+  role: chatRoleSchema,
+  content: z.string(),
+  sources: z.array(sourceSchema).nullable(),
+  usage: usageSchema.nullable(),
+  createdAt: z.string(),
+});
+
+export const archiveConversationSchema = z.object({
+  title: z.string(),
+  messages: z.array(archiveMessageSchema),
+});
+
+export const archiveDocumentSchema = z.object({
+  title: z.string(),
+  fileType: z.string().nullable(),
+  contentBase64: z.string(),
+});
+
+export const workspaceArchiveSchema = z.object({
+  version: z.literal(1),
+  exportedAt: z.string(),
+  workspace: z.object({
+    name: z.string(),
+    description: z.string().nullable(),
+  }),
+  documents: z.array(archiveDocumentSchema),
+  conversations: z.array(archiveConversationSchema),
+});
+export type WorkspaceArchive = z.infer<typeof workspaceArchiveSchema>;

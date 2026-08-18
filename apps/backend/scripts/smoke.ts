@@ -38,6 +38,9 @@ const child = spawn('pnpm', ['exec', 'tsx', 'src/index.ts'], {
     ...process.env,
     PORT: String(API_PORT),
     WS_PATH: '/ws',
+    // Deterministic: secret settings must be rejected on this instance
+    // regardless of the repo .env contents (dotenv never overrides it).
+    SETTINGS_SECRET: '',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -323,10 +326,23 @@ try {
   );
 
   // --- settings router -------------------------------------------------
-  const settingsList = await fetchJson('/trpc/settings.list', {
+  // Start from a clean slate: wipe the table directly via SQL so stale
+  // encrypted rows (written under a different SETTINGS_SECRET) can't break
+  // settings.list or leak into assertions.
+  {
+    const pg = await import('pg');
+    const client = new pg.Client({
+      connectionString: process.env.DATABASE_URL,
+    });
+    await client.connect();
+    await client.query('DELETE FROM settings');
+    await client.end();
+  }
+
+  const settingsDefsList = await fetchJson('/trpc/settings.list', {
     method: 'GET',
   });
-  const settingDefs = settingsList.body?.result?.data;
+  const settingDefs = settingsDefsList.body?.result?.data;
   print(
     'settings.list returns registry defs',
     Array.isArray(settingDefs) && settingDefs.length >= 12,
@@ -520,6 +536,20 @@ try {
     body: fdAuth2,
   });
   print('auth upload with cookie -> 201', upAuthed.status === 201);
+
+  // clean up the auth workspace while the session is still valid
+  const cleanupAuthWsId = wsAuth.body?.result?.data?.id;
+  if (cleanupAuthWsId) {
+    const wsCleanup = await fetchJsonAuth(AUTH_BASE, '/trpc/workspace.delete', {
+      method: 'POST',
+      headers: { cookie },
+      body: JSON.stringify({ workspaceId: cleanupAuthWsId }),
+    });
+    print(
+      'auth workspace cleanup',
+      wsCleanup.body?.result?.data?.deleted === true,
+    );
+  }
 
   // logout invalidates the session
   const logoutRes = await fetch(`${AUTH_BASE}/api/auth/logout`, {
