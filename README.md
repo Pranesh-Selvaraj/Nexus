@@ -120,7 +120,7 @@ Every release publishes the images to the GitHub Container Registry. Pull them d
 | API + worker | `docker pull ghcr.io/pranesh-selvaraj/nexus-backend:0.2.0`  |
 | Frontend     | `docker pull ghcr.io/pranesh-selvaraj/nexus-frontend:0.2.0` |
 
-Pin a version in production; `latest` tracks the newest release. (Note: the container tags are semver without the `v` prefix — `0.2.0`, not `v0.2.0`.)
+Pin a version in production; `latest` tracks the newest release. (Note: the container tags are semver without the `v` prefix — `0.3.1`, not `v0.3.1`.)
 
 ### Option B — build from source
 
@@ -160,7 +160,7 @@ See [SECURITY.md](SECURITY.md) — without `AUTH_PASSWORD` the app runs in singl
 Releases follow [SemVer](https://semver.org/), tagged `vX.Y.Z` and published automatically from the [release workflow](.github/workflows/release.yml): pushing a tag builds the images, publishes them to GHCR, and creates a GitHub Release with changelog notes.
 
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.3.1 && git push origin v0.3.1
 ```
 
 ## Scripts
@@ -180,21 +180,22 @@ git tag v0.2.0 && git push origin v0.2.0
 
 All variables live in `.env` (see `.env.example`). The backend auto-discovers `.env` at the repo root or package root.
 
-| Variable                 | Default                                       | Description                                                                     |
-| ------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------- |
-| `DATABASE_URL`           | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string                                         |
-| `REDIS_URL`              | `redis://localhost:6379`                      | Redis connection string (BullMQ)                                                |
-| `OPENAI_API_KEY`         | —                                             | OpenAI API key (required for embeddings + chat)                                 |
-| `OPENAI_MODEL`           | `gpt-4o-mini`                                 | Chat model                                                                      |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small`                      | Embedding model                                                                 |
-| `LOCAL_USER_EMAIL`       | `local@nexus.dev`                             | Identity of the single local user                                               |
-| `AUTH_PASSWORD`          | _(unset)_                                     | When set, login is required (httpOnly session cookie); unset = no-auth dev mode |
-| `AUTH_COOKIE_SECURE`     | `false`                                       | `true` when serving over HTTPS (adds `Secure` to the session cookie)            |
-| `SESSION_TTL_DAYS`       | `30`                                          | Session lifetime in days                                                        |
-| `PORT`                   | `3000`                                        | Backend HTTP/WS port                                                            |
-| `UPLOAD_DIR`             | `./uploads`                                   | Directory for uploaded documents                                                |
-| `MAX_UPLOAD_MB`          | `25`                                          | Per-file upload size limit                                                      |
-| `FRONTEND_ORIGIN`        | `http://localhost:5173`                       | Allowed CORS origin                                                             |
+| Variable                 | Default                                       | Description                                                                                  |
+| ------------------------ | --------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`           | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string                                                      |
+| `REDIS_URL`              | `redis://localhost:6379`                      | Redis connection string (BullMQ)                                                             |
+| `OPENAI_API_KEY`         | —                                             | OpenAI API key (required only without a base URL)                                            |
+| `OPENAI_BASE_URL`        | _(unset)_                                     | OpenAI-compatible base URL (Ollama, LM Studio, OpenRouter, ...) - enables keyless local mode |
+| `OPENAI_MODEL`           | `gpt-4o-mini`                                 | Chat model                                                                                   |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small`                      | Embedding model                                                                              |
+| `LOCAL_USER_EMAIL`       | `local@nexus.dev`                             | Identity of the single local user                                                            |
+| `AUTH_PASSWORD`          | _(unset)_                                     | When set, login is required (httpOnly session cookie); unset = no-auth dev mode              |
+| `AUTH_COOKIE_SECURE`     | `false`                                       | `true` when serving over HTTPS (adds `Secure` to the session cookie)                         |
+| `SESSION_TTL_DAYS`       | `30`                                          | Session lifetime in days                                                                     |
+| `PORT`                   | `3000`                                        | Backend HTTP/WS port                                                                         |
+| `UPLOAD_DIR`             | `./uploads`                                   | Directory for uploaded documents                                                             |
+| `MAX_UPLOAD_MB`          | `25`                                          | Per-file upload size limit                                                                   |
+| `FRONTEND_ORIGIN`        | `http://localhost:5173`                       | Allowed CORS origin                                                                          |
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
 
@@ -237,15 +238,15 @@ Notes:
 
 Most configuration can be managed from the **Settings** page in the UI (sidebar → Settings) — no `.env` edits or restarts needed:
 
-| Group      | Settings                                                                          |
-| ---------- | --------------------------------------------------------------------------------- |
-| OpenAI     | API key (AES-256-GCM encrypted at rest), chat model, embedding model, temperature |
-| Retrieval  | chunk size, chunk overlap, sources retrieved (top-K), vector/keyword weights      |
-| Server     | max upload size                                                                   |
-| Auth       | session lifetime (days)                                                           |
-| Appearance | app name (sidebar + browser title)                                                |
+| Group      | Settings                                                                                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI     | API key (AES-256-GCM encrypted at rest), API base URL (any OpenAI-compatible provider), chat model, embedding model, **embedding dimensions**, temperature |
+| Retrieval  | chunk size, chunk overlap, sources retrieved (top-K), vector/keyword weights, **search language** (28 PostgreSQL FTS configs)                              |
+| Server     | max upload size                                                                                                                                            |
+| Auth       | session lifetime (days)                                                                                                                                    |
+| Appearance | app name (sidebar + browser title), **system prompt**                                                                                                      |
 
-Precedence: **UI value → environment variable → default**. Emptying a field resets it to the env/default. Secret settings require `SETTINGS_SECRET` in `.env` (the encryption key); the "Test OpenAI connection" button validates the effective key.
+Precedence: **UI value → environment variable → default**. Emptying a field resets it to the env/default. Secret settings require `SETTINGS_SECRET` in `.env` (the encryption key); the "Test OpenAI connection" and "Fetch available models" buttons validate the provider.
 
 ## Project structure
 
