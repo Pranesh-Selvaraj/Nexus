@@ -318,6 +318,14 @@ function Field({
               className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-right text-sm outline-none focus:border-nexus-500"
             />
           </div>
+        ) : def.type === 'textarea' ? (
+          <textarea
+            value={draft}
+            placeholder={setting.value || 'Built-in default prompt'}
+            onChange={(e) => onChange(e.target.value)}
+            rows={4}
+            className="w-full max-w-lg rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-nexus-500"
+          />
         ) : (
           <input
             type={isNumber ? 'number' : 'text'}
