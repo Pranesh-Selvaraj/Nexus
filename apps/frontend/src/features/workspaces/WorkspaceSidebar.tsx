@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 
-import type { UserDTO, WorkspaceDTO } from '@nexus/shared-types';
+import { useRef } from 'react';
+import type {
+  UserDTO,
+  WorkspaceArchive,
+  WorkspaceDTO,
+} from '@nexus/shared-types';
 
 import { logout } from '../../lib/auth';
 import { NexusLogo } from '../../App';
@@ -27,6 +32,32 @@ export function WorkspaceSidebar({
   appName,
 }: Props) {
   const utils = trpc.useUtils();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const importWorkspace = trpc.workspace.import.useMutation({
+    onSuccess: (ws) => {
+      onSelect(ws.id);
+      void utils.workspace.list.invalidate();
+    },
+    onError: (err) => {
+      window.alert(`Import failed: ${err.message}`);
+    },
+  });
+
+  async function handleImportFile(file: File | undefined) {
+    if (!file) return;
+    try {
+      const archive = (await file.text()) as unknown;
+      const parsed = JSON.parse(archive as string) as WorkspaceArchive;
+      if (parsed.version !== 1 || !parsed.workspace?.name) {
+        throw new Error('Not a valid Nexus workspace archive');
+      }
+      importWorkspace.mutate({ archive: parsed });
+    } catch (err) {
+      window.alert(
+        `Import failed: ${err instanceof Error ? err.message : 'invalid file'}`,
+      );
+    }
+  }
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
 
@@ -141,6 +172,31 @@ export function WorkspaceSidebar({
         )}
 
         <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importWorkspace.isPending}
+          className={`mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-40 ${
+            importWorkspace.isPending
+              ? 'text-zinc-500'
+              : 'text-zinc-400 hover:bg-zinc-800'
+          }`}
+        >
+          <UploadIcon className="h-4 w-4" />
+          {importWorkspace.isPending
+            ? 'Importing workspace...'
+            : 'Import workspace'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            void handleImportFile(e.target.files?.[0]);
+            e.target.value = '';
+          }}
+        />
+
+        <button
           onClick={onOpenSettings}
           className={`mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
             settingsActive
@@ -173,6 +229,25 @@ export function WorkspaceSidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+function UploadIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className={className}
+      aria-hidden
+    >
+      <path
+        d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
