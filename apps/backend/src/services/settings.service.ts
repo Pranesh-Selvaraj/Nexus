@@ -35,6 +35,16 @@ export interface SettingDef {
 
 export const SETTING_DEFS: SettingDef[] = [
   {
+    key: 'openai.baseUrl',
+    label: 'API base URL',
+    description:
+      'OpenAI-compatible base URL. Leave empty for OpenAI. Examples: http://localhost:11434/v1 (Ollama), https://openrouter.ai/api/v1',
+    type: 'text',
+    env: 'OPENAI_BASE_URL',
+    default: '',
+    group: 'openai',
+  },
+  {
     key: 'openai.apiKey',
     label: 'API key',
     description:
