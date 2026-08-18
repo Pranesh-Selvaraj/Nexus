@@ -7,6 +7,7 @@ import type {
   ChatHistoryMessage,
   MessageDTO,
   Source,
+  Usage,
 } from '@nexus/shared-types';
 
 import { trpc } from '../../lib/trpc';
@@ -16,6 +17,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[];
+  usage?: Usage | null;
   error?: boolean;
 }
 
@@ -359,6 +361,13 @@ export function ChatPanel({ workspaceId }: Props) {
                           {message.sources && message.sources.length > 0 && (
                             <SourcesPanel sources={message.sources} />
                           )}
+                          {message.usage && (
+                            <p className="mt-1.5 text-[10px] text-zinc-600">
+                              {message.usage.totalTokens} tokens (
+                              {message.usage.promptTokens} in ·{' '}
+                              {message.usage.completionTokens} out)
+                            </p>
+                          )}
                         </>
                       ) : (
                         <p className="whitespace-pre-wrap">{message.content}</p>
@@ -441,6 +450,7 @@ function toLocalMessage(message: MessageDTO): Message {
     role: message.role,
     content: message.content,
     sources: message.sources ?? undefined,
+    usage: message.usage,
   };
 }
 

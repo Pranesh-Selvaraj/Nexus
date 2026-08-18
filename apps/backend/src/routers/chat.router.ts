@@ -114,6 +114,7 @@ export const chatRouter = t.router({
         role: m.role,
         content: m.content,
         sources: m.sources,
+        usage: m.usage,
         createdAt: new Date(m.createdAt).toISOString(),
       }));
     }),
@@ -215,6 +216,13 @@ export const chatRouter = t.router({
             });
 
             let answer = '';
+            // Populated when the provider supports stream usage (OpenAI does
+            // with stream_options.include_usage; compatible providers may not).
+            let usage: {
+              promptTokens: number;
+              completionTokens: number;
+              totalTokens: number;
+            } | null = null;
             for await (const chunk of stream) {
               if (cancelled) return;
               const token = chunk.choices[0]?.delta?.content;
@@ -222,10 +230,17 @@ export const chatRouter = t.router({
                 answer += token;
                 emit.next({ type: 'token', token });
               }
+              if (chunk.usage) {
+                usage = {
+                  promptTokens: chunk.usage.prompt_tokens,
+                  completionTokens: chunk.usage.completion_tokens,
+                  totalTokens: chunk.usage.total_tokens,
+                };
+              }
             }
             if (cancelled) return;
 
-            await persistAssistantMessage(conversation, answer, sources);
+            await persistAssistantMessage(conversation, answer, sources, usage);
             emit.next({ type: 'done', sources });
           } catch (error) {
             if (cancelled) return;
@@ -254,6 +269,11 @@ async function persistAssistantMessage(
   conversationId: string,
   content: string,
   sources: Source[],
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  } | null = null,
 ): Promise<void> {
   await db
     .update(conversations)
@@ -264,5 +284,6 @@ async function persistAssistantMessage(
     role: 'assistant',
     content,
     sources: sources.length > 0 ? sources : null,
+    usage,
   });
 }
