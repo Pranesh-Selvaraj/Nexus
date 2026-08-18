@@ -1,6 +1,6 @@
 {
   "name": "nexus",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Nexus - full-stack AI RAG workspace with hybrid search and queue-based indexing",
   "packageManager": "pnpm@11.21.0",
