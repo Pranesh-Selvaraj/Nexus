@@ -114,8 +114,17 @@ export interface AnswerRequest {
   sources: SourceHit[];
 }
 
+export const DEFAULT_SYSTEM_PROMPT = [
+  'You are Nexus, a precise retrieval-augmented assistant.',
+  "Answer the user's question using ONLY the provided sources.",
+  'Cite sources inline with [1], [2], etc., where the numbers correspond to the source list.',
+  'If the sources do not contain the answer, say so plainly instead of guessing.',
+  'Format answers with Markdown: short paragraphs, bullet lists, fenced code blocks.',
+].join(' ');
+
 export function buildMessages(
   req: AnswerRequest,
+  systemPrompt: string = DEFAULT_SYSTEM_PROMPT,
 ): OpenAI.Chat.ChatCompletionMessageParam[] {
   const context = req.sources
     .map(
@@ -124,13 +133,7 @@ export function buildMessages(
     )
     .join('\n\n');
 
-  const systemContent = [
-    'You are Nexus, a precise retrieval-augmented assistant.',
-    "Answer the user's question using ONLY the provided sources.",
-    'Cite sources inline with [1], [2], etc., where the numbers correspond to the source list.',
-    'If the sources do not contain the answer, say so plainly instead of guessing.',
-    'Format answers with Markdown: short paragraphs, bullet lists, fenced code blocks.',
-  ].join(' ');
+  const systemContent = systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
   return [
     { role: 'system', content: systemContent },
@@ -149,10 +152,11 @@ export async function streamAnswer(
   // client error deep inside the stream.
   await assertOpenAIConfigured();
 
-  const [model, temperature, baseUrl] = await Promise.all([
+  const [model, temperature, baseUrl, systemPrompt] = await Promise.all([
     getSetting('openai.model'),
     getSettingNumber('openai.temperature'),
     getSetting('openai.baseUrl'),
+    getSetting('prompt.system'),
   ]);
   const apiKey = await getSetting('openai.apiKey');
   const client = new OpenAI({
@@ -164,7 +168,7 @@ export async function streamAnswer(
 
   const stream = await client.chat.completions.create({
     model,
-    messages: buildMessages(req),
+    messages: buildMessages(req, systemPrompt),
     temperature,
     stream: true,
   });

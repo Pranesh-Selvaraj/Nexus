@@ -18,7 +18,7 @@ import { settings } from '../db/schema.js';
 // and the effective value is: DB (set from the UI) -> env var -> default.
 // ---------------------------------------------------------------------------
 
-export type SettingType = 'text' | 'secret' | 'number' | 'slider';
+export type SettingType = 'text' | 'textarea' | 'secret' | 'number' | 'slider';
 
 export interface SettingDef {
   key: string;
@@ -163,6 +163,17 @@ export const SETTING_DEFS: SettingDef[] = [
     min: 1,
     max: 365,
     group: 'auth',
+  },
+  {
+    key: 'prompt.system',
+    label: 'System prompt',
+    description:
+      'Instructions prepended to every chat request. Leave empty for the built-in default.',
+    type: 'textarea',
+    env: 'PROMPT_SYSTEM',
+    default: '',
+    group: 'ui',
+    max: 4000,
   },
   {
     key: 'ui.appName',
