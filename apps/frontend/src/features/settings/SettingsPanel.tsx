@@ -211,6 +211,7 @@ interface FieldProps {
       min?: number;
       max?: number;
       step?: number;
+      options?: string[];
     };
   };
   draft: string;
@@ -326,6 +327,18 @@ function Field({
             rows={4}
             className="w-full max-w-lg rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-nexus-500"
           />
+        ) : def.type === 'select' ? (
+          <select
+            value={draft === '' ? setting.value : draft}
+            onChange={(e) => onChange(e.target.value)}
+            className="w-full max-w-xs rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-nexus-500"
+          >
+            {(def.options ?? []).map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
         ) : (
           <input
             type={isNumber ? 'number' : 'text'}

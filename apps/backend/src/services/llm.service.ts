@@ -9,6 +9,44 @@ import { getSetting, getSettingNumber } from './settings.service.js';
 // Retrieval
 // ---------------------------------------------------------------------------
 
+const FTS_LANGUAGES = new Set([
+  'simple',
+  'english',
+  'danish',
+  'dutch',
+  'finnish',
+  'french',
+  'german',
+  'hungarian',
+  'italian',
+  'norwegian',
+  'portuguese',
+  'romanian',
+  'russian',
+  'spanish',
+  'swedish',
+  'turkish',
+  'arabic',
+  'greek',
+  'hindi',
+  'indonesian',
+  'irish',
+  'japanese',
+  'korean',
+  'nepali',
+  'tamil',
+  'thai',
+  'catalan',
+  'lithuanian',
+  'serbian',
+]);
+
+/** Whitelisted FTS config; env overrides bypass settings validation. */
+async function safeFtsLanguage(): Promise<string> {
+  const language = await getSetting('retrieval.language');
+  return FTS_LANGUAGES.has(language) ? language : 'english';
+}
+
 interface RetrievalRow {
   id: string;
   content: string;
@@ -48,6 +86,7 @@ export async function hybridRetrieveChunks(
   query: string,
 ): Promise<SourceHit[]> {
   const embedding = await embedText(query);
+  const language = await safeFtsLanguage();
   const [similarityWeight, keywordWeight, topK] = await Promise.all([
     getSettingNumber('rag.similarityWeight'),
     getSettingNumber('rag.keywordWeight'),
@@ -57,10 +96,14 @@ export async function hybridRetrieveChunks(
   const vectorLiteral = sql.raw(
     `[${embedding.map((n) => n.toFixed(6)).join(',')}]`,
   );
-  const ftsQuery = sql`plainto_tsquery('english', ${query})`;
+  // Language comes from the whitelisted settings options (see
+  // safeFtsLanguage), so interpolating it as a regconfig literal is safe.
+  // The query text itself stays parameterized.
+  const ftsQuery = sql`plainto_tsquery(${sql.raw(`'${language}'`)}, ${query})`;
+  const tsVector = sql`to_tsvector(${sql.raw(`'${language}'`)}, c.content)`;
 
   const similarityExpr = sql`(1 - (c.embedding <=> ${vectorLiteral}::vector))`;
-  const keywordExpr = sql`ts_rank(to_tsvector('english', c.content), ${ftsQuery})`;
+  const keywordExpr = sql`ts_rank(${tsVector}, ${ftsQuery})`;
 
   const result = await db.execute(
     sql`
@@ -69,7 +112,7 @@ export async function hybridRetrieveChunks(
       FROM chunks c
       JOIN documents d ON d.id = c.document_id
       WHERE d.workspace_id = ${workspaceId}
-        AND to_tsvector('english', c.content) @@ ${ftsQuery}
+        AND ${tsVector} @@ ${ftsQuery}
       ORDER BY (${similarityExpr} * ${sql.raw(String(similarityWeight))}
              + ${keywordExpr} * ${sql.raw(String(keywordWeight))}) DESC
       LIMIT ${topK}
