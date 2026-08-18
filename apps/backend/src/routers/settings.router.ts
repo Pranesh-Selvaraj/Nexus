@@ -58,6 +58,36 @@ export const settingsRouter = t.router({
       }
     }),
 
+  /**
+   * List models served by the configured provider (OpenAI-compatible
+   * `GET {baseUrl}/models`). Returns ids for the settings panel.
+   */
+  listModels: protectedProcedure.mutation(
+    async (): Promise<{ models: string[]; error: string | null }> => {
+      const apiKey = await getSetting('openai.apiKey');
+      const baseUrl = (await getSetting('openai.baseUrl')) || undefined;
+      try {
+        const client = new OpenAI({
+          apiKey: apiKey || 'local',
+          baseURL: baseUrl,
+        });
+        const list = await client.models.list();
+        return {
+          models: list.data.map((m) => m.id).sort(),
+          error: null,
+        };
+      } catch (err) {
+        return {
+          models: [],
+          error:
+            err instanceof Error
+              ? `Could not reach ${baseUrl ?? 'api.openai.com'}: ${err.message}`
+              : 'Could not list models',
+        };
+      }
+    },
+  ),
+
   /** Validate the effective OpenAI API key against the API. */
   testOpenAI: protectedProcedure.mutation(
     async (): Promise<{

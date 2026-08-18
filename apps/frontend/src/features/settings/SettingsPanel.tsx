@@ -90,6 +90,31 @@ export function SettingsPanel() {
     }
   }
 
+  const listModels = trpc.settings.listModels.useMutation();
+
+  const PRESETS: { id: string; label: string; baseUrl: string }[] = [
+    { id: 'openai', label: 'OpenAI', baseUrl: '' },
+    { id: 'ollama', label: 'Ollama', baseUrl: 'http://localhost:11434/v1' },
+    { id: 'lmstudio', label: 'LM Studio', baseUrl: 'http://localhost:1234/v1' },
+    {
+      id: 'openrouter',
+      label: 'OpenRouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+    },
+    { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' },
+  ];
+
+  async function applyPreset(baseUrl: string) {
+    await updateSetting.mutateAsync({ key: 'openai.baseUrl', value: baseUrl });
+    setDrafts((p) => ({ ...p, 'openai.baseUrl': baseUrl }));
+    void utils.settings.list.invalidate();
+    setSaved(
+      baseUrl
+        ? 'Provider preset applied — set the model names and fetch the model list below.'
+        : 'Provider set to OpenAI.',
+    );
+  }
+
   if (settings.isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
@@ -121,6 +146,79 @@ export function SettingsPanel() {
             </span>
           )}
         </div>
+
+        <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/40">
+          <h2 className="border-b border-zinc-800 px-5 py-3 text-sm font-semibold">
+            Provider
+          </h2>
+          <div className="px-5 py-4">
+            <p className="text-xs text-zinc-500">
+              Quick-set the API base URL for common providers (including local
+              ones). Local providers don't need an API key. Set the chat and
+              embedding model names below, matching the embedding dimensions
+              setting.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => void applyPreset(preset.baseUrl)}
+                  disabled={updateSetting.isPending}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-nexus-500 hover:text-nexus-300 disabled:opacity-40"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 border-t border-zinc-800 pt-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => listModels.mutate()}
+                  disabled={listModels.isPending}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40"
+                >
+                  {listModels.isPending
+                    ? 'Fetching...'
+                    : 'Fetch available models'}
+                </button>
+                {listModels.data && !listModels.data.error && (
+                  <span className="text-xs text-emerald-400">
+                    {listModels.data.models.length} models found
+                  </span>
+                )}
+                {listModels.data?.error && (
+                  <span className="text-xs text-red-400">
+                    {listModels.data.error}
+                  </span>
+                )}
+              </div>
+              {listModels.data && listModels.data.models.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {listModels.data.models.map((model) => (
+                    <button
+                      key={model}
+                      onClick={() => {
+                        setDrafts((p) => ({
+                          ...p,
+                          'openai.model': model,
+                        }));
+                        void updateSetting.mutateAsync({
+                          key: 'openai.model',
+                          value: model,
+                        });
+                        void utils.settings.list.invalidate();
+                      }}
+                      className="rounded bg-zinc-800 px-2 py-1 font-mono text-[11px] text-zinc-300 transition-colors hover:bg-nexus-600/30"
+                    >
+                      {model}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
 
         {GROUPS.map((group) => {
           const items = data.filter((s) => s.def.group === group.id);

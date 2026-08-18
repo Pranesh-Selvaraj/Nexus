@@ -36,6 +36,13 @@
       "when": 1787054734186,
       "tag": "0004_message_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787058592331,
+      "tag": "0005_local_llm_dims",
+      "breakpoints": true
     }
   ]
 }

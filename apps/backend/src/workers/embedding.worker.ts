@@ -11,8 +11,8 @@ import type { EmbeddingJobData } from '../queues/index.js';
 import { redisConnection } from '../queues/index.js';
 import { extractPages, splitIntoChunks } from '../services/chunking.service.js';
 import {
-  EMBEDDING_DIMENSIONS,
   embedTexts,
+  getEmbeddingDimensions,
 } from '../services/embedding.service.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
 
@@ -45,10 +45,11 @@ async function processDocument(documentId: string): Promise<void> {
       `Embedding count mismatch: expected ${texts.length}, got ${embeddings.length}`,
     );
   }
+  const expectedDims = await getEmbeddingDimensions();
   for (const [i, vec] of embeddings.entries()) {
-    if (vec.length !== EMBEDDING_DIMENSIONS) {
+    if (vec.length !== expectedDims) {
       throw new Error(
-        `Embedding dimension mismatch for chunk ${i}: model returned ${vec.length} dimensions, expected ${EMBEDDING_DIMENSIONS}. Check OPENAI_EMBEDDING_MODEL (schema stores vector(1536)).`,
+        `Embedding dimension mismatch for chunk ${i}: model returned ${vec.length} dimensions, expected ${expectedDims}. Check the embedding model and the 'Embedding dimensions' setting.`,
       );
     }
   }
