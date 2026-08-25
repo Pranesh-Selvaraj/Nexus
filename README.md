@@ -296,9 +296,11 @@ packages/
 
 The `main` branch is protected — **direct commits are only possible by the repository owner**. All other contributors must open a pull request that:
 
-1. passes required CI checks (`typecheck`, `build`, `Lint`, `Test`, `Smoke test`, `E2E (Playwright)`, `Docs & issue link check`, `Secret scan`, `Dependency review`),
+1. passes required CI checks (`typecheck`, `build`, `Lint`, `Test`, `Smoke test`, `E2E (Playwright)`, `Docs & issue link check`, `Secret scan`, `Dependency review`, `Dependency audit`),
 2. is approved by the repository owner (CODEOWNERS), and
 3. has no stale reviews, force-pushes, or deleted protection.
+
+**Release tags** (`v*`) are protected by an active ruleset: only the repository owner (admin) can create, update, or delete them — the release pipeline (GHCR images + GitHub Release) can therefore only be triggered by the owner.
 
 ## Contributing
 
