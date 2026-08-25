@@ -44,14 +44,10 @@ export async function enqueueDocumentEmbedding(
  * grow forever on long-running instances. Call once at worker boot.
  */
 export async function scheduleMaintenance(): Promise<void> {
-  await embeddingQueue.add(
-    MAINTENANCE_JOB,
-    {} as EmbeddingJobData,
-    {
-      repeat: { pattern: MAINTENANCE_CRON },
-      jobId: MAINTENANCE_JOB,
-      removeOnComplete: true,
-      removeOnFail: true,
-    },
-  );
+  await embeddingQueue.add(MAINTENANCE_JOB, {} as EmbeddingJobData, {
+    repeat: { pattern: MAINTENANCE_CRON },
+    jobId: MAINTENANCE_JOB,
+    removeOnComplete: true,
+    removeOnFail: true,
+  });
 }

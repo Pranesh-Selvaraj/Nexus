@@ -31,10 +31,10 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 - 📁 **Workspaces** — organize documents into isolated workspaces.
 - 📤 **Document ingestion** — upload PDF, DOCX, TXT, Markdown, CSV, and JSON files (up to 25 MB each).
 - 🔄 **Queue-based indexing** — documents are chunked and embedded by a background BullMQ worker, so the API stays responsive.
-- 🔍 **Hybrid search** — combines vector similarity (pgvector) with keyword search for robust retrieval.
-- 💬 **RAG chat** — streamed, context-grounded answers over WebSocket, with per-answer **token usage**
+- 🔍 **Hybrid search** — combines vector similarity (pgvector) with keyword search for robust retrieval, with a Redis query-embedding cache (24h TTL) so repeated questions skip the embedding round-trip.
+- 💬 **RAG chat** — streamed, context-grounded answers over WebSocket, with per-answer **token usage** and LLM-generated conversation titles.
 - 📦 **Backup & restore** — export any workspace (documents + chat history) as JSON and import it back
-- 🔐 **Optional authentication** — set `AUTH_PASSWORD` for a login screen with httpOnly session cookies; unset for single-user dev mode.
+- 🔐 **Optional authentication** — set `AUTH_PASSWORD` for a login screen with httpOnly session cookies (expired sessions are purged daily); unset for single-user dev mode.
 - 🧱 **Monorepo** — pnpm workspaces + Turborepo for fast, cached builds.
 
 ## Architecture
@@ -120,7 +120,7 @@ Every release publishes the images to the GitHub Container Registry. Pull them d
 | API + worker | `docker pull ghcr.io/pranesh-selvaraj/nexus-backend:0.2.0`  |
 | Frontend     | `docker pull ghcr.io/pranesh-selvaraj/nexus-frontend:0.2.0` |
 
-Pin a version in production; `latest` tracks the newest release. (Note: the container tags are semver without the `v` prefix — `0.3.1`, not `v0.3.1`.)
+Pin a version in production; `latest` tracks the newest release. (Note: the container tags are semver without the `v` prefix — `1.0.0`, not `v1.0.0`.)
 
 ### Option B — build from source
 
@@ -160,7 +160,7 @@ See [SECURITY.md](SECURITY.md) — without `AUTH_PASSWORD` the app runs in singl
 Releases follow [SemVer](https://semver.org/), tagged `vX.Y.Z` and published automatically from the [release workflow](.github/workflows/release.yml): pushing a tag builds the images, publishes them to GHCR, and creates a GitHub Release with changelog notes.
 
 ```bash
-git tag v0.3.1 && git push origin v0.3.1
+git tag v1.0.0 && git push origin v1.0.0
 ```
 
 ## Scripts
@@ -199,6 +199,20 @@ All variables live in `.env` (see `.env.example`). The backend auto-discovers `.
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
 
+## Scale & performance
+
+Nexus targets single-user, self-hosted personal corpora. The honest envelope:
+
+| Dimension   | Limit                     | Notes                                                                                                                                                                                                                 |
+| ----------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Uploads     | 25 MB/file (configurable) | Parsed server-side, chunked, embedded asynchronously                                                                                                                                                                  |
+| Retrieval   | exact vector scans        | No ANN index - `ORDER BY embedding <=> $q LIMIT k` scans the workspace's chunks. Sub-second up to roughly **100k chunks per workspace** (≈ 2–4k documents at default chunk size); beyond that, expect linear slowdown |
+| History     | unbounded queries         | Conversation lists and message histories load fully; fine at personal scale                                                                                                                                           |
+| Query cache | Redis, 24h TTL            | Query embeddings are cached keyed by model + text hash; switching embedding models invalidates automatically                                                                                                          |
+| Maintenance | daily 03:00               | Expired sessions are purged by a BullMQ repeat job                                                                                                                                                                    |
+
+**Tuning knobs** (Settings → Retrieval): smaller `chunk size` → more chunks but finer granularity; lower `top-K` → faster retrieval; adjust vector/keyword weights per corpus. For corpora beyond the envelope, the pragmatic path is partitioning workspaces (retrieval is scoped per workspace) rather than one giant workspace.
+
 ## LLM providers
 
 Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works — set **API base URL** in Settings (or `OPENAI_BASE_URL`):
@@ -211,7 +225,7 @@ Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works �
 | [OpenRouter](https://openrouter.ai)        | `https://openrouter.ai/api/v1`   |
 | [Groq](https://groq.com)                   | `https://api.groq.com/openai/v1` |
 
-With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. The embedding dimensions must stay **1536** (the schema is `vector(1536)`). Use the **Test OpenAI connection** button to verify.
+With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. Set the embedding model's **dimensions** in Settings (the `chunks.embedding` column is dimension-flexible since 0.3.1). Use the **Test OpenAI connection** and **Fetch available models** buttons to verify.
 
 ## Local LLMs (no API key needed)
 
@@ -298,6 +312,10 @@ Found a vulnerability? Please **do not open a public issue**. Report it privatel
 - [x] Add ESLint/Prettier and enforce in CI
 - [x] Production Docker images + deployment manifests
 - [x] Real authentication (optional, `AUTH_PASSWORD`; httpOnly session cookies)
+- [x] CI integration smoke suite — real stack (Postgres + Redis + worker) with a deterministic mock OpenAI stub, required on `main`
+- [x] Browser e2e (Playwright) — workspace → upload → index → streamed chat happy path, required on `main`
+- [x] .docx ingestion, LLM-generated conversation titles, settings/OpenAI client caching, query-embedding cache, frontend code-splitting
+- [x] Error boundary, daily session purge, documented scale envelope — **v1.0.0**
 
 ## License
 

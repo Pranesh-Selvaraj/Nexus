@@ -11,3 +11,6 @@ coverage/
 # Runtime uploads (never commit user documents)
 apps/backend/uploads/
 apps/backend/uploads/.env
+# Playwright artifacts
+apps/frontend/test-results/
+apps/frontend/playwright-report/

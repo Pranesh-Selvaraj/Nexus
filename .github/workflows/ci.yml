@@ -167,7 +167,7 @@ jobs:
       OPENAI_MODEL: gpt-4o-mini
       OPENAI_EMBEDDING_MODEL: text-embedding-3-small
       UPLOAD_DIR: /tmp/nexus-smoke-uploads
-      SMOKE_EXPECT_READY: "1"
+      SMOKE_EXPECT_READY: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v7

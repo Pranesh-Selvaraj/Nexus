@@ -129,7 +129,11 @@ const server = createServer(async (req, res) => {
             created: Math.floor(Date.now() / 1000),
             model,
             choices: [],
-            usage: { prompt_tokens: 12, completion_tokens: 12, total_tokens: 24 },
+            usage: {
+              prompt_tokens: 12,
+              completion_tokens: 12,
+              total_tokens: 24,
+            },
           })}\n\n`,
         );
         res.end('data: [DONE]\n\n');
@@ -154,7 +158,11 @@ const server = createServer(async (req, res) => {
     }
 
     res.writeHead(404, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: { message: `no stub for ${req.method} ${url.pathname}` } }));
+    res.end(
+      JSON.stringify({
+        error: { message: `no stub for ${req.method} ${url.pathname}` },
+      }),
+    );
   } catch (err) {
     res.writeHead(500, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: { message: String(err) } }));
