@@ -4,3 +4,4 @@ dist
 *.tsbuildinfo
 pnpm-lock.yaml
 apps/backend/uploads
+.env.example

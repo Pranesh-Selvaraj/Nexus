@@ -269,6 +269,31 @@ jobs:
           retention-days: 7
 
   # ---------------------------------------------------------------------------
+  # Docs + issue convention check (pull requests only)
+  #
+  # Project convention (CONTRIBUTING.md): every PR links the issue it resolves
+  # and ships its documentation updates in the same merge. This job enforces
+  # the first half mechanically - the linked issue carries the acceptance
+  # criteria and the PR template drives the docs checkbox for review.
+  # ---------------------------------------------------------------------------
+  docs-check:
+    name: Docs & issue link check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR links an issue
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! grep -Eq '(#[0-9]+|issues/[0-9]+)' <<< "$PR_BODY"; then
+            echo '::error::This PR does not link a GitHub issue.'
+            echo 'Project convention: every change starts from an issue - add "Closes #NN" (or an "issues/NN" link) to the PR description. See CONTRIBUTING.md and .github/PULL_REQUEST_TEMPLATE.md.'
+            exit 1
+          fi
+          echo "Linked issue reference found."
+
+  # ---------------------------------------------------------------------------
   # Dependency vulnerability audit (fail-closed since the langchain upgrade)
   # ---------------------------------------------------------------------------
   audit:

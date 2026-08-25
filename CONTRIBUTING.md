@@ -67,26 +67,30 @@ Name branches descriptively, e.g.:
 
 ## Pull request workflow
 
-1. **Fork** the repository (external contributors) or create a feature branch (collaborators).
-2. Make your changes with focused, well-named commits (see [Commit conventions](#commit-conventions)).
-3. Push the branch and open a pull request **against `main`**.
-   - Use a clear title and describe _what_ changed, _why_, and _how you tested it_.
-   - Reference any related issue (e.g. `Closes #12`).
-4. Ensure CI passes: `typecheck`, `build`, `Secret scan`, and `Dependency review` are **required**.
-5. The repository owner (code owner) reviews and merges the PR. Your branch is auto-deleted on merge.
+1. **Every change starts from a GitHub issue.** Find or open one (bugs, enhancements, roadmap items all live in the issue tracker) and say you're working on it.
+2. **Fork** the repository (external contributors) or create a feature branch (collaborators) named after the issue, e.g. `feat/42-docx-ingestion`.
+3. Make your changes with focused, well-named commits (see [Commit conventions](#commit-conventions)).
+4. **Update the documentation in the same change.** Any PR that alters behavior, adds a setting, changes an endpoint, or touches deployment must update the affected docs (README, SECURITY.md, `.env.example`, this file) in the same PR — documentation ships with the code, never after.
+5. Push the branch and open a pull request **against `main`** using the [PR template](.github/PULL_REQUEST_TEMPLATE.md):
+   - Clear title and description: _what_ changed, _why_, _how you tested it_.
+   - **Link the issue** (e.g. `Closes #42`) — CI's `docs-check` fails the PR without a linked issue.
+6. Ensure CI passes: `typecheck`, `build`, `lint`, `test`, `Smoke test`, `E2E (Playwright)`, `Secret scan`, and `Dependency review` are **required**.
+7. The repository owner (code owner) reviews and merges the PR. Your branch is auto-deleted on merge.
 
 ## PR checklist
 
 Before marking a PR ready for review, confirm:
 
+- [ ] Links the issue(s) it resolves (`Closes #…`)
+- [ ] **Documentation is updated in this PR** for anything user-visible: README (features, env vars, settings, scale envelope), SECURITY.md, `.env.example`, CONTRIBUTING.md — tick this only if the change truly needs no docs
 - [ ] `pnpm typecheck` passes locally
 - [ ] `pnpm build` passes locally
 - [ ] No secrets or local `.env` values are committed (CI runs gitleaks)
 - [ ] New dependencies are necessary and added to the correct workspace `package.json` (the root `pnpm-lock.yaml` is updated via `pnpm install`)
 - [ ] Database schema changes include a Drizzle migration (`pnpm --filter @nexus/backend db:generate`) — never hand-edit the `drizzle/` snapshots
-- [ ] Public-facing behavior is documented (README/env vars) when relevant
+- [ ] Unit tests added/updated for backend changes (`pnpm --filter @nexus/backend test`); e2e happy path extended if the chat/upload flow changed
 - [ ] Commit messages follow the project conventions
-- [ ] PR description explains the change and testing done
+- [ ] PR description explains the change, the linked issue, and testing done
 
 ## Commit conventions
 
@@ -121,16 +125,27 @@ Rules:
 - **TypeScript** everywhere; strict mode is on. Prefer explicit types at API boundaries and let inference work inside functions.
 - Follow existing patterns in the codebase (e.g. `src/routers/*`, `src/services/*`, `src/features/*`).
 - Keep DTOs shared in `packages/shared-types` when both apps use them.
-- Run `pnpm typecheck` before pushing. (ESLint/Prettier are planned — see the README roadmap.)
+- Run `pnpm typecheck` and `pnpm lint` before pushing.
 
 ## Testing
 
-Automated tests are not yet in place (tracked in the README roadmap). Until then:
+Automated checks run in CI on every PR: Vitest unit tests, the integration smoke suite, and a Playwright e2e happy path. Run them locally before pushing:
 
-- Exercise your change manually against a real local stack (`pnpm dev`).
-- For backend changes, the smoke script `apps/backend/scripts/smoke.ts` is a starting point — run it with `pnpm --filter @nexus/backend tsx scripts/smoke.ts`.
-- For frontend changes, test upload → indexing → chat end-to-end in the UI.
-- Describe exactly what you tested in the PR description.
+```bash
+pnpm test                    # unit tests (all workspaces)
+pnpm lint && pnpm format:check
+
+# Integration smoke (needs pnpm db:up): real API + worker + Postgres + Redis.
+# Without a key it verifies the 'failed' path; with the mock stub it verifies
+# the full 'ready' pipeline:
+pnpm --filter @nexus/backend mock:openai   # terminal 1 - deterministic stub on :3310
+SMOKE_EXPECT_READY=1 pnpm --filter @nexus/backend smoke   # terminal 2
+
+# Browser e2e (needs pnpm db:up): boots stub + API + worker + Vite itself
+pnpm --filter @nexus/frontend test:e2e
+```
+
+Describe exactly what you tested in the PR description.
 
 ## Security
 

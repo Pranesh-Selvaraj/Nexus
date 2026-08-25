@@ -2,7 +2,7 @@ name: Release
 
 # Builds the production images, publishes them to GHCR, and creates a
 # GitHub Release with auto-generated notes. Triggered by pushing a tag:
-#   git tag v0.2.0 && git push origin v0.2.0
+#   git tag v1.0.0 && git push origin v1.0.0
 
 on:
   push:

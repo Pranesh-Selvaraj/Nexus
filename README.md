@@ -117,8 +117,8 @@ Every release publishes the images to the GitHub Container Registry. Pull them d
 
 | Image        | Pull command                                                |
 | ------------ | ----------------------------------------------------------- |
-| API + worker | `docker pull ghcr.io/pranesh-selvaraj/nexus-backend:0.2.0`  |
-| Frontend     | `docker pull ghcr.io/pranesh-selvaraj/nexus-frontend:0.2.0` |
+| API + worker | `docker pull ghcr.io/pranesh-selvaraj/nexus-backend:1.0.0`  |
+| Frontend     | `docker pull ghcr.io/pranesh-selvaraj/nexus-frontend:1.0.0` |
 
 Pin a version in production; `latest` tracks the newest release. (Note: the container tags are semver without the `v` prefix — `1.0.0`, not `v1.0.0`.)
 
@@ -225,7 +225,7 @@ Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works �
 | [OpenRouter](https://openrouter.ai)        | `https://openrouter.ai/api/v1`   |
 | [Groq](https://groq.com)                   | `https://api.groq.com/openai/v1` |
 
-With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. Set the embedding model's **dimensions** in Settings (the `chunks.embedding` column is dimension-flexible since 0.3.1). Use the **Test OpenAI connection** and **Fetch available models** buttons to verify.
+With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. Set the embedding model's **dimensions** in Settings (the `chunks.embedding` column is dimension-flexible). Use the **Test OpenAI connection** and **Fetch available models** buttons to verify.
 
 ## Local LLMs (no API key needed)
 
@@ -283,6 +283,9 @@ packages/
 | Production build (`pnpm build`)                         | `ci.yml`               | ✅ required        |
 | Linting + formatting (`pnpm lint`, `pnpm format:check`) | `ci.yml`               | ✅ required        |
 | Unit tests (`pnpm test`)                                | `ci.yml`               | ✅ required        |
+| Integration smoke (real stack + mock OpenAI)            | `ci.yml`               | ✅ required        |
+| Browser e2e (Playwright happy path)                     | `ci.yml`               | ✅ required        |
+| Docs & issue link check (PRs)                           | `ci.yml`               | ✅ required        |
 | Secret scanning (gitleaks)                              | `ci.yml`               | ✅ required        |
 | Dependency review on PRs                                | `ci.yml`               | ✅ required        |
 | CodeQL static analysis (incl. weekly)                   | `codeql.yml`           | runs on push/PR    |
@@ -293,29 +296,27 @@ packages/
 
 The `main` branch is protected — **direct commits are only possible by the repository owner**. All other contributors must open a pull request that:
 
-1. passes required CI checks (`typecheck`, `build`, `Lint`, `Test`, `Secret scan`, `Dependency review`),
+1. passes required CI checks (`typecheck`, `build`, `Lint`, `Test`, `Smoke test`, `E2E (Playwright)`, `Docs & issue link check`, `Secret scan`, `Dependency review`),
 2. is approved by the repository owner (CODEOWNERS), and
 3. has no stale reviews, force-pushes, or deleted protection.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow: environment setup, branching strategy, PR checklist, and commit conventions.
+All work is tracked in [GitHub issues](https://github.com/Pranesh-Selvaraj/Nexus/issues) — every PR links its issue and ships the documentation updates it requires. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow: environment setup, branching strategy, PR checklist, and commit conventions.
 
 ## Security
 
 Found a vulnerability? Please **do not open a public issue**. Report it privately — see [SECURITY.md](SECURITY.md) for the process and supported versions.
 
-## Roadmap
+## Issue tracker
 
-- [x] Upgrade `langchain` to a supported major version and re-enable fail-closed `pnpm audit` (done — zero known advisories)
-- [x] Add automated unit tests (Vitest) — wired into CI as a required check
-- [x] Add ESLint/Prettier and enforce in CI
-- [x] Production Docker images + deployment manifests
-- [x] Real authentication (optional, `AUTH_PASSWORD`; httpOnly session cookies)
-- [x] CI integration smoke suite — real stack (Postgres + Redis + worker) with a deterministic mock OpenAI stub, required on `main`
-- [x] Browser e2e (Playwright) — workspace → upload → index → streamed chat happy path, required on `main`
-- [x] .docx ingestion, LLM-generated conversation titles, settings/OpenAI client caching, query-embedding cache, frontend code-splitting
-- [x] Error boundary, daily session purge, documented scale envelope — **v1.0.0**
+All bugs, enhancements, and planned work are tracked as **GitHub issues** — there is no roadmap section in this README.
+
+- Browse or open issues: [github.com/Pranesh-Selvaraj/Nexus/issues](https://github.com/Pranesh-Selvaraj/Nexus/issues)
+- Upcoming work carries the [`roadmap` label](https://github.com/Pranesh-Selvaraj/Nexus/labels/roadmap)
+- Small, well-scoped tasks for new contributors carry the [`good first issue` label](https://github.com/Pranesh-Selvaraj/Nexus/labels/good%20first%20issue)
+
+**Project convention**: every pull request must link the issue(s) it resolves and must include the documentation updates it requires (README, SECURITY.md, `.env.example`, CONTRIBUTING) in the same merge — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
