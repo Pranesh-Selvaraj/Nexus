@@ -8,6 +8,7 @@ export const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25);
 
 export const ALLOWED_EXTENSIONS = new Set([
   'pdf',
+  'docx',
   'txt',
   'md',
   'markdown',

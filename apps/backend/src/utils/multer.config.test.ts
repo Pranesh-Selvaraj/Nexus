@@ -37,7 +37,7 @@ describe('multer fileFilter', () => {
     for (const name of [
       'evil.exe',
       'script.sh',
-      'doc.docx',
+      'doc.docx.bak',
       'photo.png',
       'noext',
     ]) {
