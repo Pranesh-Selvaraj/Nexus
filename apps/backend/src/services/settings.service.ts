@@ -244,6 +244,40 @@ export const SETTING_DEFS: SettingDef[] = [
 const defByKey = new Map(SETTING_DEFS.map((d) => [d.key, d]));
 
 // ---------------------------------------------------------------------------
+// Read cache
+//
+// getSetting() is called several times per chat message and per worker job
+// (model, temperature, baseUrl, chunk size, dimensions, ...). A short TTL
+// cache avoids the Postgres round-trip on the hot path while keeping runtime
+// edits visible within a few seconds; updateSetting() invalidates the key
+// immediately so UI saves apply instantly. Secrets are cached decrypted for
+// the same TTL - no worse than the previous per-call in-memory decryption.
+// ---------------------------------------------------------------------------
+
+const CACHE_TTL_MS = 5_000;
+
+const settingCache = new Map<string, { value: string; at: number }>();
+
+/** Forget cached values for one key, or the whole cache when omitted. */
+export function invalidateSettingsCache(key?: string): void {
+  if (key) {
+    settingCache.delete(key);
+  } else {
+    settingCache.clear();
+  }
+}
+
+function readCachedSetting(key: string): string | null {
+  const hit = settingCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at >= CACHE_TTL_MS) {
+    settingCache.delete(key);
+    return null;
+  }
+  return hit.value;
+}
+
+// ---------------------------------------------------------------------------
 // Secret encryption (AES-256-GCM, key from SETTINGS_SECRET env)
 // ---------------------------------------------------------------------------
 
@@ -325,13 +359,22 @@ export async function getSetting(key: string): Promise<string> {
   const def = defByKey.get(key);
   if (!def) throw new Error(`Unknown setting: ${key}`);
 
+  const cached = readCachedSetting(key);
+  if (cached !== null) return cached;
+
   const row = await getDbRow(key);
-  if (row) {
-    return row.isSecret ? decryptSecret(row.value) : row.value;
-  }
-  const envValue = def.env ? process.env[def.env] : undefined;
-  if (envValue !== undefined && envValue !== '') return envValue;
-  return String(def.default);
+  const resolved = row
+    ? row.isSecret
+      ? decryptSecret(row.value)
+      : row.value
+    : (() => {
+        const envValue = def.env ? process.env[def.env] : undefined;
+        if (envValue !== undefined && envValue !== '') return envValue;
+        return String(def.default);
+      })();
+
+  settingCache.set(key, { value: resolved, at: Date.now() });
+  return resolved;
 }
 
 /** Number-typed convenience accessor. */
@@ -398,6 +441,7 @@ export async function updateSetting(
   // Empty input -> reset to default (env or registry default)
   if (value === '') {
     await db.delete(settings).where(eq(settings.key, key));
+    invalidateSettingsCache(key);
     return (await listSettings()).find((s) => s.key === key) as SettingView;
   }
 
@@ -440,6 +484,7 @@ export async function updateSetting(
       },
     });
 
+  invalidateSettingsCache(key);
   return (await listSettings()).find((s) => s.key === key) as SettingView;
 }
 

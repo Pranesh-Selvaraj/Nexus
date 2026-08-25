@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { getOpenAIClient } from './openai-client.js';
 
 import { getSetting } from './settings.service.js';
 
@@ -31,27 +31,22 @@ export async function assertOpenAIConfigured(): Promise<void> {
   }
 }
 
-/** Vector dimensions expected for stored embeddings (settings-driven). */
+/**
+ * Vector dimensions expected for stored embeddings (settings-driven).
+ */
 export async function getEmbeddingDimensions(): Promise<number> {
   return Number(await getSetting('embedding.dimensions')) || 1536;
 }
 
 /**
  * Embed a list of texts, chunking into groups of 100 per OpenAI request.
- * Returns vectors in the same order as the input texts. The client is
- * constructed per call so settings changes apply without a restart.
+ * Returns vectors in the same order as the input texts. Clients are cached
+ * and keyed by config, so settings changes apply without a restart.
  */
 export async function embedTexts(texts: string[]): Promise<number[][]> {
   await assertOpenAIConfigured();
-  const { apiKey, model, baseUrl } = await openAIConfig();
-
-  // Local providers accept any key; OpenAI SDK requires a non-empty string.
-  const client = new OpenAI({
-    apiKey: apiKey || 'local',
-    baseURL: baseUrl,
-    timeout: 60_000,
-    maxRetries: 2,
-  });
+  const model = await getSetting('openai.embeddingModel');
+  const client = await getOpenAIClient('embedding');
 
   const vectors: number[][] = [];
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {

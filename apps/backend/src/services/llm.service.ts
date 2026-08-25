@@ -1,8 +1,9 @@
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { assertOpenAIConfigured, embedText } from './embedding.service.js';
+import { getOpenAIClient } from './openai-client.js';
 import { getSetting, getSettingNumber } from './settings.service.js';
 
 // ---------------------------------------------------------------------------
@@ -196,20 +197,12 @@ export async function streamAnswer(
   // client error deep inside the stream.
   await assertOpenAIConfigured();
 
-  const [model, temperature, baseUrl, systemPrompt] = await Promise.all([
+  const [model, temperature, systemPrompt] = await Promise.all([
     getSetting('openai.model'),
     getSettingNumber('openai.temperature'),
-    getSetting('openai.baseUrl'),
     getSetting('prompt.system'),
   ]);
-  const apiKey = await getSetting('openai.apiKey');
-  // Local providers accept any key; OpenAI SDK requires a non-empty string.
-  const client = new OpenAI({
-    apiKey: apiKey || 'local',
-    baseURL: baseUrl || undefined,
-    timeout: 120_000,
-    maxRetries: 2,
-  });
+  const client = await getOpenAIClient('chat');
 
   const stream = await client.chat.completions.create({
     model,
