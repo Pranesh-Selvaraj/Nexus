@@ -1,7 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { buildMessages } from './llm.service.js';
+import { buildMessages, generateConversationTitle } from './llm.service.js';
 import type { SourceHit } from './llm.service.js';
+
+const completionsCreate = vi.hoisted(() => vi.fn());
+
+vi.mock('openai', () => ({
+  default: vi.fn(function () {
+    return { chat: { completions: { create: completionsCreate } } };
+  }),
+}));
+vi.mock('./settings.service.js', () => ({
+  getSetting: vi.fn(async () => 'gpt-4o-mini'),
+  getSettingNumber: vi.fn(async () => 0.2),
+}));
 
 const source = (overrides: Partial<SourceHit> = {}): SourceHit => ({
   id: '11111111-1111-4111-8111-111111111111',
@@ -81,5 +93,33 @@ describe('buildMessages', () => {
     });
     expect(messages).toHaveLength(2);
     expect(String(messages[1]?.content)).toContain('Question: q');
+  });
+});
+
+describe('generateConversationTitle', () => {
+  it('uses the LLM output as the title, stripping quotes', async () => {
+    completionsCreate.mockResolvedValue({
+      choices: [{ message: { content: '"Quarterly planning notes"' } }],
+    });
+
+    const title = await generateConversationTitle('What are our Q3 goals?');
+    expect(title).toBe('Quarterly planning notes');
+
+    const createArgs = completionsCreate.mock.calls[0]?.[0] as {
+      model: string;
+      messages: { content: string }[];
+    };
+    expect(createArgs.model).toBe('gpt-4o-mini');
+    expect(createArgs.messages[0]?.content).toContain('What are our Q3 goals?');
+  });
+
+  it('throws when the LLM returns no content', async () => {
+    completionsCreate.mockResolvedValue({
+      choices: [{ message: { content: '' } }],
+    });
+
+    await expect(generateConversationTitle('hi')).rejects.toThrow(
+      'empty conversation title',
+    );
   });
 });

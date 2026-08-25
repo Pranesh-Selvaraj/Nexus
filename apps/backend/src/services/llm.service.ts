@@ -216,3 +216,41 @@ export async function streamAnswer(
   });
   return stream;
 }
+
+// ---------------------------------------------------------------------------
+// Conversation titles
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate a short conversation title from the first user message. Kept
+ * deliberately tolerant: callers treat a failure as non-fatal and fall back
+ * to the message-prefix title. No max_tokens is sent - some OpenAI-compatible
+ * providers reject it - so the result is capped on the server instead.
+ */
+export async function generateConversationTitle(
+  firstMessage: string,
+): Promise<string> {
+  await assertOpenAIConfigured();
+  const client = await getOpenAIClient('chat');
+  const model = await getSetting('openai.model');
+
+  const prompt = [
+    'You name chat conversations.',
+    `Generate a short title (at most 6 words, no quotes, no trailing punctuation) for a conversation that starts with this user message:`,
+    firstMessage.slice(0, 500),
+    'Reply with ONLY the title.',
+  ].join('\n');
+
+  const completion = await client.chat.completions.create({
+    model,
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.3,
+  });
+
+  const raw = completion.choices[0]?.message?.content?.trim() ?? '';
+  const title = raw.replace(/^["']+|["']+$/g, '').trim();
+  if (!title) {
+    throw new Error('LLM returned an empty conversation title');
+  }
+  return title.slice(0, 80);
+}
