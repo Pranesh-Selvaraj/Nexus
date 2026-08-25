@@ -29,7 +29,7 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 ## Features
 
 - 📁 **Workspaces** — organize documents into isolated workspaces.
-- 📤 **Document ingestion** — upload PDF, TXT, Markdown, CSV, and JSON files (up to 25 MB each).
+- 📤 **Document ingestion** — upload PDF, DOCX, TXT, Markdown, CSV, and JSON files (up to 25 MB each).
 - 🔄 **Queue-based indexing** — documents are chunked and embedded by a background BullMQ worker, so the API stays responsive.
 - 🔍 **Hybrid search** — combines vector similarity (pgvector) with keyword search for robust retrieval.
 - 💬 **RAG chat** — streamed, context-grounded answers over WebSocket, with per-answer **token usage**

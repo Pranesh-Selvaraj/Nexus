@@ -5,6 +5,9 @@ import { trpc } from '../../lib/trpc';
 
 const ACCEPT = {
   'application/pdf': ['.pdf'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [
+    '.docx',
+  ],
   'text/plain': ['.txt', '.md', '.markdown'],
   'text/csv': ['.csv'],
   'application/json': ['.json'],
@@ -101,7 +104,7 @@ export function UploadDropzone({ workspaceId }: Props) {
               Drag &amp; drop documents
             </p>
             <p className="mt-1 text-xs text-zinc-500">
-              or click to browse · PDF, TXT, MD, CSV, JSON
+              or click to browse · PDF, DOCX, TXT, MD, CSV, JSON
             </p>
           </>
         )}

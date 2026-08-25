@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import JSZip from 'jszip';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { extractPages, splitIntoChunks } from './chunking.service.js';
@@ -13,6 +14,41 @@ async function tmpFile(name: string, content: string): Promise<string> {
   tmpDirs.push(dir);
   const filePath = path.join(dir, name);
   await writeFile(filePath, content);
+  return filePath;
+}
+
+/** Build a minimal but valid .docx (zip with word/document.xml). */
+async function tmpDocx(text: string): Promise<string> {
+  const zip = new JSZip();
+  zip.file(
+    '[Content_Types].xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+  );
+  zip.file(
+    '_rels/.rels',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`,
+  );
+  zip.file(
+    'word/document.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>${text}</w:t></w:r></w:p>
+  </w:body>
+</w:document>`,
+  );
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'nexus-chunking-'));
+  tmpDirs.push(dir);
+  const filePath = path.join(dir, 'doc.docx');
+  await writeFile(filePath, await zip.generateAsync({ type: 'nodebuffer' }));
   return filePath;
 }
 
@@ -44,6 +80,21 @@ describe('extractPages', () => {
   it('rejects empty files with a clear error', async () => {
     const filePath = await tmpFile('empty.txt', '   \n  ');
     await expect(extractPages(filePath, 'txt')).rejects.toThrow(
+      'contains no extractable text',
+    );
+  });
+
+  it('extracts text from docx files', async () => {
+    const filePath = await tmpDocx('Hello from a Word document');
+    const pages = await extractPages(filePath, 'docx');
+    expect(pages).toHaveLength(1);
+    expect(pages[0]?.page).toBe(1);
+    expect(pages[0]?.text).toContain('Hello from a Word document');
+  });
+
+  it('rejects docx files without extractable text', async () => {
+    const filePath = await tmpDocx('   ');
+    await expect(extractPages(filePath, 'docx')).rejects.toThrow(
       'contains no extractable text',
     );
   });

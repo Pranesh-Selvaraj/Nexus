@@ -1,5 +1,6 @@
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import fs from 'node:fs/promises';
+import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 
 import { getSettingNumber } from './settings.service.js';
@@ -36,6 +37,13 @@ export async function extractPages(
       throw new Error('PDF contains no extractable text');
     }
     return pages.map((text, i) => ({ page: i + 1, text }));
+  }
+
+  if (fileType === 'docx') {
+    const result = await mammoth.extractRawText({ buffer });
+    const text = result.value.trim();
+    if (!text) throw new Error('DOCX contains no extractable text');
+    return [{ page: 1, text }];
   }
 
   // Plain text formats (txt, md, csv, json, ...)
