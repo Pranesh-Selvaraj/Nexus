@@ -2,7 +2,10 @@ import type OpenAI from 'openai';
 import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import { assertOpenAIConfigured, embedText } from './embedding.service.js';
+import {
+  assertOpenAIConfigured,
+  embedTextCached,
+} from './embedding.service.js';
 import { getOpenAIClient } from './openai-client.js';
 import { getSetting, getSettingNumber } from './settings.service.js';
 
@@ -86,7 +89,7 @@ export async function hybridRetrieveChunks(
   workspaceId: string,
   query: string,
 ): Promise<SourceHit[]> {
-  const embedding = await embedText(query);
+  const embedding = await embedTextCached(query);
   const language = await safeFtsLanguage();
   const [similarityWeight, keywordWeight, topK] = await Promise.all([
     getSettingNumber('rag.similarityWeight'),

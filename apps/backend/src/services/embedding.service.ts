@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto';
+
+import { Redis } from 'ioredis';
+
 import { getOpenAIClient } from './openai-client.js';
 
 import { getSetting } from './settings.service.js';
@@ -5,6 +9,70 @@ import { getSetting } from './settings.service.js';
 const BATCH_SIZE = 100;
 
 const EMBEDDING_MODEL_FALLBACK = 'text-embedding-3-small';
+
+// ---------------------------------------------------------------------------
+// Query embedding cache
+//
+// Chat re-embeds the user's question on every message. Query embeddings are
+// cheap to cache: the key includes the embedding model so switching models
+// (or dimensions) never serves stale vectors. Best-effort: any Redis failure
+// falls back to embedding directly - the cache is an optimization, never a
+// dependency of retrieval.
+// ---------------------------------------------------------------------------
+
+const QUERY_CACHE_TTL_S = 60 * 60 * 24; // 24h
+
+const queryCacheRedis = new Redis(
+  process.env.REDIS_URL ?? 'redis://localhost:6379',
+  {
+    // Fail fast instead of queueing commands while disconnected.
+    lazyConnect: true,
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 1,
+  },
+);
+// Cache errors are handled per-operation; silence the default log spam.
+queryCacheRedis.on('error', () => undefined);
+
+/**
+ * Embed a single query string with a Redis-backed cache, keyed by
+ * embedding model + sha256 of the text (24h TTL).
+ */
+export async function embedTextCached(text: string): Promise<number[]> {
+  const model =
+    (await getSetting('openai.embeddingModel')) || EMBEDDING_MODEL_FALLBACK;
+  const key = `qemb:${model}:${createHash('sha256').update(text).digest('hex')}`;
+
+  try {
+    const hit = await queryCacheRedis.get(key);
+    if (hit) {
+      const parsed: unknown = JSON.parse(hit);
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every((n) => typeof n === 'number')
+      ) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Cache read failed - embed anyway (best-effort cache)
+  }
+
+  const vector = await embedText(text);
+
+  try {
+    await queryCacheRedis.set(
+      key,
+      JSON.stringify(vector),
+      'EX',
+      QUERY_CACHE_TTL_S,
+    );
+  } catch {
+    // Cache write failed - the embedding itself is still valid
+  }
+  return vector;
+}
 
 /** Resolve the effective OpenAI credentials/options (settings > env). */
 async function openAIConfig(): Promise<{
