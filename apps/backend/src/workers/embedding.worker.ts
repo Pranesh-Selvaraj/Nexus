@@ -3,12 +3,16 @@ import '../utils/env.js';
 import path from 'node:path';
 
 import { Worker } from 'bullmq';
-import { eq } from 'drizzle-orm';
+import { eq, lt } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import { chunks, documents } from '../db/schema.js';
+import { chunks, documents, sessions } from '../db/schema.js';
 import type { EmbeddingJobData } from '../queues/index.js';
-import { redisConnection } from '../queues/index.js';
+import {
+  MAINTENANCE_JOB,
+  redisConnection,
+  scheduleMaintenance,
+} from '../queues/index.js';
 import { extractPages, splitIntoChunks } from '../services/chunking.service.js';
 import {
   embedTexts,
@@ -74,9 +78,23 @@ async function processDocument(documentId: string): Promise<void> {
   });
 }
 
+/** Delete sessions whose expiry has passed (daily maintenance job). */
+async function purgeExpiredSessions(): Promise<number> {
+  const deleted = await db
+    .delete(sessions)
+    .where(lt(sessions.expiresAt, new Date()))
+    .returning({ id: sessions.id });
+  return deleted.length;
+}
+
 const worker = new Worker<EmbeddingJobData>(
   'embedding',
   async (job) => {
+    if (job.name === MAINTENANCE_JOB) {
+      const purged = await purgeExpiredSessions();
+      console.log(`[worker] maintenance: purged ${purged} expired session(s)`);
+      return { maintenance: 'sessions-purged', purged };
+    }
     const documentId = job.data.documentId;
     await processDocument(documentId);
     return { documentId, chunks: undefined as number | undefined };
@@ -114,6 +132,10 @@ worker.on('failed', async (job, err) => {
 worker.on('error', (err) => {
   console.error('[worker] redis error:', err.message);
 });
+
+void scheduleMaintenance().catch((err) =>
+  console.error('[worker] failed to schedule maintenance job:', err.message),
+);
 
 console.log(
   `[worker] listening for embedding jobs (redis: ${process.env.REDIS_URL ?? 'redis://localhost:6379'}, uploads: ${path.resolve(UPLOAD_DIR)})`,

@@ -127,6 +127,81 @@ jobs:
         run: pnpm test
 
   # ---------------------------------------------------------------------------
+  # Integration smoke test (real stack: API + worker + Postgres + Redis)
+  #
+  # Runs the API-level smoke suite against the full ingestion pipeline with a
+  # deterministic mock OpenAI stub - no API key or network needed. The stub
+  # makes embeddings/chat succeed, so SMOKE_EXPECT_READY=1 requires upload →
+  # chunk → embed → store to complete end-to-end.
+  # ---------------------------------------------------------------------------
+  smoke:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: nexus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexus"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://nexus:nexus@localhost:5432/nexus
+      REDIS_URL: redis://localhost:6379
+      OPENAI_BASE_URL: http://localhost:3310/v1
+      OPENAI_MODEL: gpt-4o-mini
+      OPENAI_EMBEDDING_MODEL: text-embedding-3-small
+      UPLOAD_DIR: /tmp/nexus-smoke-uploads
+      SMOKE_EXPECT_READY: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.21.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run smoke suite (mock OpenAI + API + worker)
+        shell: bash
+        run: |
+          pnpm --filter @nexus/backend mock:openai &
+          MOCK_PID=$!
+          trap 'kill $MOCK_PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3310/v1/models > /dev/null; then break; fi
+            sleep 0.5
+          done
+          curl -sf http://localhost:3310/v1/models > /dev/null || {
+            echo "mock OpenAI did not start"; exit 1;
+          }
+          pnpm --filter @nexus/backend smoke
+
+  # ---------------------------------------------------------------------------
   # Dependency vulnerability audit (fail-closed since the langchain upgrade)
   # ---------------------------------------------------------------------------
   audit:

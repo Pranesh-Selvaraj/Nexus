@@ -3,6 +3,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 
 import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { createTrpcClient, trpc } from './lib/trpc';
 import './styles/globals.css';
 
@@ -20,10 +21,12 @@ const trpcClient = createTrpcClient();
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <App />
-      </trpc.Provider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <App />
+        </trpc.Provider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </React.StrictMode>,
 );

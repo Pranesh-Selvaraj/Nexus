@@ -26,9 +26,10 @@ async function fetchJsonAuth(base: string, path: string, init?: RequestInit) {
   return { status: res.status, body };
 }
 
-function print(name: string, ok: boolean, detail?: unknown) {
+function print(name: string, result: boolean, detail?: unknown) {
+  if (!result) ok = false;
   console.log(
-    `${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  ${JSON.stringify(detail).slice(0, 220)}` : ''}`,
+    `${result ? 'PASS' : 'FAIL'}  ${name}${detail ? `  ${JSON.stringify(detail).slice(0, 220)}` : ''}`,
   );
 }
 
@@ -184,9 +185,16 @@ try {
     finalStatus = d.body?.result?.data?.[0]?.status;
     if (finalStatus && finalStatus !== 'processing') break;
   }
+  // SMOKE_EXPECT_READY=1 (CI, with the mock OpenAI stub) requires the full
+  // indexing pipeline to succeed: upload -> chunk -> embed -> store.
+  const expectReady = process.env.SMOKE_EXPECT_READY === '1';
   print(
-    'worker indexes document (ready) or fails without API key (failed)',
-    finalStatus === 'ready' || finalStatus === 'failed',
+    expectReady
+      ? 'worker indexes document to ready'
+      : 'worker indexes document (ready) or fails without API key (failed)',
+    expectReady
+      ? finalStatus === 'ready'
+      : finalStatus === 'ready' || finalStatus === 'failed',
     { finalStatus },
   );
 
