@@ -12,7 +12,11 @@ import {
 import { db } from '../db/index.js';
 import { conversations, messages, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
-import { hybridRetrieveChunks, streamAnswer } from '../services/llm.service.js';
+import {
+  generateConversationTitle,
+  hybridRetrieveChunks,
+  streamAnswer,
+} from '../services/llm.service.js';
 
 function toConversationDTO(row: {
   id: string;
@@ -201,6 +205,21 @@ export const chatRouter = t.router({
             });
             if (cancelled) return;
             emit.next({ type: 'conversation', conversationId: conversation });
+
+            // Title the conversation in the background - it must never delay
+            // the first token. Failures keep the message-prefix title.
+            const firstMessage = input.message;
+            void (async () => {
+              try {
+                const title = await generateConversationTitle(firstMessage);
+                await db
+                  .update(conversations)
+                  .set({ title })
+                  .where(eq(conversations.id, conversation));
+              } catch {
+                // Non-fatal: keep the fallback title.
+              }
+            })();
 
             const sources = await hybridRetrieveChunks(
               input.workspaceId,
