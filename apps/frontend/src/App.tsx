@@ -1,13 +1,29 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
 import type { UserDTO } from '@nexus/shared-types';
 
 import { fetchMe } from './lib/auth';
 import { trpc } from './lib/trpc';
-import { LoginScreen } from './features/auth/LoginScreen';
-import { SettingsPanel } from './features/settings/SettingsPanel';
-import { WorkspacePanel } from './features/workspaces/WorkspacePanel';
 import { WorkspaceSidebar } from './features/workspaces/WorkspaceSidebar';
+
+// Route-level code splitting: each panel loads in its own chunk (Vite) and
+// only when first needed, keeping the initial bundle small. The sidebar is
+// part of the app shell and stays eager.
+const LoginScreen = lazy(() =>
+  import('./features/auth/LoginScreen').then((m) => ({
+    default: m.LoginScreen,
+  })),
+);
+const SettingsPanel = lazy(() =>
+  import('./features/settings/SettingsPanel').then((m) => ({
+    default: m.SettingsPanel,
+  })),
+);
+const WorkspacePanel = lazy(() =>
+  import('./features/workspaces/WorkspacePanel').then((m) => ({
+    default: m.WorkspacePanel,
+  })),
+);
 
 type GateState =
   | { status: 'checking' }
@@ -51,14 +67,24 @@ export default function App() {
 
   if (gate.status === 'anonymous') {
     return (
-      <LoginScreen
-        onAuthed={async () => {
-          const user = await fetchMe();
-          setGate(
-            user ? { status: 'authenticated', user } : { status: 'anonymous' },
-          );
-        }}
-      />
+      <Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-500">
+            <span className="animate-pulse text-sm">Loading...</span>
+          </div>
+        }
+      >
+        <LoginScreen
+          onAuthed={async () => {
+            const user = await fetchMe();
+            setGate(
+              user
+                ? { status: 'authenticated', user }
+                : { status: 'anonymous' },
+            );
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -77,16 +103,24 @@ export default function App() {
         appName={appName}
       />
       <main className="flex min-w-0 flex-1 flex-col">
-        {view === 'settings' ? (
-          <SettingsPanel />
-        ) : activeWorkspaceId ? (
-          <WorkspacePanel
-            key={activeWorkspaceId}
-            workspaceId={activeWorkspaceId}
-          />
-        ) : (
-          <EmptyState />
-        )}
+        <Suspense
+          fallback={
+            <div className="flex flex-1 items-center justify-center text-zinc-500">
+              <span className="animate-pulse text-sm">Loading...</span>
+            </div>
+          }
+        >
+          {view === 'settings' ? (
+            <SettingsPanel />
+          ) : activeWorkspaceId ? (
+            <WorkspacePanel
+              key={activeWorkspaceId}
+              workspaceId={activeWorkspaceId}
+            />
+          ) : (
+            <EmptyState />
+          )}
+        </Suspense>
       </main>
     </div>
   );
