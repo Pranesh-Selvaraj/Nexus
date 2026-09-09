@@ -22,7 +22,8 @@ import { baseUrlEndpointPath, suggestBaseUrl } from '../utils/provider-url.js';
 
 const settingKeySchema = z.object({ key: z.string().min(1).max(64) });
 
-/** Short timeout + no retries: settings-panel probes must feel snappy. */
+/** Short timeout + one retry: settings-panel probes must stay snappy while
+ * surviving transient network blips (DNS, Wi-Fi, resets). */
 const PROBE_TIMEOUT_MS = 15_000;
 
 function providerLabel(baseUrl: string): string {
@@ -36,7 +37,7 @@ function probeClient(config: ProviderConfig): OpenAI {
     baseURL: config.baseUrl || undefined,
     defaultHeaders: defaultProviderHeaders(),
     timeout: PROBE_TIMEOUT_MS,
-    maxRetries: 0,
+    maxRetries: 1,
   });
 }
 

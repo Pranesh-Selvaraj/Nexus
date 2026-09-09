@@ -36,4 +36,11 @@ describe('friendlyErrorMessage', () => {
   it('handles non-Error values', () => {
     expect(friendlyErrorMessage(undefined)).toBe('undefined');
   });
+
+  it('appends the underlying network error code', () => {
+    const err = new Error('Connection error.', {
+      cause: { code: 'ECONNRESET' },
+    });
+    expect(friendlyErrorMessage(err)).toBe('Connection error. (ECONNRESET)');
+  });
 });
