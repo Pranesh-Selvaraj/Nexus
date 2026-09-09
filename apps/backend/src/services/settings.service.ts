@@ -106,12 +106,13 @@ export const SETTING_DEFS: SettingDef[] = [
     key: 'embedding.dimensions',
     label: 'Embedding dimensions',
     description:
-      'Vector dimensions of the embedding model. OpenAI text-embedding-3-small is 1536; local models vary (nomic-embed-text 768, bge-m3 1024).',
-    type: 'select',
+      'Vector dimensions produced by the embedding model (match the model: 1536 text-embedding-3-small, 768 nomic-embed-text, 1024 bge-m3/mistral-embed, 2560 qwen3-embedding:4b, 3072 text-embedding-3-large). Documents indexed earlier must be re-uploaded after a change.',
+    type: 'number',
     env: null,
     default: 1536,
+    min: 1,
+    max: 16000,
     group: 'openai',
-    options: ['256', '384', '512', '768', '1024', '1536', '2048'],
   },
   {
     key: 'openai.temperature',

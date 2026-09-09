@@ -44,9 +44,14 @@ queryCacheRedis.on('error', () => undefined);
  * embedding model + sha256 of the text (24h TTL).
  */
 export async function embedTextCached(text: string): Promise<number[]> {
-  const model =
-    (await getSetting('openai.embeddingModel')) || EMBEDDING_MODEL_FALLBACK;
-  const key = `qemb:${model}:${createHash('sha256').update(text).digest('hex')}`;
+  const [model, dims] = await Promise.all([
+    getSetting('openai.embeddingModel'),
+    getSetting('embedding.dimensions'),
+  ]);
+  const effectiveModel = model || EMBEDDING_MODEL_FALLBACK;
+  // Key includes the dimensions: changing the setting must never serve
+  // vectors of the wrong length (pgvector rejects mismatched dimensions).
+  const key = `qemb:${effectiveModel}:${dims}:${createHash('sha256').update(text).digest('hex')}`;
 
   try {
     const hit = await queryCacheRedis.get(key);

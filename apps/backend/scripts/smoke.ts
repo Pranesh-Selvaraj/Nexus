@@ -435,13 +435,15 @@ try {
     'settings.update invalid select option rejected',
     badLang.body?.error?.data?.code === 'BAD_REQUEST',
   );
+  // embedding.dimensions accepts arbitrary values (matching whatever the
+  // embedding model outputs, e.g. 2560 for qwen3-embedding:4b)
   const dims = await fetchJson('/trpc/settings.update', {
     method: 'POST',
-    body: JSON.stringify({ key: 'embedding.dimensions', value: '768' }),
+    body: JSON.stringify({ key: 'embedding.dimensions', value: '2560' }),
   });
   print(
     'settings.update embedding.dimensions',
-    dims.body?.result?.data?.value === '768',
+    dims.body?.result?.data?.value === '2560',
   );
   await fetchJson('/trpc/settings.update', {
     method: 'POST',
