@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { trpc } from '../../lib/trpc';
 
 const GROUPS: { id: string; label: string }[] = [
-  { id: 'openai', label: 'OpenAI' },
+  { id: 'openai', label: 'Provider' },
   { id: 'retrieval', label: 'Retrieval' },
   { id: 'server', label: 'Server' },
   { id: 'auth', label: 'Authentication' },
@@ -91,9 +91,31 @@ export function SettingsPanel() {
   }
 
   const listModels = trpc.settings.listModels.useMutation();
+  const listEmbeddingModels = trpc.settings.listEmbeddingModels.useMutation();
 
-  const PRESETS: { id: string; label: string; baseUrl: string }[] = [
+  async function pickModel(
+    key: 'openai.model' | 'openai.embeddingModel',
+    model: string,
+  ) {
+    setDrafts((p) => ({ ...p, [key]: model }));
+    await updateSetting.mutateAsync({ key, value: model });
+    void utils.settings.list.invalidate();
+  }
+
+  const PRESETS: {
+    id: string;
+    label: string;
+    baseUrl: string;
+    /** Extra guidance shown after applying the preset. */
+    note?: string;
+  }[] = [
     { id: 'openai', label: 'OpenAI', baseUrl: '' },
+    {
+      id: 'opencode',
+      label: 'OpenCode Zen',
+      baseUrl: 'https://opencode.ai/zen/v1',
+      note: 'OpenCode Zen serves chat models only — set the embedding base URL and key below to a provider with embeddings (OpenAI, Ollama, ...).',
+    },
     { id: 'ollama', label: 'Ollama', baseUrl: 'http://localhost:11434/v1' },
     { id: 'lmstudio', label: 'LM Studio', baseUrl: 'http://localhost:1234/v1' },
     {
@@ -104,13 +126,18 @@ export function SettingsPanel() {
     { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' },
   ];
 
-  async function applyPreset(baseUrl: string) {
-    await updateSetting.mutateAsync({ key: 'openai.baseUrl', value: baseUrl });
-    setDrafts((p) => ({ ...p, 'openai.baseUrl': baseUrl }));
+  async function applyPreset(preset: { baseUrl: string; note?: string }) {
+    await updateSetting.mutateAsync({
+      key: 'openai.baseUrl',
+      value: preset.baseUrl,
+    });
+    setDrafts((p) => ({ ...p, 'openai.baseUrl': preset.baseUrl }));
     void utils.settings.list.invalidate();
     setSaved(
-      baseUrl
-        ? 'Provider preset applied — set the model names and fetch the model list below.'
+      preset.baseUrl
+        ? `Provider preset applied — ${
+            preset.note ?? 'set the model names and fetch the model list below.'
+          }`
         : 'Provider set to OpenAI.',
     );
   }
@@ -154,15 +181,16 @@ export function SettingsPanel() {
           <div className="px-5 py-4">
             <p className="text-xs text-zinc-500">
               Quick-set the API base URL for common providers (including local
-              ones). Local providers don't need an API key. Set the chat and
-              embedding model names below, matching the embedding dimensions
-              setting.
+              ones). Local providers don't need an API key. Chat-only providers
+              (like OpenCode Zen) have no embeddings — point the embedding base
+              URL and key at another provider. Set the chat and embedding model
+              names below, matching the embedding dimensions setting.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {PRESETS.map((preset) => (
                 <button
                   key={preset.id}
-                  onClick={() => void applyPreset(preset.baseUrl)}
+                  onClick={() => void applyPreset(preset)}
                   disabled={updateSetting.isPending}
                   className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-nexus-500 hover:text-nexus-300 disabled:opacity-40"
                 >
@@ -171,51 +199,23 @@ export function SettingsPanel() {
               ))}
             </div>
 
-            <div className="mt-4 border-t border-zinc-800 pt-3">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => listModels.mutate()}
-                  disabled={listModels.isPending}
-                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40"
-                >
-                  {listModels.isPending
-                    ? 'Fetching...'
-                    : 'Fetch available models'}
-                </button>
-                {listModels.data && !listModels.data.error && (
-                  <span className="text-xs text-emerald-400">
-                    {listModels.data.models.length} models found
-                  </span>
-                )}
-                {listModels.data?.error && (
-                  <span className="text-xs text-red-400">
-                    {listModels.data.error}
-                  </span>
-                )}
-              </div>
-              {listModels.data && listModels.data.models.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {listModels.data.models.map((model) => (
-                    <button
-                      key={model}
-                      onClick={() => {
-                        setDrafts((p) => ({
-                          ...p,
-                          'openai.model': model,
-                        }));
-                        void updateSetting.mutateAsync({
-                          key: 'openai.model',
-                          value: model,
-                        });
-                        void utils.settings.list.invalidate();
-                      }}
-                      className="rounded bg-zinc-800 px-2 py-1 font-mono text-[11px] text-zinc-300 transition-colors hover:bg-nexus-600/30"
-                    >
-                      {model}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="mt-4 space-y-4 border-t border-zinc-800 pt-3">
+              <ModelPickerRow
+                label="Fetch chat models"
+                onFetch={() => listModels.mutate()}
+                pending={listModels.isPending}
+                result={listModels.data}
+                onPick={(model) => void pickModel('openai.model', model)}
+              />
+              <ModelPickerRow
+                label="Fetch embedding models"
+                onFetch={() => listEmbeddingModels.mutate()}
+                pending={listEmbeddingModels.isPending}
+                result={listEmbeddingModels.data}
+                onPick={(model) =>
+                  void pickModel('openai.embeddingModel', model)
+                }
+              />
             </div>
           </div>
         </section>
@@ -288,10 +288,62 @@ export function SettingsPanel() {
             disabled={testOpenAI.isPending}
             className="rounded-lg border border-zinc-700 px-5 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 disabled:opacity-40"
           >
-            {testOpenAI.isPending ? 'Testing...' : 'Test OpenAI connection'}
+            {testOpenAI.isPending ? 'Testing...' : 'Test connection'}
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface ModelPickerRowProps {
+  label: string;
+  onFetch: () => void;
+  pending: boolean;
+  result?: { models: string[]; error: string | null };
+  onPick: (model: string) => void;
+}
+
+/** Fetch button + status + clickable model-name chips for one provider. */
+function ModelPickerRow({
+  label,
+  onFetch,
+  pending,
+  result,
+  onPick,
+}: ModelPickerRowProps) {
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onFetch}
+          disabled={pending}
+          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40"
+        >
+          {pending ? 'Fetching...' : label}
+        </button>
+        {result && !result.error && (
+          <span className="text-xs text-emerald-400">
+            {result.models.length} models found
+          </span>
+        )}
+        {result?.error && (
+          <span className="text-xs text-red-400">{result.error}</span>
+        )}
+      </div>
+      {result && !result.error && result.models.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {result.models.map((model) => (
+            <button
+              key={model}
+              onClick={() => onPick(model)}
+              className="rounded bg-zinc-800 px-2 py-1 font-mono text-[11px] text-zinc-300 transition-colors hover:bg-nexus-600/30"
+            >
+              {model}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -29,6 +29,22 @@ describe('settings registry', () => {
       new Set(['openai', 'retrieval', 'server', 'auth', 'ui']),
     );
   });
+
+  it('declares an optional separate embedding provider', () => {
+    const baseUrl = SETTING_DEFS.find(
+      (d) => d.key === 'openai.embeddingBaseUrl',
+    );
+    expect(baseUrl?.type).toBe('text');
+    expect(baseUrl?.env).toBe('OPENAI_EMBEDDING_BASE_URL');
+    expect(baseUrl?.default).toBe('');
+    expect(baseUrl?.group).toBe('openai');
+
+    const apiKey = SETTING_DEFS.find((d) => d.key === 'openai.embeddingApiKey');
+    expect(apiKey?.type).toBe('secret');
+    expect(apiKey?.env).toBe('OPENAI_EMBEDDING_API_KEY');
+    expect(apiKey?.default).toBe('');
+    expect(apiKey?.group).toBe('openai');
+  });
 });
 
 describe('secret encryption', () => {

@@ -40,7 +40,7 @@ export const SETTING_DEFS: SettingDef[] = [
     key: 'openai.baseUrl',
     label: 'API base URL',
     description:
-      'OpenAI-compatible base URL. Leave empty for OpenAI. Examples: http://localhost:11434/v1 (Ollama), https://openrouter.ai/api/v1',
+      'OpenAI-compatible base URL for chat. Leave empty for OpenAI. Examples: http://localhost:11434/v1 (Ollama), https://opencode.ai/zen/v1 (OpenCode Zen)',
     type: 'text',
     env: 'OPENAI_BASE_URL',
     default: '',
@@ -50,7 +50,7 @@ export const SETTING_DEFS: SettingDef[] = [
     key: 'openai.apiKey',
     label: 'API key',
     description:
-      'OpenAI API key. Stored encrypted; leave empty to keep the env value.',
+      'API key for the chat provider. Stored encrypted; leave empty to keep the env value.',
     type: 'secret',
     env: 'OPENAI_API_KEY',
     default: '',
@@ -69,10 +69,30 @@ export const SETTING_DEFS: SettingDef[] = [
     key: 'openai.embeddingModel',
     label: 'Embedding model',
     description:
-      'Must produce 1536-dimension vectors (schema is vector(1536)).',
+      'Embedding model name at the embedding provider. Must match the dimensions setting below.',
     type: 'text',
     env: 'OPENAI_EMBEDDING_MODEL',
     default: 'text-embedding-3-small',
+    group: 'openai',
+  },
+  {
+    key: 'openai.embeddingBaseUrl',
+    label: 'Embedding base URL',
+    description:
+      'Base URL for a separate embedding provider (chat-only providers like OpenCode Zen need one). Leave empty to use the main API base URL.',
+    type: 'text',
+    env: 'OPENAI_EMBEDDING_BASE_URL',
+    default: '',
+    group: 'openai',
+  },
+  {
+    key: 'openai.embeddingApiKey',
+    label: 'Embedding API key',
+    description:
+      'API key for the embedding provider. Stored encrypted; leave empty to use the main API key.',
+    type: 'secret',
+    env: 'OPENAI_EMBEDDING_API_KEY',
+    default: '',
     group: 'openai',
   },
   {

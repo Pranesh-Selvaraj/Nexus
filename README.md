@@ -180,22 +180,24 @@ git tag v1.0.0 && git push origin v1.0.0
 
 All variables live in `.env` (see `.env.example`). The backend auto-discovers `.env` at the repo root or package root.
 
-| Variable                 | Default                                       | Description                                                                                  |
-| ------------------------ | --------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`           | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string                                                      |
-| `REDIS_URL`              | `redis://localhost:6379`                      | Redis connection string (BullMQ)                                                             |
-| `OPENAI_API_KEY`         | —                                             | OpenAI API key (required only without a base URL)                                            |
-| `OPENAI_BASE_URL`        | _(unset)_                                     | OpenAI-compatible base URL (Ollama, LM Studio, OpenRouter, ...) - enables keyless local mode |
-| `OPENAI_MODEL`           | `gpt-4o-mini`                                 | Chat model                                                                                   |
-| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small`                      | Embedding model                                                                              |
-| `LOCAL_USER_EMAIL`       | `local@nexus.dev`                             | Identity of the single local user                                                            |
-| `AUTH_PASSWORD`          | _(unset)_                                     | When set, login is required (httpOnly session cookie); unset = no-auth dev mode              |
-| `AUTH_COOKIE_SECURE`     | `false`                                       | `true` when serving over HTTPS (adds `Secure` to the session cookie)                         |
-| `SESSION_TTL_DAYS`       | `30`                                          | Session lifetime in days                                                                     |
-| `PORT`                   | `3000`                                        | Backend HTTP/WS port                                                                         |
-| `UPLOAD_DIR`             | `./uploads`                                   | Directory for uploaded documents                                                             |
-| `MAX_UPLOAD_MB`          | `25`                                          | Per-file upload size limit                                                                   |
-| `FRONTEND_ORIGIN`        | `http://localhost:5173`                       | Allowed CORS origin                                                                          |
+| Variable                    | Default                                       | Description                                                                                                                                           |
+| --------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`              | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string                                                                                                               |
+| `REDIS_URL`                 | `redis://localhost:6379`                      | Redis connection string (BullMQ)                                                                                                                      |
+| `OPENAI_API_KEY`            | —                                             | OpenAI API key (required only without a base URL)                                                                                                     |
+| `OPENAI_BASE_URL`           | _(unset)_                                     | OpenAI-compatible base URL for chat (Ollama, OpenCode Zen, LM Studio, OpenRouter, ...) - enables keyless local mode                                   |
+| `OPENAI_MODEL`              | `gpt-4o-mini`                                 | Chat model                                                                                                                                            |
+| `OPENAI_EMBEDDING_MODEL`    | `text-embedding-3-small`                      | Embedding model                                                                                                                                       |
+| `OPENAI_EMBEDDING_BASE_URL` | _(unset)_                                     | OpenAI-compatible base URL for a separate embedding provider (required for chat-only providers such as OpenCode Zen); falls back to `OPENAI_BASE_URL` |
+| `OPENAI_EMBEDDING_API_KEY`  | —                                             | API key for the embedding provider; falls back to `OPENAI_API_KEY`                                                                                    |
+| `LOCAL_USER_EMAIL`          | `local@nexus.dev`                             | Identity of the single local user                                                                                                                     |
+| `AUTH_PASSWORD`             | _(unset)_                                     | When set, login is required (httpOnly session cookie); unset = no-auth dev mode                                                                       |
+| `AUTH_COOKIE_SECURE`        | `false`                                       | `true` when serving over HTTPS (adds `Secure` to the session cookie)                                                                                  |
+| `SESSION_TTL_DAYS`          | `30`                                          | Session lifetime in days                                                                                                                              |
+| `PORT`                      | `3000`                                        | Backend HTTP/WS port                                                                                                                                  |
+| `UPLOAD_DIR`                | `./uploads`                                   | Directory for uploaded documents                                                                                                                      |
+| `MAX_UPLOAD_MB`             | `25`                                          | Per-file upload size limit                                                                                                                            |
+| `FRONTEND_ORIGIN`           | `http://localhost:5173`                       | Allowed CORS origin                                                                                                                                   |
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
 
@@ -217,15 +219,34 @@ Nexus targets single-user, self-hosted personal corpora. The honest envelope:
 
 Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works — set **API base URL** in Settings (or `OPENAI_BASE_URL`):
 
-| Provider                                   | Base URL                         |
-| ------------------------------------------ | -------------------------------- |
-| OpenAI (default)                           | _(empty)_                        |
-| [Ollama](https://ollama.com) (local, free) | `http://localhost:11434/v1`      |
-| [LM Studio](https://lmstudio.ai) (local)   | `http://localhost:11434/v1`      |
-| [OpenRouter](https://openrouter.ai)        | `https://openrouter.ai/api/v1`   |
-| [Groq](https://groq.com)                   | `https://api.groq.com/openai/v1` |
+| Provider                                            | Base URL                         |
+| --------------------------------------------------- | -------------------------------- |
+| OpenAI (default)                                    | _(empty)_                        |
+| [OpenCode Zen](https://opencode.ai/zen) (chat only) | `https://opencode.ai/zen/v1`     |
+| [Ollama](https://ollama.com) (local, free)          | `http://localhost:11434/v1`      |
+| [LM Studio](https://lmstudio.ai) (local)            | `http://localhost:1234/v1`       |
+| [OpenRouter](https://openrouter.ai)                 | `https://openrouter.ai/api/v1`   |
+| [Groq](https://groq.com)                            | `https://api.groq.com/openai/v1` |
 
-With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. Set the embedding model's **dimensions** in Settings (the `chunks.embedding` column is dimension-flexible). Use the **Test OpenAI connection** and **Fetch available models** buttons to verify.
+With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. Set the embedding model's **dimensions** in Settings (the `chunks.embedding` column is dimension-flexible). Use the **Test connection** and **Fetch chat models / Fetch embedding models** buttons to verify.
+
+### Chat-only providers (separate embedding provider)
+
+Some providers — notably **OpenCode Zen** — serve chat models but have **no embeddings endpoint**. Since Nexus embeds both indexed documents and chat queries, point the embedding settings at a provider that does serve embeddings (OpenAI, Ollama, LM Studio, ...):
+
+| Setting (or env var)                             | OpenCode Zen example                            |
+| ------------------------------------------------ | ----------------------------------------------- |
+| API base URL (`OPENAI_BASE_URL`)                 | `https://opencode.ai/zen/v1`                    |
+| API key (`OPENAI_API_KEY`)                       | OpenCode Zen key                                |
+| Chat model (`OPENAI_MODEL`)                      | `kimi-k3`, `deepseek-v4-pro`, ...               |
+| Embedding base URL (`OPENAI_EMBEDDING_BASE_URL`) | `https://api.openai.com/v1` (or a local server) |
+| Embedding API key (`OPENAI_EMBEDDING_API_KEY`)   | OpenAI key (not needed for local)               |
+| Embedding model (`OPENAI_EMBEDDING_MODEL`)       | `text-embedding-3-small`                        |
+
+Notes for OpenCode Zen:
+
+- Only models served over `/chat/completions` work (e.g. `kimi-k3`, `deepseek-v4-pro`, `glm-5`, `minimax-m3`); Anthropic/OpenAI-protocol-only models (Claude, GPT, Grok on Zen) are routed through other endpoints and will fail — the **Test connection** button reports this clearly.
+- Zen's `/models` endpoint is public, so the connection test also sends a tiny chat completion to validate the key and model.
 
 ## Local LLMs (no API key needed)
 
@@ -237,7 +258,7 @@ Point Nexus at any OpenAI-compatible local server — **no API key required**:
    ollama pull llama3.1
    ollama pull nomic-embed-text     # 768-dim embeddings
    ```
-3. In Settings: chat model = `llama3.1`, embedding model = `nomic-embed-text`, **Embedding dimensions = 768**, then **Fetch available models** to verify, and **Test OpenAI connection**
+3. In Settings: chat model = `llama3.1`, embedding model = `nomic-embed-text`, **Embedding dimensions = 768**, then **Fetch chat models** to verify, and **Test connection**
 4. Upload a document — chunks are embedded locally and indexed with the matching dimension
 
 Notes:
@@ -246,21 +267,21 @@ Notes:
 - Embeddings are requested as `encoding_format: float` so plain-float local servers (Ollama/LM Studio) work with the OpenAI SDK's base64 default.
 - Changing the embedding model/dimensions re-indexes: delete the document and re-upload (or use the retry button after changing settings).
 - Retrieval uses exact vector scans (the fixed-dimension HNSW index was removed) — fine at personal-corpus scale.
-- **LM Studio**: base URL `http://localhost:1234/v1` (no key needed). **OpenRouter/Groq**: preset buttons, still require a key.
+- **LM Studio**: base URL `http://localhost:1234/v1` (no key needed). **OpenRouter/Groq/OpenCode Zen**: preset buttons; OpenCode Zen additionally needs a separate embedding provider (see above).
 
 ## Settings panel
 
 Most configuration can be managed from the **Settings** page in the UI (sidebar → Settings) — no `.env` edits or restarts needed:
 
-| Group      | Settings                                                                                                                                                   |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OpenAI     | API key (AES-256-GCM encrypted at rest), API base URL (any OpenAI-compatible provider), chat model, embedding model, **embedding dimensions**, temperature |
-| Retrieval  | chunk size, chunk overlap, sources retrieved (top-K), vector/keyword weights, **search language** (28 PostgreSQL FTS configs)                              |
-| Server     | max upload size                                                                                                                                            |
-| Auth       | session lifetime (days)                                                                                                                                    |
-| Appearance | app name (sidebar + browser title), **system prompt**                                                                                                      |
+| Group      | Settings                                                                                                                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Provider   | API key (AES-256-GCM encrypted at rest), API base URL (any OpenAI-compatible provider), chat model, embedding model, embedding base URL + key (for a separate embedding provider), **embedding dimensions**, temperature |
+| Retrieval  | chunk size, chunk overlap, sources retrieved (top-K), vector/keyword weights, **search language** (28 PostgreSQL FTS configs)                                                                                            |
+| Server     | max upload size                                                                                                                                                                                                          |
+| Auth       | session lifetime (days)                                                                                                                                                                                                  |
+| Appearance | app name (sidebar + browser title), **system prompt**                                                                                                                                                                    |
 
-Precedence: **UI value → environment variable → default**. Emptying a field resets it to the env/default. Secret settings require `SETTINGS_SECRET` in `.env` (the encryption key); the "Test OpenAI connection" and "Fetch available models" buttons validate the provider.
+Precedence: **UI value → environment variable → default**. Emptying a field resets it to the env/default. Secret settings require `SETTINGS_SECRET` in `.env` (the encryption key); the "Test connection" button verifies the chat and embedding providers end to end (a tiny completion, a real embedding, and the returned vector dimensions), and the "Fetch chat models" / "Fetch embedding models" buttons list the models each provider serves.
 
 ## Project structure
 

@@ -2,10 +2,7 @@ import type OpenAI from 'openai';
 import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import {
-  assertOpenAIConfigured,
-  embedTextCached,
-} from './embedding.service.js';
+import { assertChatConfigured, embedTextCached } from './embedding.service.js';
 import { getOpenAIClient } from './openai-client.js';
 import { getSetting, getSettingNumber } from './settings.service.js';
 
@@ -198,7 +195,7 @@ export async function streamAnswer(
 ): Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>> {
   // Fail fast with an actionable message instead of a confusing OpenAI
   // client error deep inside the stream.
-  await assertOpenAIConfigured();
+  await assertChatConfigured();
 
   const [model, temperature, systemPrompt] = await Promise.all([
     getSetting('openai.model'),
@@ -230,7 +227,7 @@ export async function streamAnswer(
 export async function generateConversationTitle(
   firstMessage: string,
 ): Promise<string> {
-  await assertOpenAIConfigured();
+  await assertChatConfigured();
   const client = await getOpenAIClient('chat');
   const model = await getSetting('openai.model');
 
