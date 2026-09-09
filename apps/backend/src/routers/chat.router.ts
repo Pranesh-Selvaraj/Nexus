@@ -17,6 +17,7 @@ import {
   hybridRetrieveChunks,
   streamAnswer,
 } from '../services/llm.service.js';
+import { friendlyErrorMessage } from '../utils/errors.js';
 
 function toConversationDTO(row: {
   id: string;
@@ -263,8 +264,12 @@ export const chatRouter = t.router({
             emit.next({ type: 'done', sources });
           } catch (error) {
             if (cancelled) return;
+            // Provider errors can embed whole HTML pages (wrong base URL,
+            // gateway errors) - keep the surfaced message readable.
             const message =
-              error instanceof Error ? error.message : 'Unknown error occurred';
+              error instanceof Error
+                ? friendlyErrorMessage(error)
+                : 'Unknown error occurred';
             if (conversation) {
               await persistAssistantMessage(conversation, message, []).catch(
                 () => undefined,

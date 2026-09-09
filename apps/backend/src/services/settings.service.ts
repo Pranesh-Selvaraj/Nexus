@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { settings } from '../db/schema.js';
+import { baseUrlEndpointPath, suggestBaseUrl } from '../utils/provider-url.js';
 
 // ---------------------------------------------------------------------------
 // Settings registry
@@ -473,6 +474,18 @@ export async function updateSetting(
 
   // Type validation / clamping
   let stored = value;
+  if (def.key === 'openai.baseUrl' || def.key === 'openai.embeddingBaseUrl') {
+    // A base URL that already contains an endpoint path can never work:
+    // Nexus (like the OpenAI SDK) appends /chat/completions, /models, ...
+    // itself, so the full endpoint URL pasted from a provider dashboard
+    // would double the path. Reject with the corrected URL to paste.
+    const endpointPath = baseUrlEndpointPath(value);
+    if (endpointPath) {
+      throw new Error(
+        `${def.label} points at the ${endpointPath} endpoint itself — Nexus appends the API paths (e.g. /chat/completions, /models) itself. Use ${suggestBaseUrl(value)} instead.`,
+      );
+    }
+  }
   if (def.type === 'select' && def.options && !def.options.includes(value)) {
     throw new Error(`${def.label} must be one of: ${def.options.join(', ')}`);
   }

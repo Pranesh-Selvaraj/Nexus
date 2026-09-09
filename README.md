@@ -219,6 +219,8 @@ Nexus targets single-user, self-hosted personal corpora. The honest envelope:
 
 Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works — set **API base URL** in Settings (or `OPENAI_BASE_URL`):
 
+> ℹ️ The base URL is the **root** of the API (e.g. `https://opencode.ai/zen/go/v1`) — **not** the full `/chat/completions` endpoint. Nexus appends `/chat/completions`, `/models` and `/embeddings` itself; URLs ending in an endpoint path are rejected with the corrected URL to paste.
+
 | Provider                                                        | Base URL                         |
 | --------------------------------------------------------------- | -------------------------------- |
 | OpenAI (default)                                                | _(empty)_                        |

@@ -16,6 +16,8 @@ import {
 } from '../services/embedding.service.js';
 import { getProviderConfig } from '../services/openai-client.js';
 import type { ProviderConfig } from '../services/openai-client.js';
+import { friendlyErrorMessage } from '../utils/errors.js';
+import { baseUrlEndpointPath, suggestBaseUrl } from '../utils/provider-url.js';
 
 const settingKeySchema = z.object({ key: z.string().min(1).max(64) });
 
@@ -37,7 +39,14 @@ function probeClient(config: ProviderConfig): OpenAI {
 }
 
 function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Unknown error';
+  return friendlyErrorMessage(err);
+}
+
+/** Clear hint when a base URL already contains an endpoint path. */
+function endpointPathHint(baseUrl: string): string | null {
+  const path = baseUrlEndpointPath(baseUrl);
+  if (!path) return null;
+  return `the base URL ends with ${path} — Nexus appends the API paths (e.g. /chat/completions, /models) itself, set it to ${suggestBaseUrl(baseUrl)}`;
 }
 
 function errStatus(err: unknown): number | undefined {
@@ -96,6 +105,7 @@ export const settingsRouter = t.router({
   listModels: protectedProcedure.mutation(
     async (): Promise<{ models: string[]; error: string | null }> => {
       const config = await getProviderConfig('chat');
+      const hint = endpointPathHint(config.baseUrl);
       try {
         const client = probeClient(config);
         const list = await client.models.list();
@@ -106,7 +116,7 @@ export const settingsRouter = t.router({
       } catch (err) {
         return {
           models: [],
-          error: `Could not reach ${providerLabel(config.baseUrl)}: ${errMessage(err)}`,
+          error: `Could not reach ${providerLabel(config.baseUrl)}: ${errMessage(err)}${hint ? ` (${hint})` : ''}`,
         };
       }
     },
@@ -119,6 +129,7 @@ export const settingsRouter = t.router({
   listEmbeddingModels: protectedProcedure.mutation(
     async (): Promise<{ models: string[]; error: string | null }> => {
       const config = await getProviderConfig('embedding');
+      const hint = endpointPathHint(config.baseUrl);
       try {
         const client = probeClient(config);
         const list = await client.models.list();
@@ -129,7 +140,7 @@ export const settingsRouter = t.router({
       } catch (err) {
         return {
           models: [],
-          error: `Could not reach ${providerLabel(config.baseUrl)}: ${errMessage(err)}`,
+          error: `Could not reach ${providerLabel(config.baseUrl)}: ${errMessage(err)}${hint ? ` (${hint})` : ''}`,
         };
       }
     },
@@ -165,6 +176,17 @@ export const settingsRouter = t.router({
         };
       }
 
+      // A base URL that already contains an endpoint path (e.g. the full
+      // /chat/completions URL copied from a provider dashboard) can never
+      // work - fail fast with the corrected URL to paste.
+      const chatPathHint = endpointPathHint(chat.baseUrl);
+      if (chatPathHint) {
+        return {
+          ok: false,
+          message: `API base URL misconfigured: ${chatPathHint} and save.`,
+        };
+      }
+
       // --- 1. Chat provider ------------------------------------------------
       const chatUrl = providerLabel(chat.baseUrl);
       const chatClient = probeClient(chat);
@@ -194,6 +216,13 @@ export const settingsRouter = t.router({
 
       // --- 2. Embedding provider -------------------------------------------
       const embeddingUrl = providerLabel(embedding.baseUrl);
+      const embeddingPathHint = endpointPathHint(embedding.baseUrl);
+      if (embeddingPathHint) {
+        return {
+          ok: false,
+          message: `Embedding base URL misconfigured: ${embeddingPathHint} and save.`,
+        };
+      }
       const embeddingBaseUrlSetting = await getSetting(
         'openai.embeddingBaseUrl',
       );

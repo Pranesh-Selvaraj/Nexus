@@ -400,6 +400,23 @@ try {
     'settings.update unknown key rejected',
     unknownKey.body?.error?.data?.code === 'NOT_FOUND',
   );
+
+  // full endpoint URLs (e.g. pasted /chat/completions) are rejected with
+  // the corrected base URL - Nexus appends the API paths itself
+  const badBaseUrl = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({
+      key: 'openai.baseUrl',
+      value: 'http://localhost:3310/v1/chat/completions',
+    }),
+  });
+  print(
+    'settings.update rejects full endpoint URL',
+    badBaseUrl.body?.error?.data?.code === 'BAD_REQUEST' &&
+      String(badBaseUrl.body?.error?.message).includes(
+        'http://localhost:3310/v1',
+      ),
+  );
   const badNumber = await fetchJson('/trpc/settings.update', {
     method: 'POST',
     body: JSON.stringify({ key: 'rag.topK', value: 'abc' }),
