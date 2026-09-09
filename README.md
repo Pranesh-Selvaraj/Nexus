@@ -277,17 +277,25 @@ Notes:
 
 ## Settings panel
 
-Most configuration can be managed from the **Settings** page in the UI (sidebar → Settings) — no `.env` edits or restarts needed:
+Most configuration can be managed from the **Settings** page in the UI (sidebar → Settings) — no `.env` edits or restarts needed. The page is split into two independent provider cards plus one-time groups:
 
-| Group      | Settings                                                                                                                                                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Provider   | API key (AES-256-GCM encrypted at rest), API base URL (any OpenAI-compatible provider), chat model, embedding model, embedding base URL + key (for a separate embedding provider), **embedding dimensions**, temperature |
-| Retrieval  | chunk size, chunk overlap, sources retrieved (top-K), vector/keyword weights, **search language** (28 PostgreSQL FTS configs)                                                                                            |
-| Server     | max upload size                                                                                                                                                                                                          |
-| Auth       | session lifetime (days)                                                                                                                                                                                                  |
-| Appearance | app name (sidebar + browser title), **system prompt**                                                                                                                                                                    |
+| Card / group   | What it configures                                                                                                                                                                                                                     |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Text model** | the provider that **answers questions**: endpoint presets (OpenAI, OpenCode Zen/Go, OpenRouter, Groq) or any custom OpenAI-compatible endpoint, API key, chat model (fetch the list from the endpoint), temperature                    |
+| **Embeddings** | the provider that **indexes documents and encodes questions**: endpoint presets (OpenAI, Ollama, Jina, Mistral) or a custom endpoint, API key, embedding model, **embedding dimensions** (any value, e.g. 2560 for qwen3-embedding:4b) |
+| Retrieval      | chunk size, chunk overlap, sources retrieved (top-K), vector/keyword weights, **search language** (28 PostgreSQL FTS configs)                                                                                                          |
+| Server         | max upload size                                                                                                                                                                                                                        |
+| Auth           | session lifetime (days)                                                                                                                                                                                                                |
+| Appearance     | app name (sidebar + browser title), **system prompt**                                                                                                                                                                                  |
 
-Precedence: **UI value → environment variable → default**. Emptying a field resets it to the env/default. Secret settings require `SETTINGS_SECRET` in `.env` (the encryption key); the "Test connection" button verifies the chat and embedding providers end to end (a tiny completion, a real embedding, and the returned vector dimensions), and the "Fetch chat models" / "Fetch embedding models" buttons list the models each provider serves.
+Precedence: **UI value → environment variable → default**. Emptying a field resets it to the env/default. The **Test connection** button verifies both providers end to end (a tiny completion, a real embedding, and the returned vector dimensions); each card's **Fetch models from this endpoint** button lists the models that endpoint serves — click one to select it.
+
+### Secrets & credentials
+
+- API keys are stored **encrypted at rest** (AES-256-GCM, key derived from `SETTINGS_SECRET` in `.env`) and are **never sent back to the browser in full** — the settings API only returns a masked preview (`sk-…wxyz`), so a full key can never leak through the UI, history, or a compromised session.
+- Keys set via environment variables show an `env` badge and are read straight from `.env` (never written to the database).
+- Saving keys from the UI requires `SETTINGS_SECRET`; without it the panel shows a banner and rejects secret saves. Generate one with `openssl rand -hex 32`.
+- Decrypted keys live only in process memory (with a short-TTL cache) for outgoing requests.
 
 ## Project structure
 

@@ -359,6 +359,13 @@ export function maskSecret(value: string): string {
   return `${value.slice(0, 3)}…${value.slice(-4)}`;
 }
 
+/** The .env.example placeholder is not a real key - never present it as one. */
+const PLACEHOLDER_API_KEY = 'sk-your-key-here';
+
+function isRealSecret(value: string): boolean {
+  return Boolean(value) && value !== PLACEHOLDER_API_KEY;
+}
+
 // ---------------------------------------------------------------------------
 // Reads / writes
 // ---------------------------------------------------------------------------
@@ -424,7 +431,7 @@ export interface SettingView {
   secretConfigured: boolean;
 }
 
-/** Full listing for the settings UI (secrets masked). */
+/** Full listing for the settings UI (secrets never sent in full). */
 export async function listSettings(): Promise<SettingView[]> {
   const rows = await db.select().from(settings);
   const byKey = new Map(rows.map((r) => [r.key, r]));
@@ -436,21 +443,26 @@ export async function listSettings(): Promise<SettingView[]> {
       return {
         key: def.key,
         def,
-        value: raw,
+        // Secrets stay server-side: the client only ever sees a mask.
+        value: row.isSecret ? '' : raw,
         source: 'ui' as const,
-        displayValue: row.isSecret ? maskSecret(raw) : raw,
+        displayValue: row.isSecret && isRealSecret(raw) ? maskSecret(raw) : '',
         secretConfigured: encryptionKeyConfigured(),
       };
     }
     const envValue = def.env ? process.env[def.env] : undefined;
-    const fromEnv = envValue !== undefined && envValue !== '';
+    const fromEnv =
+      envValue !== undefined &&
+      envValue !== '' &&
+      !(def.type === 'secret' && !isRealSecret(envValue));
     const value = fromEnv ? (envValue as string) : String(def.default);
     return {
       key: def.key,
       def,
-      value,
+      value: def.type === 'secret' ? '' : value,
       source: fromEnv ? ('env' as const) : ('ui' as const),
-      displayValue: def.type === 'secret' && value ? maskSecret(value) : value,
+      displayValue:
+        def.type === 'secret' && fromEnv ? maskSecret(value) : value,
       secretConfigured: encryptionKeyConfigured(),
     };
   });
