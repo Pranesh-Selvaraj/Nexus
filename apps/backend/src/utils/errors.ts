@@ -21,8 +21,10 @@ export function friendlyErrorMessage(err: unknown): string {
     : null;
 
   let message = raw
-    .replace(/<script[\s\S]*?<\/script\s*>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style\s*>/gi, ' ')
+    // Consume script/style bodies through their end tag (any whitespace
+    // before '>', per HTML), or to the end of the string if unterminated.
+    .replace(/<script[\s\S]*?(?:<\/script[^>]*>|$)/gi, ' ')
+    .replace(/<style[\s\S]*?(?:<\/style[^>]*>|$)/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&[a-z]+;/gi, ' ')
     .replace(/\s+/g, ' ')
