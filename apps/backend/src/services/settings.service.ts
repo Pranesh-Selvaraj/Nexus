@@ -33,6 +33,8 @@ export interface SettingDef {
   max?: number;
   step?: number;
   options?: string[];
+  /** Input hint shown when the field is empty (text inputs only). */
+  placeholder?: string;
 }
 
 export const SETTING_DEFS: SettingDef[] = [
@@ -40,11 +42,12 @@ export const SETTING_DEFS: SettingDef[] = [
     key: 'openai.baseUrl',
     label: 'API base URL',
     description:
-      'OpenAI-compatible base URL for chat. Leave empty for OpenAI. Examples: http://localhost:11434/v1 (Ollama), https://opencode.ai/zen/v1 (OpenCode Zen)',
+      'OpenAI-compatible base URL for chat — any custom endpoint works. Leave empty for OpenAI. Examples: https://opencode.ai/zen/go/v1 (OpenCode Zen Go), http://localhost:11434/v1 (Ollama)',
     type: 'text',
     env: 'OPENAI_BASE_URL',
     default: '',
     group: 'openai',
+    placeholder: 'Custom endpoint, e.g. https://opencode.ai/zen/go/v1',
   },
   {
     key: 'openai.apiKey',
@@ -64,6 +67,7 @@ export const SETTING_DEFS: SettingDef[] = [
     env: 'OPENAI_MODEL',
     default: 'gpt-4o-mini',
     group: 'openai',
+    placeholder: 'e.g. kimi-k3, gpt-4o-mini',
   },
   {
     key: 'openai.embeddingModel',
@@ -74,16 +78,18 @@ export const SETTING_DEFS: SettingDef[] = [
     env: 'OPENAI_EMBEDDING_MODEL',
     default: 'text-embedding-3-small',
     group: 'openai',
+    placeholder: 'e.g. text-embedding-3-small, nomic-embed-text',
   },
   {
     key: 'openai.embeddingBaseUrl',
     label: 'Embedding base URL',
     description:
-      'Base URL for a separate embedding provider (chat-only providers like OpenCode Zen need one). Leave empty to use the main API base URL.',
+      'Custom OpenAI-compatible endpoint for a separate embedding provider (chat-only providers like OpenCode Zen need one). Leave empty to use the main API base URL.',
     type: 'text',
     env: 'OPENAI_EMBEDDING_BASE_URL',
     default: '',
     group: 'openai',
+    placeholder: 'e.g. https://api.openai.com/v1 or http://localhost:11434/v1',
   },
   {
     key: 'openai.embeddingApiKey',

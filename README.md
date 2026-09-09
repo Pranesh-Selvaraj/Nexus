@@ -219,14 +219,16 @@ Nexus targets single-user, self-hosted personal corpora. The honest envelope:
 
 Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works — set **API base URL** in Settings (or `OPENAI_BASE_URL`):
 
-| Provider                                            | Base URL                         |
-| --------------------------------------------------- | -------------------------------- |
-| OpenAI (default)                                    | _(empty)_                        |
-| [OpenCode Zen](https://opencode.ai/zen) (chat only) | `https://opencode.ai/zen/v1`     |
-| [Ollama](https://ollama.com) (local, free)          | `http://localhost:11434/v1`      |
-| [LM Studio](https://lmstudio.ai) (local)            | `http://localhost:1234/v1`       |
-| [OpenRouter](https://openrouter.ai)                 | `https://openrouter.ai/api/v1`   |
-| [Groq](https://groq.com)                            | `https://api.groq.com/openai/v1` |
+| Provider                                                        | Base URL                         |
+| --------------------------------------------------------------- | -------------------------------- |
+| OpenAI (default)                                                | _(empty)_                        |
+| [OpenCode Zen](https://opencode.ai/zen) (chat only)             | `https://opencode.ai/zen/v1`     |
+| [OpenCode Zen Go](https://opencode.ai/zen) (Go plan, chat only) | `https://opencode.ai/zen/go/v1`  |
+| [Ollama](https://ollama.com) (local, free)                      | `http://localhost:11434/v1`      |
+| [LM Studio](https://lmstudio.ai) (local)                        | `http://localhost:1234/v1`       |
+| [OpenRouter](https://openrouter.ai)                             | `https://openrouter.ai/api/v1`   |
+| [Groq](https://groq.com)                                        | `https://api.groq.com/openai/v1` |
+| Any other OpenAI-compatible endpoint                            | type it into **API base URL**    |
 
 With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. Set the embedding model's **dimensions** in Settings (the `chunks.embedding` column is dimension-flexible). Use the **Test connection** and **Fetch chat models / Fetch embedding models** buttons to verify.
 
@@ -247,6 +249,7 @@ Notes for OpenCode Zen:
 
 - Only models served over `/chat/completions` work (e.g. `kimi-k3`, `deepseek-v4-pro`, `glm-5`, `minimax-m3`); Anthropic/OpenAI-protocol-only models (Claude, GPT, Grok on Zen) are routed through other endpoints and will fail — the **Test connection** button reports this clearly.
 - Zen's `/models` endpoint is public, so the connection test also sends a tiny chat completion to validate the key and model.
+- **Go plan**: use the **OpenCode Zen Go** preset (base URL `https://opencode.ai/zen/go/v1`). The Go endpoint serves its own model list (`kimi-k3`, `kimi-k2.7-code`, `glm-5.*`, `minimax-m3`, `longcat-2.0`, `mimo-v2*`, `qwen3.x`, ...) — use **Fetch chat models** to see it and **Test connection** to verify a model is actually served over `/chat/completions`.
 
 ## Local LLMs (no API key needed)
 

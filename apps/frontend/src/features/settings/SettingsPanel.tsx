@@ -116,6 +116,12 @@ export function SettingsPanel() {
       baseUrl: 'https://opencode.ai/zen/v1',
       note: 'OpenCode Zen serves chat models only — set the embedding base URL and key below to a provider with embeddings (OpenAI, Ollama, ...).',
     },
+    {
+      id: 'opencode-go',
+      label: 'OpenCode Zen Go',
+      baseUrl: 'https://opencode.ai/zen/go/v1',
+      note: 'OpenCode Zen Go (Go plan) serves chat models only — set the embedding base URL and key below to a provider with embeddings (OpenAI, Ollama, ...).',
+    },
     { id: 'ollama', label: 'Ollama', baseUrl: 'http://localhost:11434/v1' },
     { id: 'lmstudio', label: 'LM Studio', baseUrl: 'http://localhost:1234/v1' },
     {
@@ -332,16 +338,21 @@ function ModelPickerRow({
         )}
       </div>
       {result && !result.error && result.models.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {result.models.map((model) => (
-            <button
-              key={model}
-              onClick={() => onPick(model)}
-              className="rounded bg-zinc-800 px-2 py-1 font-mono text-[11px] text-zinc-300 transition-colors hover:bg-nexus-600/30"
-            >
-              {model}
-            </button>
-          ))}
+        <div className="mt-3">
+          <p className="text-[11px] text-zinc-500">
+            {result.models.length} models found — click one to select it
+          </p>
+          <div className="mt-2 flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+            {result.models.map((model) => (
+              <button
+                key={model}
+                onClick={() => onPick(model)}
+                className="rounded bg-zinc-800 px-2 py-1 font-mono text-[11px] text-zinc-300 transition-colors hover:bg-nexus-600/30"
+              >
+                {model}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -362,6 +373,7 @@ interface FieldProps {
       max?: number;
       step?: number;
       options?: string[];
+      placeholder?: string;
     };
   };
   draft: string;
@@ -495,7 +507,7 @@ function Field({
             min={def.min}
             max={def.max}
             value={draft}
-            placeholder={setting.value}
+            placeholder={def.placeholder ?? setting.value}
             onChange={(e) => onChange(e.target.value)}
             className="w-full max-w-xs rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-nexus-500"
           />
