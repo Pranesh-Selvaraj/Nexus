@@ -5,6 +5,7 @@ import {
   encryptSecret,
   maskSecret,
   SETTING_DEFS,
+  updateSetting,
 } from './settings.service.js';
 
 describe('settings registry', () => {
@@ -28,6 +29,40 @@ describe('settings registry', () => {
     expect(groups).toEqual(
       new Set(['openai', 'retrieval', 'server', 'auth', 'ui']),
     );
+  });
+
+  it('declares an optional separate embedding provider', () => {
+    const baseUrl = SETTING_DEFS.find(
+      (d) => d.key === 'openai.embeddingBaseUrl',
+    );
+    expect(baseUrl?.type).toBe('text');
+    expect(baseUrl?.env).toBe('OPENAI_EMBEDDING_BASE_URL');
+    expect(baseUrl?.default).toBe('');
+    expect(baseUrl?.group).toBe('openai');
+
+    const apiKey = SETTING_DEFS.find((d) => d.key === 'openai.embeddingApiKey');
+    expect(apiKey?.type).toBe('secret');
+    expect(apiKey?.env).toBe('OPENAI_EMBEDDING_API_KEY');
+    expect(apiKey?.default).toBe('');
+    expect(apiKey?.group).toBe('openai');
+  });
+
+  it('rejects base URLs that contain an endpoint path', async () => {
+    // Nexus appends /chat/completions, /models etc. itself - a full endpoint
+    // URL pasted from a provider dashboard must be rejected with the
+    // corrected base URL. These throw before any DB access.
+    await expect(
+      updateSetting(
+        'openai.baseUrl',
+        'https://opencode.ai/zen/go/v1/chat/completions',
+      ),
+    ).rejects.toThrow('https://opencode.ai/zen/go/v1');
+    await expect(
+      updateSetting(
+        'openai.embeddingBaseUrl',
+        'https://api.openai.com/v1/embeddings',
+      ),
+    ).rejects.toThrow('https://api.openai.com/v1');
   });
 });
 

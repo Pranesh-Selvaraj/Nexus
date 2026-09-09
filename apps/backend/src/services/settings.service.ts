@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { settings } from '../db/schema.js';
+import { baseUrlEndpointPath, suggestBaseUrl } from '../utils/provider-url.js';
 
 // ---------------------------------------------------------------------------
 // Settings registry
@@ -33,6 +34,8 @@ export interface SettingDef {
   max?: number;
   step?: number;
   options?: string[];
+  /** Input hint shown when the field is empty (text inputs only). */
+  placeholder?: string;
 }
 
 export const SETTING_DEFS: SettingDef[] = [
@@ -40,17 +43,18 @@ export const SETTING_DEFS: SettingDef[] = [
     key: 'openai.baseUrl',
     label: 'API base URL',
     description:
-      'OpenAI-compatible base URL. Leave empty for OpenAI. Examples: http://localhost:11434/v1 (Ollama), https://openrouter.ai/api/v1',
+      'OpenAI-compatible base URL for chat — any custom endpoint works. Leave empty for OpenAI. Examples: https://opencode.ai/zen/go/v1 (OpenCode Zen Go), http://localhost:11434/v1 (Ollama)',
     type: 'text',
     env: 'OPENAI_BASE_URL',
     default: '',
     group: 'openai',
+    placeholder: 'Custom endpoint, e.g. https://opencode.ai/zen/go/v1',
   },
   {
     key: 'openai.apiKey',
     label: 'API key',
     description:
-      'OpenAI API key. Stored encrypted; leave empty to keep the env value.',
+      'API key for the chat provider. Stored encrypted; leave empty to keep the env value.',
     type: 'secret',
     env: 'OPENAI_API_KEY',
     default: '',
@@ -64,27 +68,51 @@ export const SETTING_DEFS: SettingDef[] = [
     env: 'OPENAI_MODEL',
     default: 'gpt-4o-mini',
     group: 'openai',
+    placeholder: 'e.g. kimi-k3, gpt-4o-mini',
   },
   {
     key: 'openai.embeddingModel',
     label: 'Embedding model',
     description:
-      'Must produce 1536-dimension vectors (schema is vector(1536)).',
+      'Embedding model name at the embedding provider. Must match the dimensions setting below.',
     type: 'text',
     env: 'OPENAI_EMBEDDING_MODEL',
     default: 'text-embedding-3-small',
+    group: 'openai',
+    placeholder: 'e.g. text-embedding-3-small, nomic-embed-text',
+  },
+  {
+    key: 'openai.embeddingBaseUrl',
+    label: 'Embedding base URL',
+    description:
+      'Custom OpenAI-compatible endpoint for a separate embedding provider (chat-only providers like OpenCode Zen need one). Leave empty to use the main API base URL.',
+    type: 'text',
+    env: 'OPENAI_EMBEDDING_BASE_URL',
+    default: '',
+    group: 'openai',
+    placeholder: 'e.g. https://api.openai.com/v1 or http://localhost:11434/v1',
+  },
+  {
+    key: 'openai.embeddingApiKey',
+    label: 'Embedding API key',
+    description:
+      'API key for the embedding provider. Stored encrypted; leave empty to use the main API key.',
+    type: 'secret',
+    env: 'OPENAI_EMBEDDING_API_KEY',
+    default: '',
     group: 'openai',
   },
   {
     key: 'embedding.dimensions',
     label: 'Embedding dimensions',
     description:
-      'Vector dimensions of the embedding model. OpenAI text-embedding-3-small is 1536; local models vary (nomic-embed-text 768, bge-m3 1024).',
-    type: 'select',
+      'Vector dimensions produced by the embedding model (match the model: 1536 text-embedding-3-small, 768 nomic-embed-text, 1024 bge-m3/mistral-embed, 2560 qwen3-embedding:4b, 3072 text-embedding-3-large). Documents indexed earlier must be re-uploaded after a change.',
+    type: 'number',
     env: null,
     default: 1536,
+    min: 1,
+    max: 16000,
     group: 'openai',
-    options: ['256', '384', '512', '768', '1024', '1536', '2048'],
   },
   {
     key: 'openai.temperature',
@@ -331,6 +359,13 @@ export function maskSecret(value: string): string {
   return `${value.slice(0, 3)}…${value.slice(-4)}`;
 }
 
+/** The .env.example placeholder is not a real key - never present it as one. */
+const PLACEHOLDER_API_KEY = 'sk-your-key-here';
+
+function isRealSecret(value: string): boolean {
+  return Boolean(value) && value !== PLACEHOLDER_API_KEY;
+}
+
 // ---------------------------------------------------------------------------
 // Reads / writes
 // ---------------------------------------------------------------------------
@@ -396,7 +431,7 @@ export interface SettingView {
   secretConfigured: boolean;
 }
 
-/** Full listing for the settings UI (secrets masked). */
+/** Full listing for the settings UI (secrets never sent in full). */
 export async function listSettings(): Promise<SettingView[]> {
   const rows = await db.select().from(settings);
   const byKey = new Map(rows.map((r) => [r.key, r]));
@@ -408,21 +443,26 @@ export async function listSettings(): Promise<SettingView[]> {
       return {
         key: def.key,
         def,
-        value: raw,
+        // Secrets stay server-side: the client only ever sees a mask.
+        value: row.isSecret ? '' : raw,
         source: 'ui' as const,
-        displayValue: row.isSecret ? maskSecret(raw) : raw,
+        displayValue: row.isSecret && isRealSecret(raw) ? maskSecret(raw) : '',
         secretConfigured: encryptionKeyConfigured(),
       };
     }
     const envValue = def.env ? process.env[def.env] : undefined;
-    const fromEnv = envValue !== undefined && envValue !== '';
+    const fromEnv =
+      envValue !== undefined &&
+      envValue !== '' &&
+      !(def.type === 'secret' && !isRealSecret(envValue));
     const value = fromEnv ? (envValue as string) : String(def.default);
     return {
       key: def.key,
       def,
-      value,
+      value: def.type === 'secret' ? '' : value,
       source: fromEnv ? ('env' as const) : ('ui' as const),
-      displayValue: def.type === 'secret' && value ? maskSecret(value) : value,
+      displayValue:
+        def.type === 'secret' && fromEnv ? maskSecret(value) : value,
       secretConfigured: encryptionKeyConfigured(),
     };
   });
@@ -447,6 +487,18 @@ export async function updateSetting(
 
   // Type validation / clamping
   let stored = value;
+  if (def.key === 'openai.baseUrl' || def.key === 'openai.embeddingBaseUrl') {
+    // A base URL that already contains an endpoint path can never work:
+    // Nexus (like the OpenAI SDK) appends /chat/completions, /models, ...
+    // itself, so the full endpoint URL pasted from a provider dashboard
+    // would double the path. Reject with the corrected URL to paste.
+    const endpointPath = baseUrlEndpointPath(value);
+    if (endpointPath) {
+      throw new Error(
+        `${def.label} points at the ${endpointPath} endpoint itself — Nexus appends the API paths (e.g. /chat/completions, /models) itself. Use ${suggestBaseUrl(value)} instead.`,
+      );
+    }
+  }
   if (def.type === 'select' && def.options && !def.options.includes(value)) {
     throw new Error(`${def.label} must be one of: ${def.options.join(', ')}`);
   }

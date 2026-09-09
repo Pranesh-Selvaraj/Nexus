@@ -400,6 +400,23 @@ try {
     'settings.update unknown key rejected',
     unknownKey.body?.error?.data?.code === 'NOT_FOUND',
   );
+
+  // full endpoint URLs (e.g. pasted /chat/completions) are rejected with
+  // the corrected base URL - Nexus appends the API paths itself
+  const badBaseUrl = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({
+      key: 'openai.baseUrl',
+      value: 'http://localhost:3310/v1/chat/completions',
+    }),
+  });
+  print(
+    'settings.update rejects full endpoint URL',
+    badBaseUrl.body?.error?.data?.code === 'BAD_REQUEST' &&
+      String(badBaseUrl.body?.error?.message).includes(
+        'http://localhost:3310/v1',
+      ),
+  );
   const badNumber = await fetchJson('/trpc/settings.update', {
     method: 'POST',
     body: JSON.stringify({ key: 'rag.topK', value: 'abc' }),
@@ -418,13 +435,15 @@ try {
     'settings.update invalid select option rejected',
     badLang.body?.error?.data?.code === 'BAD_REQUEST',
   );
+  // embedding.dimensions accepts arbitrary values (matching whatever the
+  // embedding model outputs, e.g. 2560 for qwen3-embedding:4b)
   const dims = await fetchJson('/trpc/settings.update', {
     method: 'POST',
-    body: JSON.stringify({ key: 'embedding.dimensions', value: '768' }),
+    body: JSON.stringify({ key: 'embedding.dimensions', value: '2560' }),
   });
   print(
     'settings.update embedding.dimensions',
-    dims.body?.result?.data?.value === '768',
+    dims.body?.result?.data?.value === '2560',
   );
   await fetchJson('/trpc/settings.update', {
     method: 'POST',
@@ -442,6 +461,36 @@ try {
         String(listModels.body?.result?.data?.error).length > 0),
   );
 
+  // embedding models are discovered from the (possibly separate) embedding
+  // provider, falling back to the main provider
+  const listEmbModels = await fetchJson('/trpc/settings.listEmbeddingModels', {
+    method: 'POST',
+  });
+  print(
+    'settings.listEmbeddingModels returns models or clear error',
+    Array.isArray(listEmbModels.body?.result?.data?.models) &&
+      (listEmbModels.body?.result?.data?.error === null ||
+        String(listEmbModels.body?.result?.data?.error).length > 0),
+  );
+
+  // the separate embedding base URL persists like any non-secret setting
+  const setEmbBase = await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({
+      key: 'openai.embeddingBaseUrl',
+      value: 'http://localhost:3310/v1',
+    }),
+  });
+  print(
+    'settings.update embedding base URL',
+    setEmbBase.body?.result?.data?.value === 'http://localhost:3310/v1' &&
+      setEmbBase.body?.result?.data?.source === 'ui',
+  );
+  await fetchJson('/trpc/settings.update', {
+    method: 'POST',
+    body: JSON.stringify({ key: 'openai.embeddingBaseUrl', value: '' }),
+  });
+
   // secrets require SETTINGS_SECRET (unset in this instance)
   const secretWithoutKey = await fetchJson('/trpc/settings.update', {
     method: 'POST',
@@ -453,15 +502,23 @@ try {
       String(secretWithoutKey.body?.error?.message).includes('SETTINGS_SECRET'),
   );
 
-  // testOpenAI reports the missing key clearly
-  const testNoKey = await fetchJson('/trpc/settings.testOpenAI', {
+  // connection test targets the configured provider: with the mock
+  // (OPENAI_BASE_URL set) it verifies chat + embeddings end to end;
+  // without any provider configured (placeholder key, no base URL) it
+  // fails with a clear, actionable message.
+  const realKey =
+    Boolean(process.env.OPENAI_API_KEY) &&
+    process.env.OPENAI_API_KEY !== 'sk-your-key-here';
+  const providerConfigured = Boolean(process.env.OPENAI_BASE_URL) || realKey;
+  const testConn = await fetchJson('/trpc/settings.testOpenAI', {
     method: 'POST',
   });
+  const testConnData = testConn.body?.result?.data;
   print(
-    'settings.testOpenAI reports failure clearly',
-    testNoKey.body?.result?.data?.ok === false &&
-      String(testNoKey.body?.result?.data?.message).length > 10,
-    { message: testNoKey.body?.result?.data?.message },
+    'settings.testOpenAI verifies the configured provider',
+    testConnData?.ok === providerConfigured &&
+      String(testConnData?.message).length > 10,
+    { ok: testConnData?.ok, message: testConnData?.message },
   );
 
   // -------------------------------------------------------------------

@@ -17,6 +17,7 @@ import {
   hybridRetrieveChunks,
   streamAnswer,
 } from '../services/llm.service.js';
+import { friendlyErrorMessage } from '../utils/errors.js';
 
 function toConversationDTO(row: {
   id: string;
@@ -211,7 +212,10 @@ export const chatRouter = t.router({
             const firstMessage = input.message;
             void (async () => {
               try {
-                const title = await generateConversationTitle(firstMessage);
+                const title = await generateConversationTitle(
+                  firstMessage,
+                  conversation,
+                );
                 await db
                   .update(conversations)
                   .set({ title })
@@ -228,11 +232,14 @@ export const chatRouter = t.router({
             if (cancelled) return;
             emit.next({ type: 'sources', sources });
 
-            const stream = await streamAnswer({
-              query: input.message,
-              history: input.history,
-              sources,
-            });
+            const stream = await streamAnswer(
+              {
+                query: input.message,
+                history: input.history,
+                sources,
+              },
+              conversation,
+            );
 
             let answer = '';
             // Populated when the provider supports stream usage (OpenAI does
@@ -263,8 +270,12 @@ export const chatRouter = t.router({
             emit.next({ type: 'done', sources });
           } catch (error) {
             if (cancelled) return;
+            // Provider errors can embed whole HTML pages (wrong base URL,
+            // gateway errors) - keep the surfaced message readable.
             const message =
-              error instanceof Error ? error.message : 'Unknown error occurred';
+              error instanceof Error
+                ? friendlyErrorMessage(error)
+                : 'Unknown error occurred';
             if (conversation) {
               await persistAssistantMessage(conversation, message, []).catch(
                 () => undefined,

@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { trpc } from '../../lib/trpc';
 
 const GROUPS: { id: string; label: string }[] = [
-  { id: 'openai', label: 'OpenAI' },
+  // Provider settings (chat + embeddings) render in the dedicated cards above.
   { id: 'retrieval', label: 'Retrieval' },
   { id: 'server', label: 'Server' },
   { id: 'auth', label: 'Authentication' },
@@ -91,29 +92,135 @@ export function SettingsPanel() {
   }
 
   const listModels = trpc.settings.listModels.useMutation();
+  const listEmbeddingModels = trpc.settings.listEmbeddingModels.useMutation();
 
-  const PRESETS: { id: string; label: string; baseUrl: string }[] = [
+  async function pickModel(
+    key: 'openai.model' | 'openai.embeddingModel',
+    model: string,
+  ) {
+    setDrafts((p) => ({ ...p, [key]: model }));
+    await updateSetting.mutateAsync({ key, value: model });
+    void utils.settings.list.invalidate();
+  }
+
+  interface ProviderPreset {
+    id: string;
+    label: string;
+    baseUrl: string;
+    /** Extra guidance shown after applying the preset. */
+    note?: string;
+  }
+
+  /** Providers that answer chat questions (text model). */
+  const CHAT_PRESETS: ProviderPreset[] = [
     { id: 'openai', label: 'OpenAI', baseUrl: '' },
-    { id: 'ollama', label: 'Ollama', baseUrl: 'http://localhost:11434/v1' },
-    { id: 'lmstudio', label: 'LM Studio', baseUrl: 'http://localhost:1234/v1' },
+    {
+      id: 'opencode-go',
+      label: 'OpenCode Zen Go',
+      baseUrl: 'https://opencode.ai/zen/go/v1',
+      note: 'Go is chat-only — set up an embedding provider below.',
+    },
+    {
+      id: 'opencode',
+      label: 'OpenCode Zen',
+      baseUrl: 'https://opencode.ai/zen/v1',
+      note: 'Zen is chat-only — set up an embedding provider below.',
+    },
     {
       id: 'openrouter',
       label: 'OpenRouter',
       baseUrl: 'https://openrouter.ai/api/v1',
     },
     { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' },
+    {
+      id: 'ollama',
+      label: 'Ollama (local)',
+      baseUrl: 'http://localhost:11434/v1',
+      note: 'no key needed — e.g. llama3.1 for chat.',
+    },
+    {
+      id: 'lmstudio',
+      label: 'LM Studio (local)',
+      baseUrl: 'http://localhost:1234/v1',
+      note: 'no key needed.',
+    },
   ];
 
-  async function applyPreset(baseUrl: string) {
-    await updateSetting.mutateAsync({ key: 'openai.baseUrl', value: baseUrl });
-    setDrafts((p) => ({ ...p, 'openai.baseUrl': baseUrl }));
+  /** Providers that turn documents/questions into vectors. */
+  const EMBEDDING_PRESETS: ProviderPreset[] = [
+    {
+      id: 'openai',
+      label: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      note: 'e.g. text-embedding-3-small (1536 dims).',
+    },
+    {
+      id: 'ollama',
+      label: 'Ollama (local)',
+      baseUrl: 'http://localhost:11434/v1',
+      note: 'no key needed — e.g. qwen3-embedding:4b (2560 dims) or nomic-embed-text (768 dims).',
+    },
+    {
+      id: 'jina',
+      label: 'Jina',
+      baseUrl: 'https://api.jina.ai/v1',
+      note: 'e.g. jina-embeddings-v3 (1024 dims).',
+    },
+    {
+      id: 'mistral',
+      label: 'Mistral',
+      baseUrl: 'https://api.mistral.ai/v1',
+      note: 'e.g. mistral-embed (1024 dims).',
+    },
+  ];
+
+  async function applyPreset(
+    key: 'openai.baseUrl' | 'openai.embeddingBaseUrl',
+    preset: ProviderPreset,
+  ) {
+    await updateSetting.mutateAsync({ key, value: preset.baseUrl });
+    setDrafts((p) => ({ ...p, [key]: preset.baseUrl }));
     void utils.settings.list.invalidate();
     setSaved(
-      baseUrl
-        ? 'Provider preset applied — set the model names and fetch the model list below.'
-        : 'Provider set to OpenAI.',
+      preset.baseUrl
+        ? `${preset.label} preset applied — ${preset.note ?? 'now pick a model below.'}`
+        : 'Provider set to OpenAI (default endpoint).',
     );
   }
+
+  /** Live value of a setting (pending drafts included). */
+  function liveValue(key: string): string {
+    const s = data.find((item) => item.key === key);
+    return drafts[key] !== undefined && drafts[key] !== ''
+      ? (drafts[key] as string)
+      : (s?.value ?? '');
+  }
+
+  /** Render one setting with the shared field component. */
+  function renderField(key: string) {
+    const s = data.find((item) => item.key === key);
+    if (!s) return null;
+    return (
+      <Field
+        key={s.key}
+        setting={s}
+        draft={drafts[s.key] ?? ''}
+        secretDraft={secretDrafts[s.key] ?? ''}
+        secretMode={secretMode[s.key] ?? false}
+        onChange={(value) => setDrafts((p) => ({ ...p, [s.key]: value }))}
+        onSecretChange={(value) =>
+          setSecretDrafts((p) => ({ ...p, [s.key]: value }))
+        }
+        onToggleSecret={() =>
+          setSecretMode((p) => ({ ...p, [s.key]: !p[s.key] }))
+        }
+      />
+    );
+  }
+
+  const secretSetupMissing = data.some(
+    (s) => s.def.type === 'secret' && !s.secretConfigured,
+  );
 
   if (settings.isLoading) {
     return (
@@ -130,8 +237,9 @@ export function SettingsPanel() {
           <div>
             <h1 className="text-xl font-bold">Settings</h1>
             <p className="mt-1 text-sm text-zinc-500">
-              Values set here override environment variables and apply without a
-              restart. Leave a field empty to use its default.
+              Two independent providers: the text model answers your questions,
+              the embedding model turns documents into searchable vectors. Each
+              can point at a different OpenAI-compatible endpoint.
             </p>
           </div>
           {testOpenAI.isSuccess && (
@@ -147,78 +255,72 @@ export function SettingsPanel() {
           )}
         </div>
 
-        <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/40">
-          <h2 className="border-b border-zinc-800 px-5 py-3 text-sm font-semibold">
-            Provider
-          </h2>
-          <div className="px-5 py-4">
-            <p className="text-xs text-zinc-500">
-              Quick-set the API base URL for common providers (including local
-              ones). Local providers don't need an API key. Set the chat and
-              embedding model names below, matching the embedding dimensions
-              setting.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  onClick={() => void applyPreset(preset.baseUrl)}
-                  disabled={updateSetting.isPending}
-                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:border-nexus-500 hover:text-nexus-300 disabled:opacity-40"
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-4 border-t border-zinc-800 pt-3">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => listModels.mutate()}
-                  disabled={listModels.isPending}
-                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40"
-                >
-                  {listModels.isPending
-                    ? 'Fetching...'
-                    : 'Fetch available models'}
-                </button>
-                {listModels.data && !listModels.data.error && (
-                  <span className="text-xs text-emerald-400">
-                    {listModels.data.models.length} models found
-                  </span>
-                )}
-                {listModels.data?.error && (
-                  <span className="text-xs text-red-400">
-                    {listModels.data.error}
-                  </span>
-                )}
-              </div>
-              {listModels.data && listModels.data.models.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {listModels.data.models.map((model) => (
-                    <button
-                      key={model}
-                      onClick={() => {
-                        setDrafts((p) => ({
-                          ...p,
-                          'openai.model': model,
-                        }));
-                        void updateSetting.mutateAsync({
-                          key: 'openai.model',
-                          value: model,
-                        });
-                        void utils.settings.list.invalidate();
-                      }}
-                      className="rounded bg-zinc-800 px-2 py-1 font-mono text-[11px] text-zinc-300 transition-colors hover:bg-nexus-600/30"
-                    >
-                      {model}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+        {secretSetupMissing && (
+          <div className="mb-6 rounded-xl border border-amber-800/60 bg-amber-950/30 px-4 py-3 text-xs leading-relaxed text-amber-300">
+            <strong>API keys can't be saved from this panel yet:</strong>{' '}
+            <code>SETTINGS_SECRET</code> is missing from your <code>.env</code>{' '}
+            file. Keys set as environment variables still work, but keys entered
+            here are encrypted with <code>SETTINGS_SECRET</code> (AES-256-GCM)
+            before storage — add a random string to <code>.env</code> (e.g.{' '}
+            <code>openssl rand -hex 32</code>) and restart the backend.
           </div>
-        </section>
+        )}
+
+        <ProviderPane
+          title="Text model — answers your questions"
+          description="Chat with your documents over WebSocket streams. Pick a preset for the endpoint (or type any OpenAI-compatible endpoint below) and choose the model."
+          presets={CHAT_PRESETS}
+          activeBaseUrl={liveValue('openai.baseUrl')}
+          onApplyPreset={(preset) => void applyPreset('openai.baseUrl', preset)}
+          pending={updateSetting.isPending}
+        >
+          {renderField('openai.baseUrl')}
+          {renderField('openai.apiKey')}
+          {renderField('openai.model')}
+          <div className="border-t border-zinc-800/60 px-5 py-4">
+            <ModelPickerRow
+              label="Fetch models from this endpoint"
+              onFetch={() => listModels.mutate()}
+              pending={listModels.isPending}
+              result={listModels.data}
+              activeModel={liveValue('openai.model')}
+              onPick={(model) => void pickModel('openai.model', model)}
+            />
+          </div>
+          {renderField('openai.temperature')}
+        </ProviderPane>
+
+        <ProviderPane
+          title="Embeddings — makes your documents searchable"
+          description="Indexes documents and encodes each question so retrieval can find the right passages. Chat-only endpoints (OpenCode Zen/Go) don't serve embeddings — use OpenAI or a local server here."
+          presets={EMBEDDING_PRESETS}
+          activeBaseUrl={liveValue('openai.embeddingBaseUrl')}
+          onApplyPreset={(preset) =>
+            void applyPreset('openai.embeddingBaseUrl', preset)
+          }
+          pending={updateSetting.isPending}
+        >
+          {renderField('openai.embeddingBaseUrl')}
+          {renderField('openai.embeddingApiKey')}
+          {renderField('openai.embeddingModel')}
+          <div className="border-t border-zinc-800/60 px-5 py-4">
+            <ModelPickerRow
+              label="Fetch models from this endpoint"
+              onFetch={() => listEmbeddingModels.mutate()}
+              pending={listEmbeddingModels.isPending}
+              result={listEmbeddingModels.data}
+              activeModel={liveValue('openai.embeddingModel')}
+              onPick={(model) => void pickModel('openai.embeddingModel', model)}
+            />
+          </div>
+          {renderField('embedding.dimensions')}
+        </ProviderPane>
+
+        <p className="mb-6 mt-2 text-[11px] text-zinc-600">
+          API keys are encrypted at rest (AES-256-GCM with SETTINGS_SECRET) and
+          never shown in full here — only a masked preview. Environment-provided
+          keys show an "env" badge.
+        </p>
 
         {GROUPS.map((group) => {
           const items = data.filter((s) => s.def.group === group.id);
@@ -232,24 +334,7 @@ export function SettingsPanel() {
                 {group.label}
               </h2>
               <div className="divide-y divide-zinc-800/60">
-                {items.map((s) => (
-                  <Field
-                    key={s.key}
-                    setting={s}
-                    draft={drafts[s.key] ?? ''}
-                    secretDraft={secretDrafts[s.key] ?? ''}
-                    secretMode={secretMode[s.key] ?? false}
-                    onChange={(value) =>
-                      setDrafts((p) => ({ ...p, [s.key]: value }))
-                    }
-                    onSecretChange={(value) =>
-                      setSecretDrafts((p) => ({ ...p, [s.key]: value }))
-                    }
-                    onToggleSecret={() =>
-                      setSecretMode((p) => ({ ...p, [s.key]: !p[s.key] }))
-                    }
-                  />
-                ))}
+                {items.map((s) => renderField(s.key))}
               </div>
             </section>
           );
@@ -288,10 +373,142 @@ export function SettingsPanel() {
             disabled={testOpenAI.isPending}
             className="rounded-lg border border-zinc-700 px-5 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 disabled:opacity-40"
           >
-            {testOpenAI.isPending ? 'Testing...' : 'Test OpenAI connection'}
+            {testOpenAI.isPending ? 'Testing...' : 'Test connection'}
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface ProviderPreset {
+  id: string;
+  label: string;
+  baseUrl: string;
+  note?: string;
+}
+
+interface ProviderPaneProps {
+  title: string;
+  description: string;
+  presets: ProviderPreset[];
+  activeBaseUrl: string;
+  onApplyPreset: (preset: ProviderPreset) => void;
+  pending?: boolean;
+  children: ReactNode;
+}
+
+/** One role-specific provider card (chat or embeddings). */
+function ProviderPane({
+  title,
+  description,
+  presets,
+  activeBaseUrl,
+  onApplyPreset,
+  pending,
+  children,
+}: ProviderPaneProps) {
+  return (
+    <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/40">
+      <h2 className="border-b border-zinc-800 px-5 py-3 text-sm font-semibold">
+        {title}
+      </h2>
+      <div className="px-5 py-4">
+        <p className="text-xs text-zinc-500">{description}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {presets.map((preset) => {
+            const active = preset.baseUrl === activeBaseUrl;
+            return (
+              <button
+                key={preset.id}
+                onClick={() => onApplyPreset(preset)}
+                disabled={pending}
+                title={preset.note}
+                className={`rounded-lg border px-3 py-1.5 text-xs transition-colors disabled:opacity-40 ${
+                  active
+                    ? 'border-nexus-500 bg-nexus-600/20 text-nexus-300'
+                    : 'border-zinc-700 text-zinc-300 hover:border-nexus-500 hover:text-nexus-300'
+                }`}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-zinc-600">
+          Presets fill in the endpoint only — or type any OpenAI-compatible
+          endpoint into the field below. Click a fetched model to select it.
+        </p>
+      </div>
+      <div className="divide-y divide-zinc-800/60 border-t border-zinc-800">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+interface ModelPickerRowProps {
+  label: string;
+  onFetch: () => void;
+  pending: boolean;
+  result?: { models: string[]; error: string | null };
+  activeModel?: string;
+  onPick: (model: string) => void;
+}
+
+/** Fetch button + status + clickable model-name chips for one provider. */
+function ModelPickerRow({
+  label,
+  onFetch,
+  pending,
+  result,
+  activeModel,
+  onPick,
+}: ModelPickerRowProps) {
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onFetch}
+          disabled={pending}
+          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-40"
+        >
+          {pending ? 'Fetching...' : label}
+        </button>
+        {result && !result.error && (
+          <span className="text-xs text-emerald-400">
+            {result.models.length} models found
+          </span>
+        )}
+        {result?.error && (
+          <span className="text-xs text-red-400">{result.error}</span>
+        )}
+      </div>
+      {result && !result.error && result.models.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[11px] text-zinc-500">
+            {result.models.length} models found — click one to select it
+          </p>
+          <div className="mt-2 flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+            {result.models.map((model) => {
+              const active = activeModel !== '' && activeModel === model;
+              return (
+                <button
+                  key={model}
+                  onClick={() => onPick(model)}
+                  className={`rounded px-2 py-1 font-mono text-[11px] transition-colors ${
+                    active
+                      ? 'bg-nexus-600/40 text-nexus-200'
+                      : 'bg-zinc-800 text-zinc-300 hover:bg-nexus-600/30'
+                  }`}
+                >
+                  {model}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -310,6 +527,7 @@ interface FieldProps {
       max?: number;
       step?: number;
       options?: string[];
+      placeholder?: string;
     };
   };
   draft: string;
@@ -443,7 +661,7 @@ function Field({
             min={def.min}
             max={def.max}
             value={draft}
-            placeholder={setting.value}
+            placeholder={def.placeholder ?? setting.value}
             onChange={(e) => onChange(e.target.value)}
             className="w-full max-w-xs rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-nexus-500"
           />
