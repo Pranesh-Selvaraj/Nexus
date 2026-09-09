@@ -217,7 +217,7 @@ Nexus targets single-user, self-hosted personal corpora. The honest envelope:
 
 ## LLM providers
 
-Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works — set **API base URL** in Settings (or `OPENAI_BASE_URL`):
+Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works — pick a preset or type an **API base URL** in the Settings → **Text model** card (or set `OPENAI_BASE_URL`):
 
 > ℹ️ The base URL is the **root** of the API (e.g. `https://opencode.ai/zen/go/v1`) — **not** the full `/chat/completions` endpoint. Nexus appends `/chat/completions`, `/models` and `/embeddings` itself; URLs ending in an endpoint path are rejected with the corrected URL to paste.
 
@@ -232,11 +232,11 @@ Nexus speaks the OpenAI API protocol, so any OpenAI-compatible endpoint works �
 | [Groq](https://groq.com)                                        | `https://api.groq.com/openai/v1` |
 | Any other OpenAI-compatible endpoint                            | type it into **API base URL**    |
 
-With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. Set the embedding model's **dimensions** in Settings (the `chunks.embedding` column is dimension-flexible). Use the **Test connection** and **Fetch chat models / Fetch embedding models** buttons to verify.
+With a local provider, use a compatible model name (e.g. `llama3.1`) for chat and an embedding model served by the same endpoint. Set the embedding model's **dimensions** in Settings (the `chunks.embedding` column is dimension-flexible). Use the **Test connection** button and each card's **Fetch models from this endpoint** picker to verify.
 
 ### Chat-only providers (separate embedding provider)
 
-Some providers — notably **OpenCode Zen** — serve chat models but have **no embeddings endpoint**. Since Nexus embeds both indexed documents and chat queries, point the embedding settings at a provider that does serve embeddings (OpenAI, Ollama, LM Studio, ...):
+Some providers — notably **OpenCode Zen** — serve chat models but have **no embeddings endpoint**. Since Nexus embeds both indexed documents and chat queries, point the **Embeddings** card at a provider that does serve embeddings (OpenAI, Ollama, Jina, Mistral, ...):
 
 | Setting (or env var)                             | OpenCode Zen example                            |
 | ------------------------------------------------ | ----------------------------------------------- |
@@ -251,21 +251,22 @@ Notes for OpenCode Zen:
 
 - Only models served over `/chat/completions` work (e.g. `kimi-k3`, `deepseek-v4-pro`, `glm-5`, `minimax-m3`); Anthropic/OpenAI-protocol-only models (Claude, GPT, Grok on Zen) are routed through other endpoints and will fail — the **Test connection** button reports this clearly.
 - Zen's `/models` endpoint is public, so the connection test also sends a tiny chat completion to validate the key and model.
-- **Go plan**: use the **OpenCode Zen Go** preset (base URL `https://opencode.ai/zen/go/v1`). The Go endpoint serves its own model list (`kimi-k3`, `kimi-k2.7-code`, `glm-5.*`, `minimax-m3`, `longcat-2.0`, `mimo-v2*`, `qwen3.x`, ...) — use **Fetch chat models** to see it and **Test connection** to verify a model is actually served over `/chat/completions`.
+- **Go plan**: use the **OpenCode Zen Go** preset in the **Text model** card (base URL `https://opencode.ai/zen/go/v1`). The Go endpoint serves its own model list (`kimi-k3`, `kimi-k2.7-code`, `glm-5.*`, `minimax-m3`, `longcat-2.0`, `mimo-v2*`, `qwen3.x`, ...) — use **Fetch models from this endpoint** to see it and **Test connection** to verify a model is actually served over `/chat/completions`.
 - **Go client requirements**: Nexus sends `User-Agent: nexus/1.0` and a stable `x-opencode-session` header with every request (the conversation id for chats, the document id for indexing), as the [Go docs](https://opencode.ai/docs/go) require. Note that Go is designed for coding agents and traffic is monitored for abuse — using it from a RAG workspace is at your discretion.
 
 ## Local LLMs (no API key needed)
 
-Point Nexus at any OpenAI-compatible local server — **no API key required**:
+Point Nexus at any OpenAI-compatible local server — **no API key required** (chat and embeddings can share the same local endpoint):
 
-1. **Settings → Provider → Ollama** (or set `OPENAI_BASE_URL` in `.env`)
+1. **Settings → Text model** card → click the **Ollama (local)** preset (or set `OPENAI_BASE_URL` in `.env`)
 2. Pull a chat model and an embedding model, e.g.:
    ```bash
    ollama pull llama3.1
    ollama pull nomic-embed-text     # 768-dim embeddings
    ```
-3. In Settings: chat model = `llama3.1`, embedding model = `nomic-embed-text`, **Embedding dimensions = 768**, then **Fetch chat models** to verify, and **Test connection**
-4. Upload a document — chunks are embedded locally and indexed with the matching dimension
+3. **Settings → Embeddings** card → click the **Ollama (local)** preset, set embedding model = `nomic-embed-text` and **Embedding dimensions = 768**
+4. Back in the **Text model** card, pick chat model = `llama3.1`, then **Fetch models from this endpoint** to verify, and **Test connection**
+5. Upload a document — chunks are embedded locally and indexed with the matching dimension
 
 Notes:
 
@@ -273,7 +274,7 @@ Notes:
 - Embeddings are requested as `encoding_format: float` so plain-float local servers (Ollama/LM Studio) work with the OpenAI SDK's base64 default.
 - Changing the embedding model/dimensions re-indexes: delete the document and re-upload (or use the retry button after changing settings).
 - Retrieval uses exact vector scans (the fixed-dimension HNSW index was removed) — fine at personal-corpus scale.
-- **LM Studio**: base URL `http://localhost:1234/v1` (no key needed). **OpenRouter/Groq/OpenCode Zen**: preset buttons; OpenCode Zen additionally needs a separate embedding provider (see above).
+- **LM Studio**: base URL `http://localhost:1234/v1` (no key needed). **OpenRouter/Groq/OpenCode Zen**: preset buttons in the **Text model** card; OpenCode Zen additionally needs an embedding provider (see above).
 
 ## Settings panel
 

@@ -132,6 +132,18 @@ export function SettingsPanel() {
       baseUrl: 'https://openrouter.ai/api/v1',
     },
     { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' },
+    {
+      id: 'ollama',
+      label: 'Ollama (local)',
+      baseUrl: 'http://localhost:11434/v1',
+      note: 'no key needed — e.g. llama3.1 for chat.',
+    },
+    {
+      id: 'lmstudio',
+      label: 'LM Studio (local)',
+      baseUrl: 'http://localhost:1234/v1',
+      note: 'no key needed.',
+    },
   ];
 
   /** Providers that turn documents/questions into vectors. */
