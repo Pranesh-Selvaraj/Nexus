@@ -122,4 +122,18 @@ describe('generateConversationTitle', () => {
       'empty conversation title',
     );
   });
+
+  it('sends the conversation id as a stable session header', async () => {
+    completionsCreate.mockClear();
+    completionsCreate.mockResolvedValue({
+      choices: [{ message: { content: 'Title' } }],
+    });
+
+    await generateConversationTitle('hello there', 'conv-123');
+
+    const options = completionsCreate.mock.calls[0]?.[1] as {
+      headers: Record<string, string>;
+    };
+    expect(options.headers['x-opencode-session']).toBe('conv-123');
+  });
 });

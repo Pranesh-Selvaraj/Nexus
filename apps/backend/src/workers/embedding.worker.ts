@@ -42,8 +42,8 @@ async function processDocument(documentId: string): Promise<void> {
   const textChunks = await splitIntoChunks(pages);
   const texts = textChunks.map((chunk) => chunk.content);
 
-  // 3. Embed in batches of 100
-  const embeddings = await embedTexts(texts);
+  // 3. Embed in batches of 100 (document id = stable provider session id)
+  const embeddings = await embedTexts(texts, doc.id);
   if (embeddings.length !== texts.length) {
     throw new Error(
       `Embedding count mismatch: expected ${texts.length}, got ${embeddings.length}`,

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import OpenAI from 'openai';
 
 import { getSetting } from './settings.service.js';
@@ -6,6 +8,32 @@ export type OpenAIClientKind = 'chat' | 'embedding';
 
 const CHAT_TIMEOUT_MS = 120_000;
 const EMBEDDING_TIMEOUT_MS = 60_000;
+
+/**
+ * Client identity sent with every provider request. OpenCode Go requires
+ * clients to identify themselves with their own user agent (not the generic
+ * SDK name) and to send a stable `x-opencode-session` id per conversation
+ * (https://opencode.ai/docs/go). Other providers ignore both headers.
+ */
+const NEXUS_USER_AGENT = 'nexus/1.0';
+
+/** Stable per-process session id for requests without a dedicated one. */
+const PROCESS_SESSION_ID = randomUUID();
+
+/** Client-level headers identifying Nexus to providers. */
+export function defaultProviderHeaders(): Record<string, string> {
+  return {
+    'User-Agent': NEXUS_USER_AGENT,
+    'x-opencode-session': PROCESS_SESSION_ID,
+  };
+}
+
+/** Per-request session override (chat conversations, indexed documents). */
+export function sessionHeaders(sessionId: string): {
+  headers: Record<string, string>;
+} {
+  return { headers: { 'x-opencode-session': sessionId } };
+}
 
 /** Connection config for one request kind. */
 export interface ProviderConfig {
@@ -86,6 +114,7 @@ export async function getOpenAIClient(kind: OpenAIClientKind): Promise<OpenAI> {
   const client = new OpenAI({
     apiKey: effectiveKey,
     baseURL: baseUrl || undefined,
+    defaultHeaders: defaultProviderHeaders(),
     timeout: timeoutMs,
     maxRetries: 2,
   });

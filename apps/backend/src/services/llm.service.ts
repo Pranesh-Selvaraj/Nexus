@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { assertChatConfigured, embedTextCached } from './embedding.service.js';
-import { getOpenAIClient } from './openai-client.js';
+import { getOpenAIClient, sessionHeaders } from './openai-client.js';
 import { getSetting, getSettingNumber } from './settings.service.js';
 
 // ---------------------------------------------------------------------------
@@ -192,6 +192,7 @@ export function buildMessages(
 
 export async function streamAnswer(
   req: AnswerRequest,
+  sessionId?: string,
 ): Promise<AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>> {
   // Fail fast with an actionable message instead of a confusing OpenAI
   // client error deep inside the stream.
@@ -204,13 +205,16 @@ export async function streamAnswer(
   ]);
   const client = await getOpenAIClient('chat');
 
-  const stream = await client.chat.completions.create({
-    model,
-    messages: buildMessages(req, systemPrompt),
-    temperature,
-    stream: true,
-    stream_options: { include_usage: true },
-  });
+  const stream = await client.chat.completions.create(
+    {
+      model,
+      messages: buildMessages(req, systemPrompt),
+      temperature,
+      stream: true,
+      stream_options: { include_usage: true },
+    },
+    sessionId ? sessionHeaders(sessionId) : undefined,
+  );
   return stream;
 }
 
@@ -226,6 +230,7 @@ export async function streamAnswer(
  */
 export async function generateConversationTitle(
   firstMessage: string,
+  sessionId?: string,
 ): Promise<string> {
   await assertChatConfigured();
   const client = await getOpenAIClient('chat');
@@ -238,11 +243,14 @@ export async function generateConversationTitle(
     'Reply with ONLY the title.',
   ].join('\n');
 
-  const completion = await client.chat.completions.create({
-    model,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.3,
-  });
+  const completion = await client.chat.completions.create(
+    {
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+    },
+    sessionId ? sessionHeaders(sessionId) : undefined,
+  );
 
   const raw = completion.choices[0]?.message?.content?.trim() ?? '';
   const title = raw.replace(/^["']+|["']+$/g, '').trim();

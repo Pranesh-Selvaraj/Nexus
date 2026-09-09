@@ -16,6 +16,7 @@ import {
 } from '../services/embedding.service.js';
 import { getProviderConfig } from '../services/openai-client.js';
 import type { ProviderConfig } from '../services/openai-client.js';
+import { defaultProviderHeaders } from '../services/openai-client.js';
 import { friendlyErrorMessage } from '../utils/errors.js';
 import { baseUrlEndpointPath, suggestBaseUrl } from '../utils/provider-url.js';
 
@@ -33,6 +34,7 @@ function probeClient(config: ProviderConfig): OpenAI {
   return new OpenAI({
     apiKey: config.apiKey || 'local',
     baseURL: config.baseUrl || undefined,
+    defaultHeaders: defaultProviderHeaders(),
     timeout: PROBE_TIMEOUT_MS,
     maxRetries: 0,
   });

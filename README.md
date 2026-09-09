@@ -252,6 +252,7 @@ Notes for OpenCode Zen:
 - Only models served over `/chat/completions` work (e.g. `kimi-k3`, `deepseek-v4-pro`, `glm-5`, `minimax-m3`); Anthropic/OpenAI-protocol-only models (Claude, GPT, Grok on Zen) are routed through other endpoints and will fail — the **Test connection** button reports this clearly.
 - Zen's `/models` endpoint is public, so the connection test also sends a tiny chat completion to validate the key and model.
 - **Go plan**: use the **OpenCode Zen Go** preset (base URL `https://opencode.ai/zen/go/v1`). The Go endpoint serves its own model list (`kimi-k3`, `kimi-k2.7-code`, `glm-5.*`, `minimax-m3`, `longcat-2.0`, `mimo-v2*`, `qwen3.x`, ...) — use **Fetch chat models** to see it and **Test connection** to verify a model is actually served over `/chat/completions`.
+- **Go client requirements**: Nexus sends `User-Agent: nexus/1.0` and a stable `x-opencode-session` header with every request (the conversation id for chats, the document id for indexing), as the [Go docs](https://opencode.ai/docs/go) require. Note that Go is designed for coding agents and traffic is monitored for abuse — using it from a RAG workspace is at your discretion.
 
 ## Local LLMs (no API key needed)
 

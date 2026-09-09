@@ -1,12 +1,52 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { resolveProviderConfig } from './openai-client.js';
+import {
+  clearOpenAIClientCache,
+  getOpenAIClient,
+  resolveProviderConfig,
+} from './openai-client.js';
+
+vi.mock('./settings.service.js', () => ({
+  getSetting: vi.fn(async (key: string) =>
+    key === 'openai.apiKey' ? 'sk-test' : '',
+  ),
+}));
+
+const openaiCtor = vi.hoisted(() => vi.fn());
+vi.mock('openai', () => ({ default: openaiCtor }));
 
 const main = { apiKey: 'sk-main', baseUrl: 'https://main.example/v1' };
 const embedding = {
   apiKey: 'sk-embedding',
   baseUrl: 'https://embedding.example/v1',
 };
+
+describe('getOpenAIClient identity headers', () => {
+  beforeEach(() => {
+    openaiCtor.mockClear();
+    clearOpenAIClientCache();
+  });
+
+  it('identifies Nexus with its own user agent and a stable session id', async () => {
+    await getOpenAIClient('chat');
+
+    expect(openaiCtor).toHaveBeenCalledTimes(1);
+    const options = openaiCtor.mock.calls[0]?.[0] as {
+      defaultHeaders: Record<string, string>;
+    };
+    expect(options.defaultHeaders['User-Agent']).toMatch(/^nexus\//);
+    expect(options.defaultHeaders['x-opencode-session']).toMatch(
+      /^[0-9a-f-]{36}$/,
+    );
+  });
+
+  it('reuses the cached client (one construction, stable session id)', async () => {
+    await getOpenAIClient('chat');
+    await getOpenAIClient('chat');
+
+    expect(openaiCtor).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('resolveProviderConfig', () => {
   it('chat always uses the main provider config', () => {

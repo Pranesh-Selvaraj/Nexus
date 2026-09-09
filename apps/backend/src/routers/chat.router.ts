@@ -212,7 +212,10 @@ export const chatRouter = t.router({
             const firstMessage = input.message;
             void (async () => {
               try {
-                const title = await generateConversationTitle(firstMessage);
+                const title = await generateConversationTitle(
+                  firstMessage,
+                  conversation,
+                );
                 await db
                   .update(conversations)
                   .set({ title })
@@ -229,11 +232,14 @@ export const chatRouter = t.router({
             if (cancelled) return;
             emit.next({ type: 'sources', sources });
 
-            const stream = await streamAnswer({
-              query: input.message,
-              history: input.history,
-              sources,
-            });
+            const stream = await streamAnswer(
+              {
+                query: input.message,
+                history: input.history,
+                sources,
+              },
+              conversation,
+            );
 
             let answer = '';
             // Populated when the provider supports stream usage (OpenAI does

@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 
 import { Redis } from 'ioredis';
 
-import { getOpenAIClient, getProviderConfig } from './openai-client.js';
+import {
+  getOpenAIClient,
+  getProviderConfig,
+  sessionHeaders,
+} from './openai-client.js';
 import type { ProviderConfig } from './openai-client.js';
 
 import { getSetting } from './settings.service.js';
@@ -136,7 +140,10 @@ export async function getEmbeddingDimensions(): Promise<number> {
  * Returns vectors in the same order as the input texts. Clients are cached
  * and keyed by config, so settings changes apply without a restart.
  */
-export async function embedTexts(texts: string[]): Promise<number[][]> {
+export async function embedTexts(
+  texts: string[],
+  sessionId?: string,
+): Promise<number[][]> {
   await assertEmbeddingsConfigured();
   const model = await embeddingModel();
   const client = await getOpenAIClient('embedding');
@@ -144,13 +151,16 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   const vectors: number[][] = [];
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, i + BATCH_SIZE);
-    const response = await client.embeddings.create({
-      model,
-      input: batch,
-      // The SDK defaults to base64-encoded embeddings (OpenAI-only). Local
-      // providers return plain floats, so request float explicitly.
-      encoding_format: 'float',
-    });
+    const response = await client.embeddings.create(
+      {
+        model,
+        input: batch,
+        // The SDK defaults to base64-encoded embeddings (OpenAI-only). Local
+        // providers return plain floats, so request float explicitly.
+        encoding_format: 'float',
+      },
+      sessionId ? sessionHeaders(sessionId) : undefined,
+    );
     if (response.data.length !== batch.length) {
       throw new Error(
         `Embedding count mismatch: expected ${batch.length}, got ${response.data.length}`,
