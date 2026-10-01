@@ -4,6 +4,10 @@ Every Nexus release is documented here in detail. The release workflow extracts 
 
 ## [Unreleased]
 
+### Fixed
+
+- Dev-dependency advisories: vitest 4.1.10 → 4.1.11 (GHSA-82fw-gwwq-j7x9, path traversal / arbitrary file read via @vitest/mocker) and `brace-expansion` forced to ≥ 5.0.12 (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr, reachable through minimatch/eslint tooling), so the full `pnpm audit` — not only the production graph — is clean and the fail-closed CI audit gate stays green on `main`.
+
 ## [v1.2.0-phase.0] - 2026-10-01
 
 Phase 0 is the hygiene and blockers phase: every item here was either a correctness bug, a security/dependency issue, or the infrastructure needed for the later phases. Retrieval quality itself (hybrid fusion, reranking, mixed embedding dimensions, multilingual FTS indexing, mobile layout) is deliberately **not** in this release; it is Phase 1 and is listed under limitations below.
