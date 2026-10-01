@@ -55,6 +55,10 @@ export const documentDTOSchema = z.object({
   fileType: z.string().nullable(),
   status: documentStatusSchema,
   chunkCount: z.number().int().nonnegative(),
+  /** Sanitized reason the last indexing attempt failed, if any. */
+  errorMessage: z.string().nullable(),
+  /** Number of indexing attempts made so far. */
+  attempts: z.number().int().nonnegative(),
   createdAt: z.string(),
 });
 export type DocumentDTO = z.infer<typeof documentDTOSchema>;
@@ -74,6 +78,9 @@ export const documentIdSchema = z.object({
 export const chatRoleSchema = z.enum(['user', 'assistant']);
 export type ChatRole = z.infer<typeof chatRoleSchema>;
 
+export const messageKindSchema = z.enum(['answer', 'error']);
+export type MessageKind = z.infer<typeof messageKindSchema>;
+
 export const chatHistoryMessageSchema = z.object({
   role: chatRoleSchema,
   content: z.string().min(1).max(8000),
@@ -84,7 +91,11 @@ export const chatStreamInputSchema = z.object({
   workspaceId: z.string().uuid(),
   message: z.string().min(1).max(4000),
   conversationId: z.string().uuid().optional(),
+  // Kept for backward compatibility; the server now builds history from the
+  // persisted conversation so client-supplied turns can never be trusted.
   history: z.array(chatHistoryMessageSchema).max(20).default([]),
+  /** Re-answer the last user message without inserting a duplicate turn. */
+  regenerate: z.boolean().optional(),
 });
 export type ChatStreamInput = z.infer<typeof chatStreamInputSchema>;
 
@@ -123,6 +134,7 @@ export const messageDTOSchema = z.object({
   id: z.string().uuid(),
   conversationId: z.string().uuid(),
   role: chatRoleSchema,
+  kind: messageKindSchema,
   content: z.string(),
   sources: z.array(sourceSchema).nullable(),
   usage: usageSchema.nullable(),

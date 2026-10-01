@@ -19,6 +19,9 @@ interface Props {
 
 export function UploadDropzone({ workspaceId }: Props) {
   const utils = trpc.useUtils();
+  const publicConfig = trpc.config.public.useQuery(undefined);
+  // One source of truth for the limit: the same setting the server enforces.
+  const maxUploadMb = publicConfig.data?.maxUploadMb ?? 25;
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<{
     kind: 'ok' | 'err';
@@ -67,6 +70,10 @@ export function UploadDropzone({ workspaceId }: Props) {
       }
       setUploading(false);
       void utils.document.listByWorkspace.invalidate({ workspaceId });
+      // Keep the sidebar document count in sync (it reads workspace.list).
+      void utils.workspace.list.invalidate();
+      // Don't leave the success notice on screen forever.
+      window.setTimeout(() => setMessage(null), 6_000);
     },
     [workspaceId, utils],
   );
@@ -74,10 +81,20 @@ export function UploadDropzone({ workspaceId }: Props) {
   const { getRootProps, getInputProps, isDragActive, isDragReject } =
     useDropzone({
       onDrop,
+      onDropRejected: (rejections) => {
+        const code = rejections[0]?.errors[0]?.code;
+        setMessage({
+          kind: 'err',
+          text:
+            code === 'file-too-large'
+              ? `File exceeds the ${maxUploadMb} MB upload limit`
+              : (rejections[0]?.errors[0]?.message ?? 'File rejected'),
+        });
+      },
       accept: ACCEPT,
       multiple: true,
       disabled: uploading,
-      maxSize: 25 * 1024 * 1024,
+      maxSize: maxUploadMb * 1024 * 1024,
     });
 
   return (
@@ -104,7 +121,8 @@ export function UploadDropzone({ workspaceId }: Props) {
               Drag &amp; drop documents
             </p>
             <p className="mt-1 text-xs text-zinc-500">
-              or click to browse · PDF, DOCX, TXT, MD, CSV, JSON
+              or click to browse · PDF, DOCX, TXT, MD, CSV, JSON · up to{' '}
+              {maxUploadMb} MB
             </p>
           </>
         )}

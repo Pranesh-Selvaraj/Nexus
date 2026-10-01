@@ -11,6 +11,10 @@ export OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://localhost:3310/v1}"
 # Force keyless mode even if a .env provides a key - the stub must be used.
 export OPENAI_API_KEY=""
 export UPLOAD_DIR="${UPLOAD_DIR:-/tmp/nexus-e2e-uploads}"
+VITE_PORT="${VITE_PORT:-5173}"
+# Backend port for this stack; the Vite proxy reads the same variable.
+export API_PORT="${API_PORT:-3000}"
+export PORT="$API_PORT"
 
 (cd "$ROOT/apps/backend" && pnpm exec tsx scripts/mock-openai.ts >/tmp/nexus-e2e-mock.log 2>&1) &
 MOCK_PID=$!
@@ -26,12 +30,14 @@ trap cleanup EXIT TERM INT
 
 for _ in $(seq 1 120); do
   if curl -sf http://localhost:3310/v1/models >/dev/null 2>&1 &&
-    curl -sf http://localhost:3000/healthz >/dev/null 2>&1; then
+    curl -sf "http://localhost:${API_PORT}/healthz" >/dev/null 2>&1; then
     break
   fi
   sleep 0.5
 done
 
-pnpm exec vite --port 5173 --strictPort &
+# Run Vite from the frontend package so `pnpm exec` resolves it regardless
+# of the caller's working directory.
+(cd "$ROOT/apps/frontend" && pnpm exec vite --port "$VITE_PORT" --strictPort) &
 VITE_PID=$!
 wait "$VITE_PID"

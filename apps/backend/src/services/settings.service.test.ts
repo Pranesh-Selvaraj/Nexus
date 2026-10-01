@@ -3,9 +3,11 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   decryptSecret,
   encryptSecret,
+  isSecretSetting,
   maskSecret,
   SETTING_DEFS,
   updateSetting,
+  updateSettings,
 } from './settings.service.js';
 
 describe('settings registry', () => {
@@ -45,6 +47,30 @@ describe('settings registry', () => {
     expect(apiKey?.env).toBe('OPENAI_EMBEDDING_API_KEY');
     expect(apiKey?.default).toBe('');
     expect(apiKey?.group).toBe('openai');
+  });
+
+  it('identifies secret settings from the registry', () => {
+    expect(isSecretSetting('openai.apiKey')).toBe(true);
+    expect(isSecretSetting('openai.embeddingApiKey')).toBe(true);
+    expect(isSecretSetting('openai.model')).toBe(false);
+    expect(isSecretSetting('nope')).toBe(false);
+  });
+
+  it('rejects an invalid chunk size/overlap pair in one batch', async () => {
+    // Both values arrive together, so validation must consider the final
+    // state instead of whichever field happens to be saved first.
+    await expect(
+      updateSettings({ 'rag.chunkSize': '300', 'rag.chunkOverlap': '300' }),
+    ).rejects.toThrow('Chunk overlap must be smaller than chunk size');
+    await expect(
+      updateSettings({ 'rag.chunkSize': '300', 'rag.chunkOverlap': '400' }),
+    ).rejects.toThrow('Chunk overlap must be smaller than chunk size');
+  });
+
+  it('rejects unknown setting keys before writing anything', async () => {
+    await expect(updateSettings({ 'nope.nope': 'x' })).rejects.toThrow(
+      'Unknown setting',
+    );
   });
 
   it('rejects base URLs that contain an endpoint path', async () => {

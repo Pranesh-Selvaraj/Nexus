@@ -10,6 +10,8 @@ export function toDocumentDTO(doc: typeof documents.$inferSelect): DocumentDTO {
     fileType: doc.fileType,
     status: doc.status,
     chunkCount: doc.chunkCount,
+    errorMessage: doc.errorMessage,
+    attempts: doc.attempts,
     createdAt: new Date(doc.createdAt).toISOString(),
   };
 }

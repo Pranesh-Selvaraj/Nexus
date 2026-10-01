@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { observable } from '@trpc/server/observable';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 
 import type { ChatEvent, Source } from '@nexus/shared-types';
 import {
@@ -17,6 +17,7 @@ import {
   hybridRetrieveChunks,
   streamAnswer,
 } from '../services/llm.service.js';
+import type { ChatHistoryItem } from '../services/llm.service.js';
 import { friendlyErrorMessage } from '../utils/errors.js';
 
 function toConversationDTO(row: {
@@ -117,6 +118,7 @@ export const chatRouter = t.router({
         id: m.id,
         conversationId: m.conversationId,
         role: m.role,
+        kind: m.kind,
         content: m.content,
         sources: m.sources,
         usage: m.usage,
@@ -161,6 +163,7 @@ export const chatRouter = t.router({
 
         const run = async (): Promise<void> => {
           let conversation = input.conversationId ?? null;
+          const isNewConversation = conversation === null;
           try {
             const [workspace] = await db
               .select({ id: workspaces.id })
@@ -179,7 +182,28 @@ export const chatRouter = t.router({
               });
             }
 
-            // Start (or reuse) a conversation and store the user message.
+            // A reused conversation must belong to the workspace the caller
+            // owns; otherwise any conversation id could be written to.
+            if (conversation) {
+              const [existing] = await db
+                .select({ id: conversations.id })
+                .from(conversations)
+                .where(
+                  and(
+                    eq(conversations.id, conversation),
+                    eq(conversations.workspaceId, input.workspaceId),
+                  ),
+                )
+                .limit(1);
+              if (!existing) {
+                throw new TRPCError({
+                  code: 'NOT_FOUND',
+                  message: 'Conversation not found',
+                });
+              }
+            }
+
+            // Start (or reuse) a conversation.
             if (!conversation) {
               const [created] = await db
                 .insert(conversations)
@@ -199,45 +223,102 @@ export const chatRouter = t.router({
                 message: 'Failed to create conversation',
               });
             }
-            await db.insert(messages).values({
-              conversationId: conversation,
-              role: 'user',
-              content: input.message,
-            });
+
+            // Resolve the question this request answers. For a regenerate
+            // the last persisted user message is re-used and the trailing
+            // assistant/error row is replaced; otherwise the new message is
+            // stored as a user turn.
+            let query = input.message;
+            let currentUserMessageId: string | undefined;
+            if (input.regenerate && !isNewConversation) {
+              const [lastUser] = await db
+                .select({ id: messages.id, content: messages.content })
+                .from(messages)
+                .where(
+                  and(
+                    eq(messages.conversationId, conversation),
+                    eq(messages.role, 'user'),
+                  ),
+                )
+                .orderBy(desc(messages.createdAt), desc(messages.id))
+                .limit(1);
+              if (!lastUser) {
+                throw new TRPCError({
+                  code: 'BAD_REQUEST',
+                  message: 'Nothing to regenerate in this conversation',
+                });
+              }
+              query = lastUser.content;
+              currentUserMessageId = lastUser.id;
+              // Replace the most recent assistant/error row so the
+              // conversation does not accumulate discarded answers.
+              const [trailing] = await db
+                .select({ id: messages.id })
+                .from(messages)
+                .where(
+                  and(
+                    eq(messages.conversationId, conversation),
+                    eq(messages.role, 'assistant'),
+                  ),
+                )
+                .orderBy(desc(messages.createdAt), desc(messages.id))
+                .limit(1);
+              if (trailing) {
+                await db.delete(messages).where(eq(messages.id, trailing.id));
+              }
+            } else {
+              const [inserted] = await db
+                .insert(messages)
+                .values({
+                  conversationId: conversation,
+                  role: 'user',
+                  content: input.message,
+                })
+                .returning({ id: messages.id });
+              currentUserMessageId = inserted?.id;
+            }
             if (cancelled) return;
             emit.next({ type: 'conversation', conversationId: conversation });
 
-            // Title the conversation in the background - it must never delay
-            // the first token. Failures keep the message-prefix title.
-            const firstMessage = input.message;
-            void (async () => {
-              try {
-                const title = await generateConversationTitle(
-                  firstMessage,
-                  conversation,
-                );
-                await db
-                  .update(conversations)
-                  .set({ title })
-                  .where(eq(conversations.id, conversation));
-              } catch {
-                // Non-fatal: keep the fallback title.
-              }
-            })();
+            // Title the conversation in the background - only once, when the
+            // conversation is created. Regenerating titles on every message
+            // burned an extra LLM call per turn and renamed conversations to
+            // match their latest question. Failures keep the fallback title.
+            if (isNewConversation) {
+              const firstMessage = input.message;
+              void (async () => {
+                try {
+                  const title = await generateConversationTitle(
+                    firstMessage,
+                    conversation,
+                  );
+                  await db
+                    .update(conversations)
+                    .set({ title })
+                    .where(eq(conversations.id, conversation));
+                } catch {
+                  // Non-fatal: keep the fallback title.
+                }
+              })();
+            }
+
+            // Build history from the persisted conversation (never from
+            // client-supplied turns): errors are excluded, as is the message
+            // currently being answered.
+            const history = await loadConversationHistory(
+              conversation,
+              currentUserMessageId,
+            );
 
             const sources = await hybridRetrieveChunks(
               input.workspaceId,
-              input.message,
+              query,
             );
             if (cancelled) return;
             emit.next({ type: 'sources', sources });
 
             const stream = await streamAnswer(
-              {
-                query: input.message,
-                history: input.history,
-                sources,
-              },
+              { query, history, sources },
               conversation,
             );
 
@@ -277,9 +358,13 @@ export const chatRouter = t.router({
                 ? friendlyErrorMessage(error)
                 : 'Unknown error occurred';
             if (conversation) {
-              await persistAssistantMessage(conversation, message, []).catch(
-                () => undefined,
-              );
+              await persistAssistantMessage(
+                conversation,
+                message,
+                [],
+                null,
+                'error',
+              ).catch(() => undefined);
             }
             emit.next({ type: 'error', message });
           } finally {
@@ -304,6 +389,39 @@ export const chatRouter = t.router({
     ),
 });
 
+/**
+ * Last `limit` non-error turns of a conversation, oldest first, excluding
+ * the message currently being answered. Used instead of the client-supplied
+ * `history` so a buggy or hostile client cannot inject assistant turns.
+ */
+async function loadConversationHistory(
+  conversationId: string,
+  excludeMessageId: string | undefined,
+  limit = 10,
+): Promise<ChatHistoryItem[]> {
+  const rows = await db
+    .select({
+      id: messages.id,
+      role: messages.role,
+      content: messages.content,
+    })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        ne(messages.kind, 'error'),
+      ),
+    )
+    .orderBy(desc(messages.createdAt), desc(messages.id))
+    .limit(limit + 1);
+
+  return rows
+    .filter((row) => row.id !== excludeMessageId)
+    .slice(0, limit)
+    .reverse()
+    .map((row) => ({ role: row.role, content: row.content }));
+}
+
 async function persistAssistantMessage(
   conversationId: string,
   content: string,
@@ -313,6 +431,7 @@ async function persistAssistantMessage(
     completionTokens: number;
     totalTokens: number;
   } | null = null,
+  kind: 'answer' | 'error' = 'answer',
 ): Promise<void> {
   await db
     .update(conversations)
@@ -321,6 +440,7 @@ async function persistAssistantMessage(
   await db.insert(messages).values({
     conversationId,
     role: 'assistant',
+    kind,
     content,
     sources: sources.length > 0 ? sources : null,
     usage,

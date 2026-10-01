@@ -522,6 +522,127 @@ try {
   );
 
   // -------------------------------------------------------------------
+  // settings.updateMany: cross-field validation in one batch
+  // -------------------------------------------------------------------
+  const invalidPair = await fetchJson('/trpc/settings.updateMany', {
+    method: 'POST',
+    body: JSON.stringify({
+      values: { 'rag.chunkSize': '200', 'rag.chunkOverlap': '300' },
+    }),
+  });
+  print(
+    'settings.updateMany rejects invalid chunk pair',
+    invalidPair.body?.error?.data?.code === 'BAD_REQUEST' &&
+      String(invalidPair.body?.error?.message).includes('Chunk overlap'),
+  );
+
+  const validPair = await fetchJson('/trpc/settings.updateMany', {
+    method: 'POST',
+    body: JSON.stringify({
+      values: { 'rag.chunkSize': '900', 'rag.chunkOverlap': '100' },
+    }),
+  });
+  print(
+    'settings.updateMany applies a valid batch',
+    Array.isArray(validPair.body?.result?.data) &&
+      validPair.body.result.data.some(
+        (s: any) => s.key === 'rag.chunkSize' && s.value === '900',
+      ),
+  );
+  await fetchJson('/trpc/settings.updateMany', {
+    method: 'POST',
+    body: JSON.stringify({
+      values: { 'rag.chunkSize': '', 'rag.chunkOverlap': '' },
+    }),
+  });
+
+  // -------------------------------------------------------------------
+  // Workspace archive export/import over the streaming REST endpoint
+  // -------------------------------------------------------------------
+  const importWs = await fetchJson('/trpc/workspace.create', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Archive Roundtrip' }),
+  });
+  const importWsId = importWs.body?.result?.data?.id;
+  const seedFd = new FormData();
+  seedFd.append('workspaceId', importWsId);
+  seedFd.append(
+    'file',
+    new File(['archive roundtrip content\n'.repeat(10)], 'roundtrip.txt', {
+      type: 'text/plain',
+    }),
+  );
+  const seedUp = await fetch(`${BASE}/api/upload`, {
+    method: 'POST',
+    body: seedFd,
+  });
+  print('archive: upload seed document', seedUp.status === 201);
+
+  const exported = await fetchJson(
+    `/trpc/workspace.export?input=${encodeURIComponent(JSON.stringify({ workspaceId: importWsId }))}`,
+    { method: 'GET' },
+  );
+  const archive = exported.body?.result?.data;
+  print(
+    'archive: export returns documents + conversations',
+    archive?.version === 1 &&
+      Array.isArray(archive?.documents) &&
+      archive.documents.length === 1,
+  );
+
+  const archiveFd = new FormData();
+  archiveFd.append(
+    'archive',
+    new File([JSON.stringify(archive)], 'backup.json', {
+      type: 'application/json',
+    }),
+  );
+  const imported = await fetch(`${BASE}/api/workspace/import`, {
+    method: 'POST',
+    body: archiveFd,
+  });
+  const importedBody = (await imported.json().catch(() => null)) as {
+    workspace?: { id: string };
+    error?: string;
+  } | null;
+  const importedId = importedBody?.workspace?.id;
+  print(
+    'archive: import over the REST endpoint',
+    imported.status === 201 && Boolean(importedId) && importedId !== importWsId,
+    { status: imported.status },
+  );
+
+  const badFd = new FormData();
+  badFd.append(
+    'archive',
+    new File(['not json'], 'bad.json', { type: 'application/json' }),
+  );
+  const badImport = await fetch(`${BASE}/api/workspace/import`, {
+    method: 'POST',
+    body: badFd,
+  });
+  const badImportBody = (await badImport.json().catch(() => null)) as {
+    error?: string;
+  } | null;
+  print(
+    'archive: invalid archive rejected with a clear error',
+    badImport.status === 400 && typeof badImportBody?.error === 'string',
+  );
+
+  if (importedId) {
+    await fetchJson('/trpc/workspace.delete', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId: importedId }),
+    });
+  }
+  if (importWsId) {
+    await fetchJson('/trpc/workspace.delete', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId: importWsId }),
+    });
+  }
+
+  // -------------------------------------------------------------------
   // Authentication mode: a second API instance with AUTH_PASSWORD set
   // -------------------------------------------------------------------
   const AUTH_PORT = 3102;

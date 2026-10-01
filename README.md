@@ -157,10 +157,13 @@ See [SECURITY.md](SECURITY.md) — without `AUTH_PASSWORD` the app runs in singl
 
 ## Releases
 
-Releases follow [SemVer](https://semver.org/), tagged `vX.Y.Z` and published automatically from the [release workflow](.github/workflows/release.yml): pushing a tag builds the images, publishes them to GHCR, and creates a GitHub Release with changelog notes.
+Releases follow [SemVer](https://semver.org/) and are published automatically from the [release workflow](.github/workflows/release.yml): pushing an annotated tag builds the images, publishes them to GHCR, and creates a GitHub Release whose body is the matching section of [CHANGELOG.md](CHANGELOG.md) — the workflow fails if the section is missing, so a release can never ship generated placeholder notes.
+
+Development runs in phases; each phase is tagged as an annotated prerelease (`vX.Y.Z-phase.N`) with its own detailed changelog entry, and the stable tag is cut once the phase set lands on `main`. Prereleases never move the `latest` image tag.
 
 ```bash
-git tag v1.0.0 && git push origin v1.0.0
+# add the `## [v1.2.0-phase.1]` section to CHANGELOG.md first
+git tag -a v1.2.0-phase.1 -m "Nexus v1.2.0-phase.1" && git push origin v1.2.0-phase.1
 ```
 
 ## Scripts
@@ -197,6 +200,7 @@ All variables live in `.env` (see `.env.example`). The backend auto-discovers `.
 | `PORT`                      | `3000`                                        | Backend HTTP/WS port                                                                                                                                  |
 | `UPLOAD_DIR`                | `./uploads`                                   | Directory for uploaded documents                                                                                                                      |
 | `MAX_UPLOAD_MB`             | `25`                                          | Per-file upload size limit                                                                                                                            |
+| `MAX_IMPORT_MB`             | `100`                                         | Workspace archive import size limit (multipart JSON upload)                                                                                           |
 | `FRONTEND_ORIGIN`           | `http://localhost:5173`                       | Allowed CORS origin                                                                                                                                   |
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
@@ -307,7 +311,7 @@ apps/
 packages/
   shared-types/     Shared DTO types between apps
 .github/
-  workflows/        CI, CodeQL
+  workflows/        CI, CodeQL, release
   dependabot.yml    Automated dependency update PRs
 ```
 

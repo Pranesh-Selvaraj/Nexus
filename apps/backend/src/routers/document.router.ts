@@ -13,7 +13,10 @@ import type { DocumentDTO } from '@nexus/shared-types';
 import { db } from '../db/index.js';
 import { documents, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
-import { enqueueDocumentEmbedding } from '../queues/index.js';
+import {
+  cancelDocumentEmbedding,
+  enqueueDocumentEmbedding,
+} from '../queues/index.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
 import { toDocumentDTO } from '../utils/dto.js';
 
@@ -66,7 +69,12 @@ export const documentRouter = t.router({
 
       const [updated] = await db
         .update(documents)
-        .set({ status: 'processing' })
+        .set({
+          status: 'processing',
+          errorMessage: null,
+          attempts: 0,
+          updatedAt: new Date(),
+        })
         .where(eq(documents.id, doc.id))
         .returning();
       if (!updated) {
@@ -96,6 +104,9 @@ export const documentRouter = t.router({
       }
 
       await db.delete(documents).where(eq(documents.id, doc.id));
+      // Drop any queued indexing job so a deleted document cannot burn
+      // provider tokens or race the delete with chunk inserts.
+      await cancelDocumentEmbedding(doc.id);
       await rm(path.resolve(UPLOAD_DIR, doc.filePath), { force: true }).catch(
         () => undefined,
       );

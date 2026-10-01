@@ -10,6 +10,7 @@ import type {
 
 import { logout } from '../../lib/auth';
 import { NexusLogo } from '../../App';
+import { useToast } from '../../components/Toast';
 import { trpc } from '../../lib/trpc';
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
   onSelect: (workspaceId: string) => void;
   user: UserDTO;
   onLoggedOut: () => void;
+  onWorkspaceDeleted: (workspaceId: string) => void;
   onOpenSettings: () => void;
   settingsActive: boolean;
   appName: string;
@@ -27,35 +29,57 @@ export function WorkspaceSidebar({
   onSelect,
   user,
   onLoggedOut,
+  onWorkspaceDeleted,
   onOpenSettings,
   settingsActive,
   appName,
 }: Props) {
   const utils = trpc.useUtils();
+  const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const importWorkspace = trpc.workspace.import.useMutation({
-    onSuccess: (ws) => {
-      onSelect(ws.id);
-      void utils.workspace.list.invalidate();
-    },
-    onError: (err) => {
-      window.alert(`Import failed: ${err.message}`);
-    },
-  });
+  const [importing, setImporting] = useState(false);
 
   async function handleImportFile(file: File | undefined) {
     if (!file) return;
+    setImporting(true);
     try {
-      const archive = (await file.text()) as unknown;
-      const parsed = JSON.parse(archive as string) as WorkspaceArchive;
-      if (parsed.version !== 1 || !parsed.workspace?.name) {
-        throw new Error('Not a valid Nexus workspace archive');
+      // Validate locally first so a wrong file fails instantly with a precise
+      // message instead of after an upload round-trip.
+      let parsed: WorkspaceArchive;
+      try {
+        parsed = JSON.parse(await file.text()) as WorkspaceArchive;
+      } catch {
+        throw new Error('not valid JSON');
       }
-      importWorkspace.mutate({ archive: parsed });
+      if (parsed.version !== 1 || !parsed.workspace?.name) {
+        throw new Error('not a valid Nexus workspace archive');
+      }
+
+      // Multipart upload, not a tRPC mutation: the archive is far larger than
+      // the JSON body cap that made real backups un-importable.
+      const form = new FormData();
+      form.append('archive', file);
+      const response = await fetch('/api/workspace/import', {
+        method: 'POST',
+        body: form,
+      });
+      const body = (await response.json().catch(() => null)) as {
+        workspace?: { id: string };
+        error?: string;
+      } | null;
+      if (!response.ok || !body?.workspace) {
+        throw new Error(body?.error ?? `Import failed (${response.status})`);
+      }
+      await utils.workspace.list.invalidate();
+      onSelect(body.workspace.id);
+      toast.push({ kind: 'success', message: 'Workspace imported' });
     } catch (err) {
-      window.alert(
-        `Import failed: ${err instanceof Error ? err.message : 'invalid file'}`,
-      );
+      toast.push({
+        kind: 'error',
+        message: `Import failed: ${err instanceof Error ? err.message : 'invalid file'}`,
+      });
+    } finally {
+      setImporting(false);
     }
   }
   const [creating, setCreating] = useState(false);
@@ -69,9 +93,17 @@ export function WorkspaceSidebar({
       setNewName('');
       onSelect(created.id);
     },
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Create failed: ${err.message}` }),
   });
   const deleteWorkspace = trpc.workspace.delete.useMutation({
-    onSuccess: () => void utils.workspace.list.invalidate(),
+    onSuccess: (_, variables) => {
+      void utils.workspace.list.invalidate();
+      onWorkspaceDeleted(variables.workspaceId);
+      toast.push({ kind: 'success', message: 'Workspace deleted' });
+    },
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Delete failed: ${err.message}` }),
   });
 
   function handleCreate(e: FormEvent) {
@@ -173,17 +205,13 @@ export function WorkspaceSidebar({
 
         <button
           onClick={() => fileInputRef.current?.click()}
-          disabled={importWorkspace.isPending}
+          disabled={importing}
           className={`mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-40 ${
-            importWorkspace.isPending
-              ? 'text-zinc-500'
-              : 'text-zinc-400 hover:bg-zinc-800'
+            importing ? 'text-zinc-500' : 'text-zinc-400 hover:bg-zinc-800'
           }`}
         >
           <UploadIcon className="h-4 w-4" />
-          {importWorkspace.isPending
-            ? 'Importing workspace...'
-            : 'Import workspace'}
+          {importing ? 'Importing workspace...' : 'Import workspace'}
         </button>
         <input
           ref={fileInputRef}

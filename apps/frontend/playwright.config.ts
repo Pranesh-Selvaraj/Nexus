@@ -10,6 +10,11 @@ import { defineConfig, devices } from '@playwright/test';
  * The full stack is verified in CI with a deterministic mock OpenAI stub
  * (no API key): workspace -> upload -> index -> streamed chat answer.
  */
+// Overridable so the suite can run when another dev server owns :5173 or a
+// service owns :3000 locally (CI uses the defaults).
+const port = Number(process.env.E2E_PORT ?? 5173);
+const apiPort = Number(process.env.E2E_API_PORT ?? 3000);
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -18,13 +23,13 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'list',
   timeout: 60_000,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: `http://localhost:${port}`,
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command: 'bash e2e/e2e-server.sh',
-    port: 5173,
+    port,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
@@ -33,6 +38,8 @@ export default defineConfig({
         'postgres://nexus:nexus@localhost:5432/nexus',
       REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
       UPLOAD_DIR: process.env.UPLOAD_DIR ?? '/tmp/nexus-e2e-uploads',
+      VITE_PORT: String(port),
+      API_PORT: String(apiPort),
     },
   },
 });

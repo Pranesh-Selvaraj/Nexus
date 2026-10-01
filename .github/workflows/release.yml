@@ -1,8 +1,14 @@
 name: Release
 
 # Builds the production images, publishes them to GHCR, and creates a
-# GitHub Release with auto-generated notes. Triggered by pushing a tag:
-#   git tag v1.0.0 && git push origin v1.0.0
+# GitHub Release whose body is the matching section of CHANGELOG.md.
+# Triggered by pushing an annotated tag:
+#   git tag -a v1.0.0 -m "Nexus v1.0.0" && git push origin v1.0.0
+#
+# Phase tags are prereleases (vX.Y.Z-phase.N): they are marked as
+# pre-releases and never move the `latest` image tag. Every tag must have a
+# `## [<tag>]` section in CHANGELOG.md before it is pushed - the workflow
+# fails otherwise so a release can never ship generated placeholder notes.
 
 on:
   push:
@@ -39,7 +45,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push backend image
         uses: docker/build-push-action@v6
@@ -60,7 +66,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push frontend image
         uses: docker/build-push-action@v6
@@ -73,11 +79,28 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release from CHANGELOG.md
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --generate-notes \
-            --title "Nexus $GITHUB_REF_NAME" \
-            --notes "Container images (tags are semver, no v prefix): ghcr.io/${{ github.repository }}-backend:${GITHUB_REF_NAME#v}, ghcr.io/${{ github.repository }}-frontend:${GITHUB_REF_NAME#v}. See the deployment section of the README to run the stack."
+          set -euo pipefail
+          VERSION="$GITHUB_REF_NAME"
+          NOTES_FILE="$(mktemp)"
+          # Extract the section that starts with "## [<tag>]" up to the next
+          # "## [" heading. index() avoids regex escaping issues in the tag.
+          awk -v ver="$VERSION" '
+            index($0, "## [" ver "]") == 1 { found = 1; next }
+            found && index($0, "## [") == 1 { exit }
+            found { print }
+          ' CHANGELOG.md > "$NOTES_FILE"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "CHANGELOG.md has no section for $VERSION; add one before tagging." >&2
+            exit 1
+          fi
+          PRERELEASE_FLAG=""
+          case "$VERSION" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
+          gh release create "$VERSION" \
+            --title "Nexus $VERSION" \
+            --notes-file "$NOTES_FILE" \
+            $PRERELEASE_FLAG
+          echo "Published release $VERSION from CHANGELOG.md."

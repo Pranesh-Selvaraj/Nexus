@@ -271,6 +271,11 @@ export const SETTING_DEFS: SettingDef[] = [
 
 const defByKey = new Map(SETTING_DEFS.map((d) => [d.key, d]));
 
+/** True when the key is declared as a secret setting in the registry. */
+export function isSecretSetting(key: string): boolean {
+  return defByKey.get(key)?.type === 'secret';
+}
+
 // ---------------------------------------------------------------------------
 // Read cache
 //
@@ -389,6 +394,13 @@ async function getDbRow(
   return row ?? null;
 }
 
+/** Env var (when set and non-empty) or registry default for a key. */
+function fallbackValue(def: SettingDef): string {
+  const envValue = def.env ? process.env[def.env] : undefined;
+  if (envValue !== undefined && envValue !== '') return envValue;
+  return String(def.default);
+}
+
 /** Resolve the effective (raw, decrypted) value for a key. */
 export async function getSetting(key: string): Promise<string> {
   const def = defByKey.get(key);
@@ -398,15 +410,21 @@ export async function getSetting(key: string): Promise<string> {
   if (cached !== null) return cached;
 
   const row = await getDbRow(key);
-  const resolved = row
-    ? row.isSecret
-      ? decryptSecret(row.value)
-      : row.value
-    : (() => {
-        const envValue = def.env ? process.env[def.env] : undefined;
-        if (envValue !== undefined && envValue !== '') return envValue;
-        return String(def.default);
-      })();
+  let resolved: string;
+  if (!row) {
+    resolved = fallbackValue(def);
+  } else if (!row.isSecret) {
+    resolved = row.value;
+  } else {
+    try {
+      resolved = decryptSecret(row.value);
+    } catch {
+      // SETTINGS_SECRET missing or rotated: degrade to the env/default value
+      // (the settings UI flags the unreadable row for re-entry) instead of
+      // throwing a crypto error into chat and embedding calls.
+      resolved = fallbackValue(def);
+    }
+  }
 
   settingCache.set(key, { value: resolved, at: Date.now() });
   return resolved;
@@ -429,6 +447,8 @@ export interface SettingView {
   /** Masked value for secrets; raw for everything else. */
   displayValue: string;
   secretConfigured: boolean;
+  /** Stored secret exists but cannot be decrypted (SETTINGS_SECRET changed). */
+  decryptionFailed: boolean;
 }
 
 /** Full listing for the settings UI (secrets never sent in full). */
@@ -439,15 +459,30 @@ export async function listSettings(): Promise<SettingView[]> {
   return SETTING_DEFS.map((def) => {
     const row = byKey.get(def.key);
     if (row) {
-      const raw = row.isSecret ? decryptSecret(row.value) : row.value;
+      let raw = '';
+      let decryptionFailed = false;
+      if (row.isSecret) {
+        try {
+          raw = decryptSecret(row.value);
+        } catch {
+          // One unreadable row must not take down the whole settings page.
+          decryptionFailed = true;
+        }
+      } else {
+        raw = row.value;
+      }
       return {
         key: def.key,
         def,
         // Secrets stay server-side: the client only ever sees a mask.
         value: row.isSecret ? '' : raw,
         source: 'ui' as const,
-        displayValue: row.isSecret && isRealSecret(raw) ? maskSecret(raw) : '',
+        displayValue:
+          row.isSecret && !decryptionFailed && isRealSecret(raw)
+            ? maskSecret(raw)
+            : '',
         secretConfigured: encryptionKeyConfigured(),
+        decryptionFailed,
       };
     }
     const envValue = def.env ? process.env[def.env] : undefined;
@@ -464,28 +499,13 @@ export async function listSettings(): Promise<SettingView[]> {
       displayValue:
         def.type === 'secret' && fromEnv ? maskSecret(value) : value,
       secretConfigured: encryptionKeyConfigured(),
+      decryptionFailed: false,
     };
   });
 }
 
-/** Validate + persist one setting; empty value deletes the row (reset to default). */
-export async function updateSetting(
-  key: string,
-  rawValue: string,
-): Promise<SettingView> {
-  const def = defByKey.get(key);
-  if (!def) throw new Error(`Unknown setting: ${key}`);
-
-  const value = rawValue.trim();
-
-  // Empty input -> reset to default (env or registry default)
-  if (value === '') {
-    await db.delete(settings).where(eq(settings.key, key));
-    invalidateSettingsCache(key);
-    return (await listSettings()).find((s) => s.key === key) as SettingView;
-  }
-
-  // Type validation / clamping
+/** Type validation / clamping for one raw (non-empty) value. */
+function normalizeSettingValue(def: SettingDef, value: string): string {
   let stored = value;
   if (def.key === 'openai.baseUrl' || def.key === 'openai.embeddingBaseUrl') {
     // A base URL that already contains an endpoint path can never work:
@@ -512,32 +532,101 @@ export async function updateSetting(
   if (def.type === 'text' && def.max && stored.length > def.max) {
     throw new Error(`${def.label} must be at most ${def.max} characters`);
   }
-  if (def.key === 'rag.chunkOverlap') {
-    const chunkSize = Number(await getSetting('rag.chunkSize'));
-    if (Number(stored) >= chunkSize) {
-      throw new Error('Chunk overlap must be smaller than chunk size');
-    }
+  return stored;
+}
+
+/** Effective value after a save, treating '' as "reset to env/default". */
+function effectiveValue(def: SettingDef, stored: string): string {
+  return stored === '' ? fallbackValue(def) : stored;
+}
+
+/**
+ * Chunk size and overlap are one invariant (overlap < size), so validating
+ * only the field being saved allowed invalid pairs depending on save order.
+ * Both sides are checked against the post-save effective values.
+ */
+async function assertChunkPairValid(
+  effective: Map<string, string>,
+): Promise<void> {
+  if (!effective.has('rag.chunkSize') && !effective.has('rag.chunkOverlap')) {
+    return;
+  }
+  const size = Number(
+    effective.get('rag.chunkSize') ?? (await getSetting('rag.chunkSize')),
+  );
+  const overlap = Number(
+    effective.get('rag.chunkOverlap') ?? (await getSetting('rag.chunkOverlap')),
+  );
+  if (Number.isFinite(size) && Number.isFinite(overlap) && overlap >= size) {
+    throw new Error('Chunk overlap must be smaller than chunk size');
+  }
+}
+
+/** Insert/update one setting; an empty stored value deletes the row. */
+async function persistSetting(
+  key: string,
+  stored: string,
+  isSecret: boolean,
+): Promise<void> {
+  if (stored === '') {
+    await db.delete(settings).where(eq(settings.key, key));
+  } else {
+    const value = isSecret ? encryptSecret(stored) : stored;
+    await db
+      .insert(settings)
+      .values({ key, value, isSecret })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value, isSecret, updatedAt: new Date() },
+      });
+  }
+  invalidateSettingsCache(key);
+}
+
+/**
+ * Validate + persist a batch of settings atomically from the caller's point
+ * of view: nothing is written when any value (or the chunk size/overlap pair
+ * formed by the batch) is invalid. Empty values reset a key to its default.
+ */
+export async function updateSettings(
+  values: Record<string, string>,
+): Promise<SettingView[]> {
+  const entries = Object.entries(values);
+  if (entries.length === 0) return [];
+
+  const normalized = new Map<string, { def: SettingDef; stored: string }>();
+  for (const [key, rawValue] of entries) {
+    const def = defByKey.get(key);
+    if (!def) throw new Error(`Unknown setting: ${key}`);
+    const value = rawValue.trim();
+    normalized.set(key, {
+      def,
+      stored: value === '' ? '' : normalizeSettingValue(def, value),
+    });
   }
 
-  const isSecret = def.type === 'secret';
-  await db
-    .insert(settings)
-    .values({
-      key,
-      value: isSecret ? encryptSecret(stored) : stored,
-      isSecret,
-    })
-    .onConflictDoUpdate({
-      target: settings.key,
-      set: {
-        value: isSecret ? encryptSecret(stored) : stored,
-        isSecret,
-        updatedAt: new Date(),
-      },
-    });
+  const effective = new Map<string, string>();
+  for (const [key, { def, stored }] of normalized) {
+    effective.set(key, effectiveValue(def, stored));
+  }
+  await assertChunkPairValid(effective);
 
-  invalidateSettingsCache(key);
-  return (await listSettings()).find((s) => s.key === key) as SettingView;
+  for (const [key, { def, stored }] of normalized) {
+    await persistSetting(key, stored, def.type === 'secret');
+  }
+
+  const all = await listSettings();
+  return all.filter((s) => normalized.has(s.key));
+}
+
+/** Validate + persist one setting; empty value deletes the row (reset to default). */
+export async function updateSetting(
+  key: string,
+  rawValue: string,
+): Promise<SettingView> {
+  const [view] = await updateSettings({ [key]: rawValue });
+  if (!view) throw new Error(`Unknown setting: ${key}`);
+  return view;
 }
 
 /** Secret values cannot be stored when SETTINGS_SECRET is missing. */

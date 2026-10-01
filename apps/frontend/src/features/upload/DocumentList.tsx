@@ -1,5 +1,6 @@
 import type { DocumentDTO } from '@nexus/shared-types';
 
+import { useToast } from '../../components/Toast';
 import { trpc } from '../../lib/trpc';
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 
 export function DocumentList({ workspaceId }: Props) {
   const utils = trpc.useUtils();
+  const toast = useToast();
   const query = trpc.document.listByWorkspace.useQuery(
     { workspaceId },
     {
@@ -19,13 +21,21 @@ export function DocumentList({ workspaceId }: Props) {
     },
   );
 
+  const invalidateDocuments = () => {
+    void utils.document.listByWorkspace.invalidate({ workspaceId });
+    // The sidebar count comes from workspace.list; keep it in sync.
+    void utils.workspace.list.invalidate();
+  };
+
   const removeDocument = trpc.document.remove.useMutation({
-    onSuccess: () =>
-      void utils.document.listByWorkspace.invalidate({ workspaceId }),
+    onSuccess: invalidateDocuments,
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Delete failed: ${err.message}` }),
   });
   const retryDocument = trpc.document.retry.useMutation({
-    onSuccess: () =>
-      void utils.document.listByWorkspace.invalidate({ workspaceId }),
+    onSuccess: invalidateDocuments,
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Retry failed: ${err.message}` }),
   });
 
   const documents = query.data ?? [];
@@ -87,23 +97,40 @@ function DocumentRow({ doc, onDelete, onRetry, isDeleting }: RowProps) {
             <p className="mt-0.5 text-xs text-zinc-500">
               {status === 'ready'
                 ? `${doc.chunkCount} chunk${doc.chunkCount === 1 ? '' : 's'} indexed`
-                : new Date(doc.createdAt).toLocaleString()}
+                : status === 'failed'
+                  ? `Failed after ${doc.attempts} attempt${doc.attempts === 1 ? '' : 's'}`
+                  : new Date(doc.createdAt).toLocaleString()}
             </p>
+            {status === 'failed' && doc.errorMessage && (
+              <p
+                className="mt-1 line-clamp-3 text-xs text-red-400"
+                title={doc.errorMessage}
+              >
+                {doc.errorMessage}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1">
           <StatusBadge status={status} />
+          {status === 'failed' && (
+            <button
+              title="Retry indexing"
+              aria-label="Retry indexing"
+              onClick={onRetry}
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+            >
+              <RetryIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
-            title={status === 'failed' ? 'Retry indexing' : 'Delete document'}
-            onClick={status === 'failed' ? onRetry : onDelete}
+            title="Delete document"
+            aria-label="Delete document"
+            onClick={onDelete}
             disabled={isDeleting}
             className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-50"
           >
-            {status === 'failed' ? (
-              <RetryIcon className="h-3.5 w-3.5" />
-            ) : (
-              <TrashIcon className="h-3.5 w-3.5" />
-            )}
+            <TrashIcon className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>

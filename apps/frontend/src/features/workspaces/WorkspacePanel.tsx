@@ -1,6 +1,7 @@
 import { ChatPanel } from '../chat/ChatPanel';
 import { DocumentList } from '../upload/DocumentList';
 import { UploadDropzone } from '../upload/UploadDropzone';
+import { useToast } from '../../components/Toast';
 import { trpc } from '../../lib/trpc';
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function WorkspacePanel({ workspaceId }: Props) {
+  const toast = useToast();
   const exportWorkspace = trpc.workspace.export.useQuery(
     { workspaceId },
     { enabled: false, retry: false },
@@ -32,7 +34,7 @@ export function WorkspacePanel({ workspaceId }: Props) {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      // refetch errors surface in the UI below
+      toast.push({ kind: 'error', message: 'Export failed' });
     }
   }
 
