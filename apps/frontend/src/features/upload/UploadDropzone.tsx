@@ -70,6 +70,10 @@ export function UploadDropzone({ workspaceId }: Props) {
       }
       setUploading(false);
       void utils.document.listByWorkspace.invalidate({ workspaceId });
+      // Keep the sidebar document count in sync (it reads workspace.list).
+      void utils.workspace.list.invalidate();
+      // Don't leave the success notice on screen forever.
+      window.setTimeout(() => setMessage(null), 6_000);
     },
     [workspaceId, utils],
   );

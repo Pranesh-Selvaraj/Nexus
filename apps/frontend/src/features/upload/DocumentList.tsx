@@ -21,15 +21,19 @@ export function DocumentList({ workspaceId }: Props) {
     },
   );
 
+  const invalidateDocuments = () => {
+    void utils.document.listByWorkspace.invalidate({ workspaceId });
+    // The sidebar count comes from workspace.list; keep it in sync.
+    void utils.workspace.list.invalidate();
+  };
+
   const removeDocument = trpc.document.remove.useMutation({
-    onSuccess: () =>
-      void utils.document.listByWorkspace.invalidate({ workspaceId }),
+    onSuccess: invalidateDocuments,
     onError: (err) =>
       toast.push({ kind: 'error', message: `Delete failed: ${err.message}` }),
   });
   const retryDocument = trpc.document.retry.useMutation({
-    onSuccess: () =>
-      void utils.document.listByWorkspace.invalidate({ workspaceId }),
+    onSuccess: invalidateDocuments,
     onError: (err) =>
       toast.push({ kind: 'error', message: `Retry failed: ${err.message}` }),
   });

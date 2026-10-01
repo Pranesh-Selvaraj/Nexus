@@ -466,85 +466,103 @@ export function ChatPanel({ workspaceId }: Props) {
               )}
 
               <div className="space-y-4">
-                {messages.map((message, index) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
+                {messages.map((message, index) => {
+                  // While streaming, the live bubble below represents the
+                  // pending assistant turn; skip its empty placeholder so it
+                  // does not render as a second "Thinking..." bubble.
+                  if (
+                    streaming &&
+                    message.role === 'assistant' &&
+                    message.content === ''
+                  ) {
+                    return null;
+                  }
+                  return (
                     <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                        message.role === 'user'
-                          ? 'bg-nexus-600 text-white'
-                          : message.error
-                            ? 'border border-red-900/60 bg-red-950/30 text-red-300'
-                            : 'border border-zinc-800 bg-zinc-900'
-                      }`}
+                      key={message.id}
+                      className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
-                      {message.role === 'assistant' ? (
-                        <>
-                          <div className="markdown-body">
-                            {message.content ? (
-                              <Suspense
-                                fallback={
-                                  <MarkdownFallback content={message.content} />
-                                }
-                              >
-                                <Markdown content={message.content} />
-                              </Suspense>
-                            ) : (
-                              <span className="text-zinc-500">Thinking...</span>
+                      <div
+                        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                          message.role === 'user'
+                            ? 'bg-nexus-600 text-white'
+                            : message.error
+                              ? 'border border-red-900/60 bg-red-950/30 text-red-300'
+                              : 'border border-zinc-800 bg-zinc-900'
+                        }`}
+                      >
+                        {message.role === 'assistant' ? (
+                          <>
+                            <div className="markdown-body">
+                              {message.content ? (
+                                <Suspense
+                                  fallback={
+                                    <MarkdownFallback
+                                      content={message.content}
+                                    />
+                                  }
+                                >
+                                  <Markdown content={message.content} />
+                                </Suspense>
+                              ) : (
+                                <span className="text-zinc-500">
+                                  Thinking...
+                                </span>
+                              )}
+                            </div>
+                            {message.stopped && (
+                              <p className="mt-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
+                                Stopped
+                              </p>
                             )}
-                          </div>
-                          {message.stopped && (
-                            <p className="mt-1.5 text-[10px] uppercase tracking-wide text-zinc-500">
-                              Stopped
-                            </p>
-                          )}
-                          {message.sources && message.sources.length > 0 && (
-                            <SourcesPanel sources={message.sources} />
-                          )}
-                          {message.usage && (
-                            <p className="mt-1.5 text-[10px] text-zinc-600">
-                              {message.usage.totalTokens} tokens (
-                              {message.usage.promptTokens} in ·{' '}
-                              {message.usage.completionTokens} out)
-                            </p>
-                          )}
-                          {!streaming && (
-                            <div className="mt-2 flex items-center gap-3 border-t border-zinc-800 pt-1.5 text-[11px] text-zinc-500">
-                              <button
-                                onClick={() => copyMessage(message)}
-                                className="hover:text-zinc-300"
-                              >
-                                Copy
-                              </button>
-                              {message.error && (
+                            {message.sources && message.sources.length > 0 && (
+                              <SourcesPanel sources={message.sources} />
+                            )}
+                            {message.usage && (
+                              <p className="mt-1.5 text-[10px] text-zinc-600">
+                                {message.usage.totalTokens} tokens (
+                                {message.usage.promptTokens} in ·{' '}
+                                {message.usage.completionTokens} out)
+                              </p>
+                            )}
+                            {!streaming && (
+                              <div className="mt-2 flex items-center gap-3 border-t border-zinc-800 pt-1.5 text-[11px] text-zinc-500">
                                 <button
-                                  onClick={regenerate}
+                                  onClick={() => copyMessage(message)}
                                   className="hover:text-zinc-300"
                                 >
-                                  Retry
+                                  Copy
                                 </button>
-                              )}
-                              {!message.error &&
-                                activeConversationId !== null &&
-                                index === messages.length - 1 && (
+                                {message.error && (
                                   <button
                                     onClick={regenerate}
                                     className="hover:text-zinc-300"
                                   >
-                                    Regenerate
+                                    Retry
                                   </button>
                                 )}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <p className="whitespace-pre-wrap">{message.content}</p>
-                      )}
+                                {!message.error &&
+                                  activeConversationId !== null &&
+                                  index === messages.length - 1 && (
+                                    <button
+                                      onClick={regenerate}
+                                      className="hover:text-zinc-300"
+                                    >
+                                      Regenerate
+                                    </button>
+                                  )}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="whitespace-pre-wrap">
+                            {message.content}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {/* Live streaming bubble */}
                 {streaming && (
