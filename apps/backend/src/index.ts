@@ -14,10 +14,10 @@ import rateLimit from 'express-rate-limit';
 import { and, eq, ne } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { WebSocketServer } from 'ws';
-import { workspaceIdSchema } from '@nexus/shared-types';
+import { workspaceArchiveSchema, workspaceIdSchema } from '@nexus/shared-types';
 
 import { db, pool } from './db/index.js';
-import { documents, users, workspaces } from './db/schema.js';
+import { documents, sessions, users, workspaces } from './db/schema.js';
 import {
   authEnabled,
   createExpressContext,
@@ -29,9 +29,14 @@ import {
 import { enqueueDocumentEmbedding, redisConnection } from './queues/index.js';
 import { appRouter } from './routers/_app.js';
 import { UPLOAD_DIR } from './utils/paths.js';
-import { sanitizeForLog, upload } from './utils/multer.config.js';
+import {
+  archiveUpload,
+  sanitizeForLog,
+  upload,
+} from './utils/multer.config.js';
 import { toDocumentDTO } from './utils/dto.js';
 import { getSettingNumber } from './services/settings.service.js';
+import { importWorkspaceArchive } from './services/workspace-archive.service.js';
 import {
   createSession,
   deleteSession,
@@ -118,7 +123,7 @@ async function main(): Promise<void> {
   // Pre-auth era workspaces (created under other user ids) are adopted by
   // the local user so nothing is lost when dropping authentication.
   const [localUser] = await db
-    .select({ id: users.id })
+    .select({ id: users.id, passwordHash: users.passwordHash })
     .from(users)
     .where(eq(users.email, LOCAL_USER_EMAIL))
     .limit(1);
@@ -131,20 +136,30 @@ async function main(): Promise<void> {
   }
 
   // Optional authentication: when AUTH_PASSWORD is set, store its scrypt
-  // hash on the local user so login can verify against the database.
+  // hash on the local user so login can verify against the database. If the
+  // password actually changed (or this is the first authenticated boot),
+  // every existing session is deleted so a leaked cookie cannot outlive the
+  // credential change.
   if (authEnabled()) {
     if (!localUser) {
       throw new Error(
         `AUTH_PASSWORD is set but the local user (${LOCAL_USER_EMAIL}) could not be resolved`,
       );
     }
-    await db
-      .update(users)
-      .set({
-        passwordHash: await hashPassword(process.env.AUTH_PASSWORD as string),
-      })
-      .where(eq(users.id, localUser.id));
-    console.log('[boot] authentication enabled - login required');
+    const password = process.env.AUTH_PASSWORD as string;
+    const unchanged = await verifyPassword(password, localUser.passwordHash);
+    if (!unchanged) {
+      await db
+        .update(users)
+        .set({ passwordHash: await hashPassword(password) })
+        .where(eq(users.id, localUser.id));
+      await db.delete(sessions).where(eq(sessions.userId, localUser.id));
+      console.log(
+        '[boot] authentication enabled - login required (existing sessions invalidated)',
+      );
+    } else {
+      console.log('[boot] authentication enabled - login required');
+    }
   } else {
     console.warn(
       '[boot] WARNING: AUTH_PASSWORD not set - running in single-user no-auth mode. Set AUTH_PASSWORD when exposing publicly (see SECURITY.md).',
@@ -377,9 +392,68 @@ async function main(): Promise<void> {
     },
   );
 
+  // --- Workspace archive import (multipart JSON, no JSON body cap) ------
+  // The tRPC `workspace.import` mutation shares the 1 MB JSON body limit of
+  // every tRPC call, which real backups exceed immediately. The UI uploads
+  // the archive as a file here instead; the service re-validates the decoded
+  // payload against row/size limits.
+  const importLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 5,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many imports, please retry in a minute' },
+  });
+  app.post(
+    '/api/workspace/import',
+    importLimiter,
+    archiveUpload.single('archive'),
+    async (req, res) => {
+      try {
+        const currentUser = await resolveUser(readSessionCookie(req.headers));
+        if (!currentUser) {
+          res.status(401).json({ error: 'Not authenticated' });
+          return;
+        }
+        if (!req.file) {
+          res.status(400).json({ error: 'No archive provided' });
+          return;
+        }
+        let parsedJson: unknown;
+        try {
+          parsedJson = JSON.parse(req.file.buffer.toString('utf8'));
+        } catch {
+          res
+            .status(400)
+            .json({ error: 'Workspace archive is not valid JSON' });
+          return;
+        }
+        const parsed = workspaceArchiveSchema.safeParse(parsedJson);
+        if (!parsed.success) {
+          res.status(400).json({
+            error: 'Not a valid Nexus workspace archive (version 1)',
+          });
+          return;
+        }
+        const workspace = await importWorkspaceArchive(
+          currentUser.id,
+          parsed.data,
+        );
+        res.status(201).json({ workspace });
+      } catch (err) {
+        console.error('[import] failed:', sanitizeForLog(err));
+        if (!res.headersSent) {
+          res.status(400).json({
+            error: err instanceof Error ? err.message : 'Import failed',
+          });
+        }
+      }
+    },
+  );
+
   // multer errors -> JSON 400 instead of HTML stack (size limit, filter, ...)
   app.use(
-    '/api/upload',
+    '/api',
     (
       err: Error,
       _req: express.Request,

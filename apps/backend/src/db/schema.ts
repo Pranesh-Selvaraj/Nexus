@@ -39,6 +39,8 @@ export const documentStatusEnum = pgEnum('document_status', [
 
 export const messageRoleEnum = pgEnum('message_role', ['user', 'assistant']);
 
+export const messageKindEnum = pgEnum('message_kind', ['answer', 'error']);
+
 // ---------------------------------------------------------------------------
 // Tables
 // ---------------------------------------------------------------------------
@@ -87,7 +89,14 @@ export const documents = pgTable(
     fileType: text('file_type'),
     status: documentStatusEnum('status').notNull().default('processing'),
     chunkCount: integer('chunk_count').notNull().default(0),
+    // Populated when indexing fails: sanitized error + attempt count so the
+    // UI can explain what happened instead of showing a bare 'failed' badge.
+    errorMessage: text('error_message'),
+    attempts: integer('attempts').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
@@ -148,6 +157,9 @@ export const messages = pgTable(
       .notNull()
       .references(() => conversations.id, { onDelete: 'cascade' }),
     role: messageRoleEnum('role').notNull(),
+    // 'error' rows carry a friendly error string instead of an answer; they
+    // render distinctly and are excluded from the model's chat history.
+    kind: messageKindEnum('kind').notNull().default('answer'),
     content: text('content').notNull(),
     sources: jsonb('sources').$type<Source[] | null>(),
     usage: jsonb('usage').$type<{

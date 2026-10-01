@@ -18,6 +18,7 @@ import {
   embedTexts,
   getEmbeddingDimensions,
 } from '../services/embedding.service.js';
+import { sanitizeForLog } from '../utils/sanitize.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
 
 async function processDocument(documentId: string): Promise<void> {
@@ -30,7 +31,7 @@ async function processDocument(documentId: string): Promise<void> {
 
   await db
     .update(documents)
-    .set({ status: 'processing' })
+    .set({ status: 'processing', errorMessage: null, updatedAt: new Date() })
     .where(eq(documents.id, doc.id));
 
   const filePath = path.resolve(UPLOAD_DIR, doc.filePath);
@@ -73,7 +74,12 @@ async function processDocument(documentId: string): Promise<void> {
     }
     await tx
       .update(documents)
-      .set({ status: 'ready', chunkCount: rows.length })
+      .set({
+        status: 'ready',
+        chunkCount: rows.length,
+        errorMessage: null,
+        updatedAt: new Date(),
+      })
       .where(eq(documents.id, doc.id));
   });
 }
@@ -103,6 +109,8 @@ const worker = new Worker<EmbeddingJobData>(
 );
 
 worker.on('completed', async (job) => {
+  // Maintenance jobs carry no document id.
+  if (job.name === MAINTENANCE_JOB || !job.data.documentId) return;
   const [doc] = await db
     .select({ title: documents.title, chunkCount: documents.chunkCount })
     .from(documents)
@@ -115,18 +123,29 @@ worker.on('completed', async (job) => {
 
 worker.on('failed', async (job, err) => {
   console.error(
-    `[worker] embedding failed for document ${job?.data.documentId}:`,
+    `[worker] embedding failed for document ${job?.data.documentId} (attempt ${job?.attemptsMade}):`,
     err.message,
   );
-  if (job?.data.documentId) {
-    await db
-      .update(documents)
-      .set({ status: 'failed' })
-      .where(eq(documents.id, job.data.documentId))
-      .catch((dbErr) =>
-        console.error('[worker] failed to mark document as failed:', dbErr),
-      );
-  }
+  if (!job?.data.documentId) return;
+
+  // BullMQ emits 'failed' after every attempt, including ones that will be
+  // retried. Only mark the document failed once retries are exhausted; until
+  // then record the latest error and attempt count while it stays processing.
+  const maxAttempts = job.opts.attempts ?? 1;
+  const terminal = job.attemptsMade >= maxAttempts;
+
+  await db
+    .update(documents)
+    .set({
+      status: terminal ? 'failed' : 'processing',
+      errorMessage: sanitizeForLog(err.message),
+      attempts: job.attemptsMade,
+      updatedAt: new Date(),
+    })
+    .where(eq(documents.id, job.data.documentId))
+    .catch((dbErr) =>
+      console.error('[worker] failed to record document failure:', dbErr),
+    );
 });
 
 worker.on('error', (err) => {

@@ -16,10 +16,45 @@ export interface TextChunk {
   page: number | null;
 }
 
+interface PdfPageData {
+  getTextContent(options: {
+    normalizeWhitespace: boolean;
+    disableCombineTextItems: boolean;
+  }): Promise<{
+    items: Array<{ str: string; transform: number[] }>;
+  }>;
+}
+
+/**
+ * Renders one pdf.js page and appends a form-feed page marker. Mirrors
+ * pdf-parse's default renderer (same line-joining heuristic) but preserves
+ * page boundaries: pdf-parse's default joins every page with a blank line,
+ * which made every PDF chunk report page 1.
+ */
+async function renderPdfPage(pageData: PdfPageData): Promise<string> {
+  const textContent = await pageData.getTextContent({
+    normalizeWhitespace: false,
+    disableCombineTextItems: false,
+  });
+  let lastY: number | undefined;
+  let text = '';
+  for (const item of textContent.items) {
+    if (lastY === undefined || lastY === item.transform[5]) {
+      text += item.str;
+    } else {
+      text += `\n${item.str}`;
+    }
+    lastY = item.transform[5];
+  }
+  return `${text}\f`;
+}
+
 /**
  * Extract per-page text from an uploaded file.
- * PDF page boundaries are detected via form-feed characters (\f), which
- * pdf-parse inserts between pages.
+ *
+ * PDF pages are delimited by a form-feed appended by the custom renderer,
+ * and page numbers are assigned *before* empty pages are filtered out so a
+ * blank/image-only page cannot shift every later citation by one.
  */
 export async function extractPages(
   filePath: string,
@@ -28,15 +63,19 @@ export async function extractPages(
   const buffer = await fs.readFile(filePath);
 
   if (fileType === 'pdf') {
-    const data = await pdfParse(buffer);
+    // pdf.js (bundled with pdf-parse v1) mishandles some Node Buffers
+    // (bad XRef entry) while parsing the same bytes as a Uint8Array fine.
+    const data = await pdfParse(new Uint8Array(buffer) as unknown as Buffer, {
+      pagerender: renderPdfPage,
+    });
     const pages = data.text
       .split('\f')
-      .map((text) => text.trim())
-      .filter((text) => text.length > 0);
+      .map((text, i) => ({ page: i + 1, text: text.trim() }))
+      .filter((page) => page.text.length > 0);
     if (pages.length === 0) {
       throw new Error('PDF contains no extractable text');
     }
-    return pages.map((text, i) => ({ page: i + 1, text }));
+    return pages;
   }
 
   if (fileType === 'docx') {

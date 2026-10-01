@@ -1,5 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import { TRPCError } from '@trpc/server';
@@ -22,7 +21,7 @@ import {
   workspaces,
 } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
-import { enqueueDocumentEmbedding } from '../queues/index.js';
+import { importWorkspaceArchive } from '../services/workspace-archive.service.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
 
 const importWorkspaceInputSchema = z.object({
@@ -226,7 +225,7 @@ export const workspaceRouter = t.router({
               role: m.role,
               content: m.content,
               sources: m.sources,
-              usage: null,
+              usage: m.usage,
               createdAt: new Date(m.createdAt).toISOString(),
             })),
           };
@@ -245,82 +244,21 @@ export const workspaceRouter = t.router({
       };
     }),
 
-  /** Restore an exported workspace (documents are re-indexed). */
+  /**
+   * Restore an exported workspace (documents are re-indexed). Kept for API
+   * clients; the UI uses the streaming `/api/workspace/import` endpoint so
+   * large archives are not limited by the JSON body cap.
+   */
   import: protectedProcedure
     .input(importWorkspaceInputSchema)
     .mutation(async ({ ctx, input }): Promise<WorkspaceDTO> => {
-      const { archive } = input;
-      const [created] = await db
-        .insert(workspaces)
-        .values({
-          userId: ctx.user.id,
-          name:
-            archive.workspace.name.trim().slice(0, 80) || 'Imported workspace',
-          description: archive.workspace.description,
-        })
-        .returning();
-      if (!created) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
-      }
-
-      // Restore documents: write file contents under fresh server-controlled
-      // names and re-queue embeddings.
-      const workspaceDir = path.join(UPLOAD_DIR, created.id);
-      await mkdir(workspaceDir, { recursive: true });
-
-      for (const doc of archive.documents) {
-        const filename = randomUUID();
-        const filePath = path.join(workspaceDir, filename);
-        try {
-          await writeFile(filePath, Buffer.from(doc.contentBase64, 'base64'));
-        } catch (err) {
-          console.error('[import] skipping unreadable document:', err);
-          continue;
+      try {
+        return await importWorkspaceArchive(ctx.user.id, input.archive);
+      } catch (err) {
+        if (err instanceof Error) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message });
         }
-        const [inserted] = await db
-          .insert(documents)
-          .values({
-            workspaceId: created.id,
-            title: doc.title,
-            filePath: `${created.id}/${filename}`,
-            fileType: doc.fileType,
-            status: 'processing',
-          })
-          .returning({ id: documents.id });
-        if (inserted) {
-          await enqueueDocumentEmbedding(inserted.id).catch((err) =>
-            console.error('[import] enqueue failed:', err),
-          );
-        }
+        throw err;
       }
-
-      // Restore conversations and their messages.
-      for (const conversation of archive.conversations) {
-        const [conv] = await db
-          .insert(conversations)
-          .values({
-            workspaceId: created.id,
-            title: conversation.title.slice(0, 200) || 'Imported conversation',
-          })
-          .returning({ id: conversations.id });
-        if (!conv) continue;
-        for (const message of conversation.messages) {
-          await db.insert(messages).values({
-            conversationId: conv.id,
-            role: message.role,
-            content: message.content,
-            sources: message.sources,
-            createdAt: new Date(message.createdAt),
-          });
-        }
-      }
-
-      return toWorkspaceDTO({
-        id: created.id,
-        name: created.name,
-        description: created.description,
-        created_at: created.createdAt,
-        document_count: archive.documents.length,
-      });
     }),
 });

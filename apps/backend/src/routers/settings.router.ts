@@ -5,8 +5,10 @@ import { z } from 'zod';
 import { protectedProcedure, t } from '../middleware/auth.js';
 import {
   assertSecretsAvailable,
+  isSecretSetting,
   listSettings,
   updateSetting,
+  updateSettings,
 } from '../services/settings.service.js';
 import type { SettingView } from '../services/settings.service.js';
 import { getSetting } from '../services/settings.service.js';
@@ -21,6 +23,18 @@ import { friendlyErrorMessage } from '../utils/errors.js';
 import { baseUrlEndpointPath, suggestBaseUrl } from '../utils/provider-url.js';
 
 const settingKeySchema = z.object({ key: z.string().min(1).max(64) });
+
+const settingValuesSchema = z.record(
+  z.string().min(1).max(64),
+  z.string().max(4000),
+);
+
+/** True when the batch contains a non-empty value for a secret setting. */
+function touchesSecrets(values: Record<string, string>): boolean {
+  return Object.entries(values).some(
+    ([key, value]) => value !== '' && isSecretSetting(key),
+  );
+}
 
 /** Short timeout + one retry: settings-panel probes must stay snappy while
  * surviving transient network blips (DNS, Wi-Fi, resets). */
@@ -93,6 +107,34 @@ export const settingsRouter = t.router({
       }
       try {
         return await updateSetting(input.key, input.value);
+      } catch (err) {
+        if (err instanceof Error) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message });
+        }
+        throw err;
+      }
+    }),
+
+  /**
+   * Update several settings in one validated batch. The UI uses this so
+   * cross-field invariants (chunk overlap < chunk size) are checked against
+   * the final state rather than per-field save order.
+   */
+  updateMany: protectedProcedure
+    .input(z.object({ values: settingValuesSchema }))
+    .mutation(async ({ input }): Promise<SettingView[]> => {
+      if (touchesSecrets(input.values)) {
+        try {
+          assertSecretsAvailable();
+        } catch (err) {
+          if (err instanceof Error) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: err.message });
+          }
+          throw err;
+        }
+      }
+      try {
+        return await updateSettings(input.values);
       } catch (err) {
         if (err instanceof Error) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: err.message });

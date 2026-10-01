@@ -2,10 +2,19 @@ import path from 'node:path';
 
 import multer from 'multer';
 
+import { sanitizeForLog } from './sanitize.js';
 import { UPLOAD_DIR } from './paths.js';
+
+// Re-exported so existing callers keep importing from this module.
+export { sanitizeForLog };
 
 export const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB ?? 25);
 
+/** Hard cap for workspace archive imports (multipart JSON file). */
+export const MAX_IMPORT_MB = Number(process.env.MAX_IMPORT_MB ?? 100);
+
+// Kept for compatibility with callers that still read the env value; the
+// effective limit now comes from the `server.maxUploadMb` setting.
 export const ALLOWED_EXTENSIONS = new Set([
   'pdf',
   'docx',
@@ -48,24 +57,40 @@ export function fileFilter(
 }
 
 /**
- * Strips control characters and caps length before anything user-influenced
- * reaches the log stream (CodeQL js/log-injection).
+ * Multer hard cap. The effective per-request limit is enforced from the
+ * `server.maxUploadMb` setting in index.ts; this is only a backstop so a
+ * malicious oversized body cannot exhaust memory before validation runs.
  */
-export function sanitizeForLog(value: unknown): string {
-  /* eslint-disable no-control-regex -- control-char class IS the sanitizer */
-  return String(value)
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .slice(0, 2000);
-  /* eslint-enable no-control-regex */
-}
+const MAX_UPLOAD_HARD_CAP_MB = 100;
 
 export const upload = multer({
   storage,
   limits: {
-    fileSize: MAX_UPLOAD_MB * 1024 * 1024,
+    fileSize: MAX_UPLOAD_HARD_CAP_MB * 1024 * 1024,
     files: 1,
   },
   fileFilter,
+});
+
+/**
+ * Workspace archive imports: a single JSON file, streamed as multipart so
+ * the archive never hits the (small) tRPC JSON body limit. The service also
+ * validates the decoded payload against row/size limits.
+ */
+export const archiveUpload = multer({
+  storage,
+  limits: {
+    fileSize: MAX_IMPORT_MB * 1024 * 1024,
+    files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).slice(1).toLowerCase();
+    if (ext !== 'json') {
+      cb(new Error('Workspace archive must be a .json file'));
+      return;
+    }
+    cb(null, true);
+  },
 });
 
 // Re-exported for callers that need the resolved uploads directory.

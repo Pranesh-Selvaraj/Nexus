@@ -22,20 +22,39 @@ export const embeddingQueue = new Queue<EmbeddingJobData>('embedding', {
 /**
  * Queue a document for async embedding generation. Retried up to 3 times
  * (exponential backoff) before the document is marked as failed.
+ *
+ * The job id is the document id, so a document can never have two indexing
+ * jobs at once (repeated retries cannot duplicate provider work). BullMQ
+ * ignores `add` when a job with the same id still exists, so any retained
+ * terminal job is dropped first.
  */
 export async function enqueueDocumentEmbedding(
   documentId: string,
 ): Promise<void> {
+  await embeddingQueue.remove(documentId).catch(() => 0);
   await embeddingQueue.add(
     'embed',
     { documentId },
     {
+      jobId: documentId,
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
       removeOnComplete: 1000,
       removeOnFail: 1000,
     },
   );
+}
+
+/**
+ * Drop any waiting/delayed/terminal indexing job for a document. Called when
+ * the document is deleted so a queued job cannot embed (and pay for) content
+ * that no longer exists. Active jobs cannot be removed and will simply no-op
+ * when they find the row gone.
+ */
+export async function cancelDocumentEmbedding(
+  documentId: string,
+): Promise<void> {
+  await embeddingQueue.remove(documentId).catch(() => 0);
 }
 
 /**
