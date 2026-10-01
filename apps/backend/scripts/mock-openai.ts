@@ -99,6 +99,9 @@ const server = createServer(async (req, res) => {
           'cache-control': 'no-cache',
           connection: 'keep-alive',
         });
+        // 5ms keeps CI/e2e fast; the visual QA harness raises this so the
+        // mid-stream state is actually observable in a screenshot.
+        const streamDelayMs = Number(process.env.MOCK_STREAM_DELAY_MS ?? 5);
         const words = answer.split(' ');
         for (const word of words) {
           const chunk = {
@@ -111,7 +114,7 @@ const server = createServer(async (req, res) => {
             ],
           };
           res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-          await new Promise((r) => setTimeout(r, 5));
+          await new Promise((r) => setTimeout(r, streamDelayMs));
         }
         res.write(
           `data: ${JSON.stringify({

@@ -36,6 +36,8 @@ for _ in $(seq 1 120); do
   sleep 0.5
 done
 
-pnpm exec vite --port "$VITE_PORT" --strictPort &
+# Run Vite from the frontend package so `pnpm exec` resolves it regardless
+# of the caller's working directory.
+(cd "$ROOT/apps/frontend" && pnpm exec vite --port "$VITE_PORT" --strictPort) &
 VITE_PID=$!
 wait "$VITE_PID"
