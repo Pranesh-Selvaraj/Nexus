@@ -12,7 +12,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { Source } from '@nexus/shared-types';
+import type { RetrievalDebug, Source } from '@nexus/shared-types';
 
 // ---------------------------------------------------------------------------
 // Custom types
@@ -25,6 +25,14 @@ export const vectorDim = customType<{ data: number[]; driverData: string }>({
   dataType: () => 'vector',
   toDriver: (value) => JSON.stringify(value),
   fromDriver: (value) => JSON.parse(value),
+});
+
+// Full-text vector populated by the ingestion worker with
+// `to_tsvector(<language>, content)`. Never bound from application code; the
+// column exists so the GIN index below works for every configured language
+// (an expression index on a fixed regconfig cannot serve other languages).
+export const tsvector = customType<{ data: string; driverData: string }>({
+  dataType: () => 'tsvector',
 });
 
 // ---------------------------------------------------------------------------
@@ -106,6 +114,8 @@ export const documents = pgTable(
 export interface ChunkMetadata {
   chunkIndex: number;
   page: number | null;
+  pageEnd?: number | null;
+  headingPath?: string[];
 }
 
 export const chunks = pgTable(
@@ -120,11 +130,26 @@ export const chunks = pgTable(
     content: text('content').notNull(),
     embedding: vectorDim('embedding').notNull(),
     metadata: jsonb('metadata').$type<ChunkMetadata>().notNull(),
+    // Embedding provenance: which model/dimensions produced this vector.
+    // Retrieval only compares vectors from the active model (legacy NULL rows
+    // are matched by vector dimension instead) so switching models can never
+    // mix vector spaces or crash pgvector with mismatched dimensions.
+    embeddingModel: text('embedding_model'),
+    embeddingDims: integer('embedding_dims'),
+    embeddingVersion: integer('embedding_version'),
+    contentHash: text('content_hash'),
+    tokenCount: integer('token_count'),
+    language: text('language'),
+    contentFts: tsvector('content_fts'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (table) => [index('chunks_document_id_idx').on(table.documentId)],
+  (table) => [
+    index('chunks_document_id_idx').on(table.documentId),
+    index('chunks_embedding_model_idx').on(table.embeddingModel),
+    index('chunks_content_fts_idx').using('gin', table.contentFts),
+  ],
 );
 
 export const conversations = pgTable(
@@ -167,6 +192,10 @@ export const messages = pgTable(
       completionTokens: number;
       totalTokens: number;
     } | null>(),
+    /** Thumbs up/down on an assistant answer (feedback loop for retrieval). */
+    feedback: text('feedback').$type<'up' | 'down' | null>(),
+    /** Retrieval debug payload for the inspector (candidates, scores, query). */
+    retrievalDebug: jsonb('retrieval_debug').$type<RetrievalDebug | null>(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

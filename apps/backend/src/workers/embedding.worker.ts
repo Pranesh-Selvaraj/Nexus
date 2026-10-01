@@ -3,7 +3,7 @@ import '../utils/env.js';
 import path from 'node:path';
 
 import { Worker } from 'bullmq';
-import { eq, lt } from 'drizzle-orm';
+import { eq, lt, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { chunks, documents, sessions } from '../db/schema.js';
@@ -13,11 +13,18 @@ import {
   redisConnection,
   scheduleMaintenance,
 } from '../queues/index.js';
-import { extractPages, splitIntoChunks } from '../services/chunking.service.js';
 import {
+  buildEmbeddingText,
+  extractPages,
+  splitIntoChunks,
+} from '../services/chunking.service.js';
+import {
+  EMBEDDING_VERSION,
   embedTexts,
+  getEffectiveEmbeddingModel,
   getEmbeddingDimensions,
 } from '../services/embedding.service.js';
+import { safeFtsLanguage } from '../services/retrieval-language.js';
 import { sanitizeForLog } from '../utils/sanitize.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
 
@@ -39,9 +46,11 @@ async function processDocument(documentId: string): Promise<void> {
   // 1. Parse file -> pages
   const pages = await extractPages(filePath, doc.fileType ?? 'txt');
 
-  // 2. Split into chunks
+  // 2. Split into chunks (heading-aware; heading context is prepended for
+  //    embedding so section meaning is searchable, while the stored content
+  //    stays clean).
   const textChunks = await splitIntoChunks(pages);
-  const texts = textChunks.map((chunk) => chunk.content);
+  const texts = textChunks.map((chunk) => buildEmbeddingText(chunk));
 
   // 3. Embed in batches of 100 (document id = stable provider session id)
   const embeddings = await embedTexts(texts, doc.id);
@@ -50,7 +59,11 @@ async function processDocument(documentId: string): Promise<void> {
       `Embedding count mismatch: expected ${texts.length}, got ${embeddings.length}`,
     );
   }
-  const expectedDims = await getEmbeddingDimensions();
+  const [expectedDims, embeddingModel, language] = await Promise.all([
+    getEmbeddingDimensions(),
+    getEffectiveEmbeddingModel(),
+    safeFtsLanguage(),
+  ]);
   for (const [i, vec] of embeddings.entries()) {
     if (vec.length !== expectedDims) {
       throw new Error(
@@ -63,7 +76,18 @@ async function processDocument(documentId: string): Promise<void> {
     documentId: doc.id,
     content: chunk.content,
     embedding: embeddings[i] ?? [],
-    metadata: { chunkIndex: chunk.index, page: chunk.page },
+    metadata: {
+      chunkIndex: chunk.index,
+      page: chunk.page,
+      pageEnd: chunk.pageEnd,
+      headingPath: chunk.headingPath,
+    },
+    embeddingModel,
+    embeddingDims: expectedDims,
+    embeddingVersion: EMBEDDING_VERSION,
+    contentHash: chunk.contentHash,
+    tokenCount: chunk.tokenCount,
+    language,
   }));
 
   // 4. Wipe stale chunks (idempotent retry) and write new ones
@@ -71,6 +95,12 @@ async function processDocument(documentId: string): Promise<void> {
     await tx.delete(chunks).where(eq(chunks.documentId, doc.id));
     if (rows.length > 0) {
       await tx.insert(chunks).values(rows);
+      // Populate the indexed full-text column with the same language the
+      // queries will use (a fixed expression index cannot serve all
+      // configured languages).
+      await tx.execute(
+        sql`UPDATE chunks SET content_fts = to_tsvector(${language}::regconfig, content) WHERE document_id = ${doc.id}`,
+      );
     }
     await tx
       .update(documents)
