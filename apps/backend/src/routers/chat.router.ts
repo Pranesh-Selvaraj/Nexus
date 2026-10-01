@@ -182,6 +182,27 @@ export const chatRouter = t.router({
               });
             }
 
+            // A reused conversation must belong to the workspace the caller
+            // owns; otherwise any conversation id could be written to.
+            if (conversation) {
+              const [existing] = await db
+                .select({ id: conversations.id })
+                .from(conversations)
+                .where(
+                  and(
+                    eq(conversations.id, conversation),
+                    eq(conversations.workspaceId, input.workspaceId),
+                  ),
+                )
+                .limit(1);
+              if (!existing) {
+                throw new TRPCError({
+                  code: 'NOT_FOUND',
+                  message: 'Conversation not found',
+                });
+              }
+            }
+
             // Start (or reuse) a conversation.
             if (!conversation) {
               const [created] = await db
