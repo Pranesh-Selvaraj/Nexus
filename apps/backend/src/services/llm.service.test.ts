@@ -21,7 +21,13 @@ const source = (overrides: Partial<SourceHit> = {}): SourceHit => ({
   title: 'about-nexus.txt',
   content: 'Nexus is a retrieval-augmented generation system.',
   page: 1,
+  pageEnd: 1,
+  headingPath: [],
   similarity: 0.87,
+  vectorScore: 0.87,
+  keywordScore: 0,
+  fusedScore: 1,
+  tokenCount: 12,
   ...overrides,
 });
 
@@ -38,21 +44,30 @@ describe('buildMessages', () => {
     const last = messages[messages.length - 1]!;
     expect(last.role).toBe('user');
     expect(String(last.content)).toContain('What is Nexus?');
-    expect(String(last.content)).toContain('[1] ("about-nexus.txt", page 1)');
+    expect(String(last.content)).toContain(
+      '<source id="1" title="about-nexus.txt" page="1">',
+    );
     expect(String(last.content)).toContain(
       'Nexus is a retrieval-augmented generation system.',
     );
   });
 
-  it('omits page suffix when page is null', () => {
+  it('omits page suffix when page is null and includes the heading trail', () => {
     const messages = buildMessages({
       query: 'q',
       history: [],
-      sources: [source({ page: null })],
+      sources: [
+        source({
+          page: null,
+          pageEnd: null,
+          headingPath: ['Chapter 3', '3.2'],
+        }),
+      ],
     });
     const last = String(messages[messages.length - 1]?.content);
-    expect(last).toContain('[1] ("about-nexus.txt")');
-    expect(last).not.toContain('page');
+    expect(last).toContain('<source id="1" title="about-nexus.txt"');
+    expect(last).not.toContain('page=');
+    expect(last).toContain('section="Chapter 3 &gt; 3.2"');
   });
 
   it('numbers sources in order', () => {
@@ -65,8 +80,8 @@ describe('buildMessages', () => {
       ],
     });
     const last = String(messages[messages.length - 1]?.content);
-    expect(last).toContain('[1] ("one.txt"');
-    expect(last).toContain('[2] ("two.txt"');
+    expect(last).toContain('<source id="1" title="one.txt"');
+    expect(last).toContain('<source id="2" title="two.txt"');
   });
 
   it('truncates history to the last 10 messages', () => {
