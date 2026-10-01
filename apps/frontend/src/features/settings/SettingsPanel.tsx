@@ -17,7 +17,9 @@ export function SettingsPanel() {
   const updateSetting = trpc.settings.update.useMutation({
     onSuccess: () => void utils.settings.list.invalidate(),
   });
+  const updateMany = trpc.settings.updateMany.useMutation();
   const testOpenAI = trpc.settings.testOpenAI.useMutation();
+  const saving = updateSetting.isPending || updateMany.isPending;
 
   // Draft values (raw). Secret fields are edited via the "Change" toggle.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -56,17 +58,23 @@ export function SettingsPanel() {
   async function saveAll() {
     setError(null);
     setSaved(null);
-    try {
-      for (const s of data) {
-        const value =
-          s.def.type === 'secret'
-            ? (secretDrafts[s.key] ?? '')
-            : (drafts[s.key] ?? '');
-        if (value === s.value && !(s.def.type === 'secret' && value !== '')) {
-          continue;
-        }
-        await updateSetting.mutateAsync({ key: s.key, value });
+
+    // One validated batch: cross-field invariants (chunk overlap < chunk
+    // size) are checked against the final state, not the save order.
+    const values: Record<string, string> = {};
+    for (const s of data) {
+      if (s.def.type === 'secret') {
+        const value = secretDrafts[s.key] ?? '';
+        if (value !== '') values[s.key] = value;
+      } else {
+        const value = drafts[s.key] ?? s.value;
+        if (value !== s.value) values[s.key] = value;
       }
+    }
+    if (Object.keys(values).length === 0) return;
+
+    try {
+      await updateMany.mutateAsync({ values });
       setSecretDrafts({});
       setSaved('Settings saved — new requests pick them up immediately.');
       void utils.settings.list.invalidate();
@@ -79,9 +87,9 @@ export function SettingsPanel() {
     setError(null);
     setSaved(null);
     try {
-      for (const s of data) {
-        await updateSetting.mutateAsync({ key: s.key, value: '' });
-      }
+      const values: Record<string, string> = {};
+      for (const s of data) values[s.key] = '';
+      await updateMany.mutateAsync({ values });
       setDrafts({});
       setSecretDrafts({});
       setSaved('All settings reset to defaults.');
@@ -221,6 +229,9 @@ export function SettingsPanel() {
   const secretSetupMissing = data.some(
     (s) => s.def.type === 'secret' && !s.secretConfigured,
   );
+  const decryptionFailed = data.filter(
+    (s) => s.def.type === 'secret' && s.decryptionFailed,
+  );
 
   if (settings.isLoading) {
     return (
@@ -266,13 +277,23 @@ export function SettingsPanel() {
           </div>
         )}
 
+        {decryptionFailed.length > 0 && (
+          <div className="mb-6 rounded-xl border border-red-800/60 bg-red-950/30 px-4 py-3 text-xs leading-relaxed text-red-300">
+            <strong>Stored keys can't be decrypted.</strong> The values for{' '}
+            {decryptionFailed.map((s) => s.def.label).join(', ')} were encrypted
+            with a different <code>SETTINGS_SECRET</code> than the one currently
+            configured. Re-enter each key below (or restore the original secret)
+            — until then, requests fall back to the environment/default value.
+          </div>
+        )}
+
         <ProviderPane
           title="Text model — answers your questions"
           description="Chat with your documents over WebSocket streams. Pick a preset for the endpoint (or type any OpenAI-compatible endpoint below) and choose the model."
           presets={CHAT_PRESETS}
           activeBaseUrl={liveValue('openai.baseUrl')}
           onApplyPreset={(preset) => void applyPreset('openai.baseUrl', preset)}
-          pending={updateSetting.isPending}
+          pending={saving}
         >
           {renderField('openai.baseUrl')}
           {renderField('openai.apiKey')}
@@ -298,7 +319,7 @@ export function SettingsPanel() {
           onApplyPreset={(preset) =>
             void applyPreset('openai.embeddingBaseUrl', preset)
           }
-          pending={updateSetting.isPending}
+          pending={saving}
         >
           {renderField('openai.embeddingBaseUrl')}
           {renderField('openai.embeddingApiKey')}
@@ -354,16 +375,16 @@ export function SettingsPanel() {
         <div className="flex items-center gap-3">
           <button
             onClick={saveAll}
-            disabled={updateSetting.isPending || dirtyCount === 0}
+            disabled={saving || dirtyCount === 0}
             className="rounded-lg bg-nexus-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-nexus-500 disabled:opacity-40"
           >
-            {updateSetting.isPending
+            {saving
               ? 'Saving...'
               : `Save changes${dirtyCount ? ` (${dirtyCount})` : ''}`}
           </button>
           <button
             onClick={resetAll}
-            disabled={updateSetting.isPending}
+            disabled={saving}
             className="rounded-lg border border-zinc-700 px-5 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800"
           >
             Reset all to defaults
@@ -519,6 +540,7 @@ interface FieldProps {
     value: string;
     displayValue: string;
     source: 'ui' | 'env';
+    decryptionFailed: boolean;
     def: {
       label: string;
       description: string;
@@ -564,14 +586,15 @@ function Field({
             </p>
             <p className="mt-0.5 text-xs text-zinc-500">{def.description}</p>
           </div>
-          {!secretMode && setting.displayValue && (
-            <button
-              onClick={onToggleSecret}
-              className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800"
-            >
-              Change
-            </button>
-          )}
+          {!secretMode &&
+            (setting.displayValue || setting.decryptionFailed) && (
+              <button
+                onClick={onToggleSecret}
+                className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800"
+              >
+                {setting.decryptionFailed ? 'Re-enter' : 'Change'}
+              </button>
+            )}
         </div>
         {secretMode ? (
           <div className="mt-2 flex items-center gap-2">
@@ -591,9 +614,14 @@ function Field({
             </button>
           </div>
         ) : (
-          <p className="mt-1 font-mono text-sm text-zinc-400">
-            {setting.displayValue ||
-              (setting.source === 'env' ? 'unset' : 'unset')}
+          <p
+            className={`mt-1 font-mono text-sm ${
+              setting.decryptionFailed ? 'text-red-400' : 'text-zinc-400'
+            }`}
+          >
+            {setting.decryptionFailed
+              ? 'cannot decrypt — re-enter this key'
+              : setting.displayValue || 'unset'}
           </p>
         )}
       </div>

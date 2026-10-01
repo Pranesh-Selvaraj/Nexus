@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import type { UserDTO } from '@nexus/shared-types';
 
 import { fetchMe } from './lib/auth';
+import { onUnauthorized } from './lib/session';
 import { trpc } from './lib/trpc';
 import { WorkspaceSidebar } from './features/workspaces/WorkspaceSidebar';
 
@@ -37,12 +38,17 @@ export default function App() {
   );
   const [view, setView] = useState<'workspace' | 'settings'>('workspace');
 
-  const settings = trpc.settings.list.useQuery(undefined);
-  const appName =
-    settings.data?.find((s) => s.key === 'ui.appName')?.value || 'Nexus';
+  // Public config is available before login (the protected settings list is
+  // not), so the shell renders correctly on the login screen too.
+  const publicConfig = trpc.config.public.useQuery(undefined);
+  const appName = publicConfig.data?.appName || 'Nexus';
   useEffect(() => {
     document.title = `${appName} - AI RAG Workspace`;
   }, [appName]);
+
+  // Any UNAUTHORIZED error (expired/revoked session) drops back to login
+  // instead of leaving every panel in a failed state.
+  useEffect(() => onUnauthorized(() => setGate({ status: 'anonymous' })), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +104,9 @@ export default function App() {
         }}
         user={gate.user}
         onLoggedOut={() => setGate({ status: 'anonymous' })}
+        onWorkspaceDeleted={(workspaceId) => {
+          if (workspaceId === activeWorkspaceId) setActiveWorkspaceId(null);
+        }}
         onOpenSettings={() => setView('settings')}
         settingsActive={view === 'settings'}
         appName={appName}
