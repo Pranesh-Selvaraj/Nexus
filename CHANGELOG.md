@@ -1,10 +1,10 @@
 # Changelog
 
-Every Nexus release is documented here in detail. The release workflow extracts the section for the pushed tag and uses it verbatim as the GitHub Release body, so each entry is self-contained: what was added, changed, improved and fixed, why it happened, and what the user-visible effect is. Phase tags are annotated semver prereleases (`vX.Y.Z-phase.N`); the stable tag for a phase set is `vX.Y.Z`. Newest entries first.
+Every Nexus release is documented here in detail. The release workflow extracts the section for the pushed tag and uses it verbatim as the GitHub Release body, so each entry is self-contained: what was added, changed, improved and fixed, why it happened, and what the user-visible effect is. Each roadmap phase ships as a normal minor release (`v1.2.0` = Phase 0, `v1.3.0` = Phase 1, ...), in order. Newest entries first.
 
 ## [Unreleased]
 
-## [v1.2.0-phase.0] - 2026-10-01
+## [v1.2.0] - 2026-10-01
 
 Phase 0 is the hygiene and blockers phase: every item here was either a correctness bug, a security/dependency issue, or the infrastructure needed for the later phases. Retrieval quality itself (hybrid fusion, reranking, mixed embedding dimensions, multilingual FTS indexing, mobile layout) is deliberately **not** in this release; it is Phase 1 and is listed under limitations below.
 
