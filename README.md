@@ -159,11 +159,11 @@ See [SECURITY.md](SECURITY.md) — without `AUTH_PASSWORD` the app runs in singl
 
 Releases follow [SemVer](https://semver.org/) and are published automatically from the [release workflow](.github/workflows/release.yml): pushing an annotated tag builds the images, publishes them to GHCR, and creates a GitHub Release whose body is the matching section of [CHANGELOG.md](CHANGELOG.md) — the workflow fails if the section is missing, so a release can never ship generated placeholder notes.
 
-Development runs in phases; each phase is tagged as an annotated prerelease (`vX.Y.Z-phase.N`) with its own detailed changelog entry, and the stable tag is cut once the phase set lands on `main`. Prereleases never move the `latest` image tag.
+Development runs in phases and each phase ships as a normal minor release with its own detailed changelog entry: `v1.2.0` (Phase 0), `v1.3.0` (Phase 1), and so on in order. Every release publishes both container images and updates `latest`.
 
 ```bash
-# add the `## [v1.2.0-phase.1]` section to CHANGELOG.md first
-git tag -a v1.2.0-phase.1 -m "Nexus v1.2.0-phase.1" && git push origin v1.2.0-phase.1
+# add the `## [v1.3.0]` section to CHANGELOG.md first
+git tag -a v1.3.0 -m "Nexus v1.3.0" && git push origin v1.3.0
 ```
 
 ## Scripts

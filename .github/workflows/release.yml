@@ -5,10 +5,12 @@ name: Release
 # Triggered by pushing an annotated tag:
 #   git tag -a v1.0.0 -m "Nexus v1.0.0" && git push origin v1.0.0
 #
-# Phase tags are prereleases (vX.Y.Z-phase.N): they are marked as
-# pre-releases and never move the `latest` image tag. Every tag must have a
-# `## [<tag>]` section in CHANGELOG.md before it is pushed - the workflow
-# fails otherwise so a release can never ship generated placeholder notes.
+# Roadmap phases ship as normal minor releases in order (v1.2.0 = Phase 0,
+# v1.3.0 = Phase 1, ...); every release updates `latest`. Generic semver
+# prerelease tags (containing a hyphen) are still published as GitHub
+# pre-releases and do not move `latest`. Every tag must have a `## [<tag>]`
+# section in CHANGELOG.md before it is pushed - the workflow fails otherwise
+# so a release can never ship generated placeholder notes.
 
 on:
   push:
