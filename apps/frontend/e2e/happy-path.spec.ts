@@ -57,4 +57,46 @@ test('workspace -> upload -> index -> streamed chat answer', async ({
   await expect(
     page.getByRole('button', { name: /Stub answer: Nexus/ }).first(),
   ).toBeVisible();
+
+  // The workspace sidebar count reflects the indexed document (B-21).
+  await expect(
+    page.getByRole('button', { name: /E2E Workspace/ }).first(),
+  ).toContainText('1 document');
+
+  // The stub answer cites [1], so the first source is marked as cited.
+  await expect(page.locator('summary').first()).toContainText('✓');
+
+  // --- retrieval inspector ----------------------------------------------
+  await page
+    .getByRole('button', { name: 'Why these sources?' })
+    .first()
+    .click();
+  const inspector = page.getByRole('dialog', {
+    name: 'Retrieval inspector',
+  });
+  await expect(inspector).toBeVisible();
+  await expect(inspector.getByText('Vector candidates')).toBeVisible();
+  await expect(inspector.getByText('Candidates (')).toBeVisible();
+  await inspector.getByRole('button', { name: 'Close inspector' }).click();
+  await expect(inspector).toBeHidden();
+
+  // --- feedback persists across reload ----------------------------------
+  await page.getByRole('button', { name: 'Helpful answer' }).click();
+  await page.waitForTimeout(500);
+  await expect(page.getByText('Feedback failed')).toHaveCount(0);
+
+  await page.reload();
+  await page
+    .getByRole('button', { name: /E2E Workspace/ })
+    .first()
+    .click();
+  const historyAside = page.locator('aside').filter({ hasText: 'History' });
+  await historyAside
+    .getByRole('button')
+    .filter({ hasText: /message/ })
+    .first()
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Helpful answer' }),
+  ).toHaveClass(/text-emerald-400/);
 });
