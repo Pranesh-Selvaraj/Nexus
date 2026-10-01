@@ -197,6 +197,7 @@ All variables live in `.env` (see `.env.example`). The backend auto-discovers `.
 | `PORT`                      | `3000`                                        | Backend HTTP/WS port                                                                                                                                  |
 | `UPLOAD_DIR`                | `./uploads`                                   | Directory for uploaded documents                                                                                                                      |
 | `MAX_UPLOAD_MB`             | `25`                                          | Per-file upload size limit                                                                                                                            |
+| `MAX_IMPORT_MB`             | `100`                                         | Workspace archive import size limit (multipart JSON upload)                                                                                           |
 | `FRONTEND_ORIGIN`           | `http://localhost:5173`                       | Allowed CORS origin                                                                                                                                   |
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
