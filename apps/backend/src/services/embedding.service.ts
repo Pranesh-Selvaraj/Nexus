@@ -15,6 +15,13 @@ const BATCH_SIZE = 100;
 
 const EMBEDDING_MODEL_FALLBACK = 'text-embedding-3-small';
 
+/**
+ * Bumped whenever the text sent to the embedding model changes shape (for
+ * example when heading context started being prepended in Phase 1). Chunks
+ * with a different version are flagged for re-indexing.
+ */
+export const EMBEDDING_VERSION = 1;
+
 // ---------------------------------------------------------------------------
 // Query embedding cache
 //
@@ -96,6 +103,11 @@ export async function embedTextCached(text: string): Promise<number[]> {
 async function embeddingModel(): Promise<string> {
   const model = await getSetting('openai.embeddingModel');
   return model || EMBEDDING_MODEL_FALLBACK;
+}
+
+/** Public accessor for provenance/re-index checks. */
+export async function getEffectiveEmbeddingModel(): Promise<string> {
+  return embeddingModel();
 }
 
 /**

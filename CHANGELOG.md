@@ -4,9 +4,49 @@ Every Nexus release is documented here in detail. The release workflow extracts 
 
 ## [Unreleased]
 
+## [v1.2.0-phase.1] - 2026-10-01
+
+Phase 1 makes retrieval trustworthy and the workspace usable on a phone. The headline fix is that semantic-only matches are no longer silently dropped by a keyword filter (B-2); around it, answers now use a token budget, cite verifiable sources, and can be inspected, while changing the embedding model surfaces a re-index banner instead of a pgvector error.
+
+### Added
+
+- **Hybrid retrieval with Reciprocal Rank Fusion.** Retrieval now fetches two independent candidate arms - the 50 nearest vectors and the 50 best keyword matches (`websearch_to_tsquery` on a populated `chunks.content_fts` column) - and fuses them by rank rather than filtering one arm by the other. A chunk that matches only semantically is therefore retrieved even when other chunks contain the query words, which was the single largest quality defect in the product (B-2). Chunks carry heading context when embedded, and the fused result is diversified (at most three chunks per document, content-hash dedupe) before selection.
+- **Retrieval profiles: Fast, Balanced, Thorough.** Fast is union fusion only; Balanced also rewrites follow-up questions and enforces the context budget; Thorough additionally reranks candidates with the text model. The profile is a setting, so cost and latency are predictable.
+- **Follow-up question rewriting.** When a conversation has history, the cheapest configured model rewrites the latest message into a standalone search query before retrieval (cached for 10 minutes); the query actually used is shown during streaming and in the inspector. `job.queryRewrite.model` can point this at a cheap model.
+- **LLM listwise reranking.** Thorough (or an explicit toggle) asks the text model to reorder the top 20 candidates by relevance, tolerant of any parse failure. Reranked positions are visible in the inspector. `job.rerank.model` overrides the model used.
+- **Retrieval inspector.** Every assistant answer stores a debug payload (profile, original vs rewritten query, candidate counts, vector/keyword/fused score per candidate, selection and rerank positions, token budget). "Why these sources?" opens a modal showing exactly how the answer's context was chosen - the tool that makes every later retrieval change measurable.
+- **Answer feedback.** Thumbs up/down are stored per assistant message (`messages.feedback`, `chat.feedback` endpoint) and survive reloads, giving the evaluation work a real signal to build on.
+- **Embedding provenance and bulk re-index.** Chunks store `embedding_model`, `embedding_dims`, `embedding_version` and `content_hash`; a workspace banner reports how many documents were indexed with a different setup and re-indexes them in one click (`document.retrievalStatus`, `document.reindexAll`), with a REINDEX badge per document.
+- **Heading-aware chunk metadata.** Markdown headings split documents into sections; every chunk stores `heading_path`, page range, token estimate and content hash. Heading context is prepended before embedding (so sections are searchable by name) but not stored in the chunk text.
+- **New settings:** `rag.profile`, `rag.queryRewrite`, `rag.rerank`, `rag.minScore`, `rag.maxContextTokens`, `job.queryRewrite.model`, `job.rerank.model`, plus a checkbox rendering for boolean settings.
+
 ### Fixed
 
-- Dev-dependency advisories: vitest 4.1.10 → 4.1.11 (GHSA-82fw-gwwq-j7x9, path traversal / arbitrary file read via @vitest/mocker) and `brace-expansion` forced to ≥ 5.0.12 (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr, reachable through minimatch/eslint tooling), so the full `pnpm audit` — not only the production graph — is clean and the fail-closed CI audit gate stays green on `main`.
+- **Hybrid search silently excluded semantic-only candidates (B-2).** The old query required a full-text match before ranking, so a paraphrased question retrieved only chunks that shared its words. The keyword arm is now an addition, never a filter; covered by the smoke check "hybrid retrieval keeps semantic-only matches (B-2)" and `fuseRrf` unit tests.
+- **Switching embedding models could break chat with a pgvector dimension error (B-3).** Vector comparisons are now scoped to the active model, with pre-Phase-1 rows matched by `vector_dims()` instead of being mixed into the same comparison. The re-index banner and bulk action replace the old "delete and re-upload every document" advice.
+- **Non-English keyword search bypassed its index (B-10).** The English-only expression index (never declared in the schema) is replaced by a GIN index on a `tsvector` column populated at ingestion with the configured language, and migration 0007 backfills existing chunks so keyword search keeps working immediately after upgrade.
+- **Source relevance was vector-only and never thresholded (B-15).** Sources now expose vector, keyword and fused scores; `rag.minScore` drops weak vector matches while always keeping keyword hits; citation numbers are validated against the actual source list and cited sources are marked with ✓ (so hallucinated `[9]` references cannot masquerade as sources).
+- **The workspace was unusable on a phone (B-22).** The sidebar is an off-canvas drawer below `md`, the document panel stacks under the chat below `xl`, the conversation history becomes a header picker below `lg`, and the header/composer wrap without overlap. The visual harness can now complete the mobile chat flow, which it previously could not reach.
+- **Prompt injection through documents had no guardrail.** Retrieved chunks are wrapped in `<source>` delimiters and the system prompt states that source text is reference material whose instructions must be ignored.
+- **The context window could overflow silently.** `rag.maxContextTokens` budgets the retrieved sources (always keeping the best hit), and the inspector reports used vs allowed tokens.
+- **Source rows overlapped on narrow screens** because the relevance percentage floated over wrapped titles; the summary is now a flex row with a truncated title.
+- **Dev-dependency advisories:** vitest 4.1.10 → 4.1.11 (GHSA-82fw-gwwq-j7x9, path traversal / arbitrary file read via @vitest/mocker) and `brace-expansion` forced to ≥ 5.0.12 (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr, reachable through minimatch/eslint tooling), so the full `pnpm audit` - not only the production graph - is clean and the fail-closed CI audit gate stays green.
+
+### Improved
+
+- Assistant answers now return their persisted message id in the `done` stream event, so client-side ids are replaced immediately and per-message actions (feedback) always target the stored row.
+- The smoke suite grew from 55 to 59 checks (fusion with a semantic-only match, vector-arm fallback without keyword matches, retrieval status, bulk re-index, feedback persistence); backend unit tests grew from 60 to 75 with the pure retrieval helpers; the Playwright happy path now also asserts the sidebar document count, the cited-source marker, the retrieval inspector, and feedback surviving a reload.
+- Chat history is still built server-side from persisted non-error messages, and source text expands fully in the list.
+
+### Limitations and deliberate omissions
+
+- **Golden-set evaluation (Recall@k, MRR, nDCG, LLM-judge faithfulness) is not in this release.** The inspector and feedback endpoint are the foundation; the metric harness and a fixture corpus for CI are the next retrieval work item.
+- **Neighbor expansion and parent-child retrieval are not implemented.** Chunks still stand alone; adjacent-chunk expansion needs the section metadata that this release starts storing.
+- **Reranking is listwise-LLM only** (no cross-encoder or provider rerank API); the hook is isolated so a dedicated reranker can be added without touching callers.
+- **The full-text column is built with the language configured at ingestion.** Changing `retrieval.language` later requires re-indexing for keyword matching to use the new configuration; vector search is unaffected.
+- **Query rewriting and reranking each add one model call per answer.** Balanced (the default) disables reranking and skips rewriting when there is no history; Thorough enables both.
+- **Pre-Phase-1 documents show the re-index banner** because the embedding input now includes heading context (`embedding_version` changed). Retrieval keeps working meanwhile through the legacy dimension match; re-indexing is recommended, not required.
+- **Mobile is usable but not fully redesigned** - the reader-mode, typography, and offline study work remain in later phases.
 
 ## [v1.2.0-phase.0] - 2026-10-01
 

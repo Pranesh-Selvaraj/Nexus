@@ -50,6 +50,13 @@
       "when": 1790856634446,
       "tag": "0006_even_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790868089615,
+      "tag": "0007_strong_betty_ross",
+      "breakpoints": true
     }
   ]
 }

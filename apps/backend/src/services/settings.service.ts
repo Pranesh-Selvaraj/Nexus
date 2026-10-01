@@ -20,7 +20,7 @@ import { baseUrlEndpointPath, suggestBaseUrl } from '../utils/provider-url.js';
 // ---------------------------------------------------------------------------
 
 export type SettingType =
-  'text' | 'textarea' | 'secret' | 'number' | 'slider' | 'select';
+  'text' | 'textarea' | 'secret' | 'number' | 'slider' | 'select' | 'boolean';
 
 export interface SettingDef {
   key: string;
@@ -199,6 +199,84 @@ export const SETTING_DEFS: SettingDef[] = [
       'lithuanian',
       'serbian',
     ],
+  },
+  {
+    key: 'rag.profile',
+    label: 'Retrieval profile',
+    description:
+      'Fast: vector + keyword fusion only. Balanced: also rewrites follow-up questions and budgets the context. Thorough: also reranks candidates with the text model.',
+    type: 'select',
+    env: null,
+    default: 'balanced',
+    group: 'retrieval',
+    options: ['fast', 'balanced', 'thorough'],
+  },
+  {
+    key: 'rag.queryRewrite',
+    label: 'Rewrite follow-up questions',
+    description:
+      'Use the chat model to turn a follow-up into a standalone search query before retrieval (ignored by the Fast profile).',
+    type: 'boolean',
+    env: null,
+    default: 'true',
+    group: 'retrieval',
+  },
+  {
+    key: 'rag.rerank',
+    label: 'Rerank candidates',
+    description:
+      'Ask the text model to reorder the top candidates by relevance. Adds one model call per answer; the Thorough profile always enables it.',
+    type: 'boolean',
+    env: null,
+    default: 'false',
+    group: 'retrieval',
+  },
+  {
+    key: 'rag.minScore',
+    label: 'Minimum vector score',
+    description:
+      'Drop sources whose vector similarity is below this value (0 disables). Keyword matches are always kept so exact terms still surface.',
+    type: 'slider',
+    env: null,
+    default: 0,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    group: 'retrieval',
+  },
+  {
+    key: 'rag.maxContextTokens',
+    label: 'Context budget (tokens)',
+    description:
+      'Maximum estimated tokens of retrieved sources injected into the prompt. Sources beyond the budget are dropped.',
+    type: 'number',
+    env: null,
+    default: 6000,
+    min: 500,
+    max: 100000,
+    group: 'retrieval',
+  },
+  {
+    key: 'job.queryRewrite.model',
+    label: 'Query rewrite model',
+    description:
+      'Model used to rewrite follow-up questions for retrieval. Empty uses the chat model.',
+    type: 'text',
+    env: null,
+    default: '',
+    group: 'openai',
+    placeholder: 'e.g. a cheap fast model',
+  },
+  {
+    key: 'job.rerank.model',
+    label: 'Rerank model',
+    description:
+      'Model used to rerank retrieval candidates. Empty uses the chat model.',
+    type: 'text',
+    env: null,
+    default: '',
+    group: 'openai',
+    placeholder: 'e.g. a cheap fast model',
   },
   {
     key: 'rag.similarityWeight',
@@ -439,6 +517,11 @@ export async function getSettingNumber(key: string): Promise<number> {
   return value;
 }
 
+/** Boolean-typed convenience accessor ('true'/'false' settings). */
+export async function getSettingBoolean(key: string): Promise<boolean> {
+  return (await getSetting(key)) === 'true';
+}
+
 export interface SettingView {
   key: string;
   def: SettingDef;
@@ -521,6 +604,9 @@ function normalizeSettingValue(def: SettingDef, value: string): string {
   }
   if (def.type === 'select' && def.options && !def.options.includes(value)) {
     throw new Error(`${def.label} must be one of: ${def.options.join(', ')}`);
+  }
+  if (def.type === 'boolean' && value !== 'true' && value !== 'false') {
+    throw new Error(`${def.label} must be true or false`);
   }
   if (def.type === 'number' || def.type === 'slider') {
     const num = Number(value);

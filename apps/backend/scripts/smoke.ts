@@ -323,13 +323,21 @@ try {
   print('chat.stream not callable over http', sseMethodNotSupported);
   print('chat.stream is websocket-only', sseMethodNotSupported);
 
-  // --- hybrid search SQL verification (no OpenAI key required) -----------
+  // --- hybrid retrieval verification (real service, mock embeddings) ----
   const seedResult = await seedChunksAndQuery();
-  print('hybrid retrieval sql', seedResult.ok, seedResult.detail);
-  print('hybrid retrieval ranking', seedResult.ranking, seedResult.detail);
   print(
-    'hybrid retrieval fts fallback',
-    seedResult.fallback,
+    'hybrid retrieval returns fused sources',
+    seedResult.ok,
+    seedResult.detail,
+  );
+  print(
+    'hybrid retrieval keeps semantic-only matches (B-2)',
+    seedResult.semanticKept,
+    seedResult.detail,
+  );
+  print(
+    'hybrid retrieval vector arm works without keyword matches',
+    seedResult.vectorFallback,
     seedResult.detail,
   );
 
@@ -554,6 +562,63 @@ try {
     body: JSON.stringify({
       values: { 'rag.chunkSize': '', 'rag.chunkOverlap': '' },
     }),
+  });
+
+  // -------------------------------------------------------------------
+  // Embedding provenance: status + bulk re-index
+  // -------------------------------------------------------------------
+  const reindexSeed = await seedReindexScenario();
+  const retrievalStatus = await fetchJson(
+    `/trpc/document.retrievalStatus?input=${encodeURIComponent(JSON.stringify({ workspaceId: reindexSeed.workspaceId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'retrievalStatus reports the active model + stale documents',
+    retrievalStatus.body?.result?.data?.documentsNeedingReindex === 1 &&
+      retrievalStatus.body?.result?.data?.totalDocuments === 1 &&
+      typeof retrievalStatus.body?.result?.data?.currentModel === 'string',
+    retrievalStatus.body?.result?.data,
+  );
+  const reindex = await fetchJson('/trpc/document.reindexAll', {
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: reindexSeed.workspaceId }),
+  });
+  print(
+    'document.reindexAll queues stale documents',
+    reindex.body?.result?.data?.queued === 1,
+    reindex.body?.result?.data,
+  );
+  await fetchJson('/trpc/workspace.delete', {
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: reindexSeed.workspaceId }),
+  });
+
+  // -------------------------------------------------------------------
+  // Message feedback
+  // -------------------------------------------------------------------
+  const feedbackSeed = await seedFeedbackScenario();
+  const feedbackSaved = await fetchJson('/trpc/chat.feedback', {
+    method: 'POST',
+    body: JSON.stringify({
+      messageId: feedbackSeed.messageId,
+      feedback: 'up',
+    }),
+  });
+  print(
+    'chat.feedback persists a rating',
+    feedbackSaved.body?.result?.data?.saved === true,
+  );
+  const feedbackRead = await fetchJson(
+    `/trpc/chat.messages?input=${encodeURIComponent(JSON.stringify({ conversationId: feedbackSeed.conversationId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'chat.messages returns the stored feedback',
+    feedbackRead.body?.result?.data?.[0]?.feedback === 'up',
+  );
+  await fetchJson('/trpc/workspace.delete', {
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: feedbackSeed.workspaceId }),
   });
 
   // -------------------------------------------------------------------
@@ -837,6 +902,19 @@ async function seedChunksAndQuery() {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
+    // Start from default retrieval settings so the assertions are stable
+    // regardless of what earlier smoke runs stored.
+    await client.query(
+      `DELETE FROM settings WHERE key LIKE 'rag.%' OR key LIKE 'job.%'`,
+    );
+    const modelRow = await client.query(
+      `SELECT value FROM settings WHERE key = 'openai.embeddingModel'`,
+    );
+    const model =
+      modelRow.rows[0]?.value ??
+      process.env.OPENAI_EMBEDDING_MODEL ??
+      'text-embedding-3-small';
+
     // own workspace + user so the seed is independent of the API test flow
     const userId = await client.query(
       `SELECT id FROM users ORDER BY created_at LIMIT 1`,
@@ -847,69 +925,131 @@ async function seedChunksAndQuery() {
     );
     const seedWorkspaceId = ws.rows[0].id;
 
-    // seed document + 3 chunks with fake 1536-dim embeddings
+    // Seed 3 chunks with fake 1536-dim embeddings and populated provenance.
+    // The 'vector' query matches two chunks by keyword; the Mars chunk only
+    // matches semantically (vector 0.9) - it must still be retrieved.
     const doc = await client.query(
-      `INSERT INTO documents (workspace_id, title, file_path, file_type, status)
-       VALUES ($1, 'hybrid-test.txt', 'seed/hybrid-test.txt', 'txt', 'ready')
+      `INSERT INTO documents (workspace_id, title, file_path, file_type, status, chunk_count)
+       VALUES ($1, 'hybrid-test.txt', 'seed/hybrid-test.txt', 'txt', 'ready', 3)
        RETURNING id`,
       [seedWorkspaceId],
     );
     const docId = doc.rows[0].id;
     const mk = (v: number) =>
       `[${Array.from({ length: 1536 }, () => v).join(',')}]`;
+    const chunk = (content: string) =>
+      `to_tsvector('english', '${content.replace(/'/g, "''")}')`;
     await client.query(
-      `INSERT INTO chunks (document_id, content, embedding, metadata) VALUES
-       ($1, 'Hybrid retrieval in Nexus combines postgres full text search with a vector similarity search', $2::vector, '{"page":1,"chunkIndex":0}'),
-       ($1, 'The capital of Mars is a city called Olympus Mons Research Station', $3::vector, '{"page":1,"chunkIndex":1}'),
-       ($1, 'Embeddings and vectors are generated asynchronously by a BullMQ worker queue', $4::vector, '{"page":1,"chunkIndex":2}')`,
-      [docId, mk(0.1), mk(0.9), mk(0.2)],
+      `INSERT INTO chunks (document_id, content, embedding, metadata, embedding_model, embedding_dims, embedding_version, token_count, language, content_fts) VALUES
+       ($1, 'Hybrid retrieval in Nexus combines postgres full text search with a vector similarity search', $2::vector, '{"page":1,"chunkIndex":0}', $5, 1536, 1, 20, 'english', ${chunk('Hybrid retrieval in Nexus combines postgres full text search with a vector similarity search')}),
+       ($1, 'The capital of Mars is a city called Olympus Mons Research Station', $3::vector, '{"page":1,"chunkIndex":1}', $5, 1536, 1, 15, 'english', ${chunk('The capital of Mars is a city called Olympus Mons Research Station')}),
+       ($1, 'Embeddings and vectors are generated asynchronously by a BullMQ worker queue', $4::vector, '{"page":1,"chunkIndex":2}', $5, 1536, 1, 15, 'english', ${chunk('Embeddings and vectors are generated asynchronously by a BullMQ worker queue')})`,
+      [docId, mk(0.1), mk(0.9), mk(0.2), model],
     );
 
-    // FTS + vector combined query (same SQL as llm.service hybridRetrieveChunks)
-    const vectorLiteral = mk(0.11);
-    const res = await client.query(
-      `SELECT c.content,
-              (1 - (c.embedding <=> $1::vector)) AS similarity,
-              ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', $2)) AS keyword_rank
-       FROM chunks c
-       JOIN documents d ON d.id = c.document_id
-       WHERE d.workspace_id = $3
-         AND to_tsvector('english', c.content) @@ plainto_tsquery('english', $2)
-       ORDER BY ((1 - (c.embedding <=> $1::vector)) * 0.6 + ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', $2)) * 0.4) DESC
-       LIMIT 6`,
-      [vectorLiteral, 'vector', seedWorkspaceId],
+    const { retrieveForChat } =
+      await import('../src/services/retrieval.service.js');
+    const result = await retrieveForChat({
+      workspaceId: seedWorkspaceId,
+      query: 'vector',
+      history: [],
+    });
+    const contents = result.sources.map((s) => s.content.slice(0, 40));
+    const ok =
+      result.sources.length >= 2 &&
+      result.sources.every((s) => typeof s.fusedScore === 'number');
+    const semanticKept = result.sources.some((s) =>
+      s.content.includes('capital of Mars'),
     );
-    const contents = res.rows.map((r: any) => r.content.slice(0, 40));
-    const ok = res.rows.length >= 2;
 
-    // ranking sanity: FTS prefiltering keeps only keyword matches (no Mars)
-    const orderOk =
-      res.rows.length >= 2 &&
-      res.rows.every((r: any) => !r.content.toString().includes('Mars'));
-
-    // pure vector fallback when FTS matches nothing
-    const fallback = await client.query(
-      `SELECT c.content, (1 - (c.embedding <=> $1::vector)) AS similarity
-       FROM chunks c
-       JOIN documents d ON d.id = c.document_id
-       WHERE d.workspace_id = $2
-       ORDER BY (1 - (c.embedding <=> $1::vector)) DESC
-       LIMIT 6`,
-      [mk(0.91), seedWorkspaceId],
-    );
-    const fallbackOk =
-      fallback.rows.length === 3 &&
-      fallback.rows[0].content.includes('capital of Mars');
+    const noKeyword = await retrieveForChat({
+      workspaceId: seedWorkspaceId,
+      query: 'xyzzy',
+      history: [],
+    });
+    const vectorFallback =
+      noKeyword.sources.length === 3 && noKeyword.debug.keywordCandidates === 0;
 
     await client.query(`DELETE FROM workspaces WHERE id = $1`, [
       seedWorkspaceId,
     ]);
     return {
       ok,
-      ranking: orderOk,
-      fallback: fallbackOk,
-      detail: { top3: contents, similarity: res.rows[0]?.similarity ?? null },
+      semanticKept,
+      vectorFallback,
+      detail: {
+        top3: contents,
+        profile: result.debug.profile,
+        vectorCandidates: result.debug.vectorCandidates,
+        keywordCandidates: result.debug.keywordCandidates,
+      },
     };
+  } finally {
+    await client.end();
+  }
+}
+
+/** Workspace with one current chunk and one legacy chunk (needs re-index). */
+async function seedReindexScenario() {
+  const pg = await import('pg');
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    const userId = await client.query(
+      `SELECT id FROM users ORDER BY created_at LIMIT 1`,
+    );
+    const ws = await client.query(
+      `INSERT INTO workspaces (user_id, name) VALUES ($1, 'reindex-seed') RETURNING id`,
+      [userId.rows[0].id],
+    );
+    const workspaceId = ws.rows[0].id;
+    const doc = await client.query(
+      `INSERT INTO documents (workspace_id, title, file_path, file_type, status, chunk_count)
+       VALUES ($1, 'reindex.txt', 'seed/reindex.txt', 'txt', 'ready', 2)
+       RETURNING id`,
+      [workspaceId],
+    );
+    const docId = doc.rows[0].id;
+    const mk = (v: number) =>
+      `[${Array.from({ length: 1536 }, () => v).join(',')}]`;
+    const model =
+      process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small';
+    await client.query(
+      `INSERT INTO chunks (document_id, content, embedding, metadata, embedding_model, embedding_dims, embedding_version, token_count, language, content_fts) VALUES
+       ($1, 'current chunk', $2::vector, '{"page":1,"chunkIndex":0}', $4, 1536, 1, 3, 'english', to_tsvector('english', 'current chunk')),
+       ($1, 'legacy chunk', $3::vector, '{"page":1,"chunkIndex":1}', NULL, NULL, NULL, 3, 'english', to_tsvector('english', 'legacy chunk'))`,
+      [docId, mk(0.1), mk(0.2), model],
+    );
+    return { workspaceId };
+  } finally {
+    await client.end();
+  }
+}
+
+/** Conversation with one assistant message, for the feedback endpoint. */
+async function seedFeedbackScenario() {
+  const pg = await import('pg');
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    const userId = await client.query(
+      `SELECT id FROM users ORDER BY created_at LIMIT 1`,
+    );
+    const ws = await client.query(
+      `INSERT INTO workspaces (user_id, name) VALUES ($1, 'feedback-seed') RETURNING id`,
+      [userId.rows[0].id],
+    );
+    const workspaceId = ws.rows[0].id;
+    const conv = await client.query(
+      `INSERT INTO conversations (workspace_id, title) VALUES ($1, 'feedback') RETURNING id`,
+      [workspaceId],
+    );
+    const conversationId = conv.rows[0].id;
+    const msg = await client.query(
+      `INSERT INTO messages (conversation_id, role, kind, content) VALUES ($1, 'assistant', 'answer', 'seeded answer') RETURNING id`,
+      [conversationId],
+    );
+    return { workspaceId, conversationId, messageId: msg.rows[0].id };
   } finally {
     await client.end();
   }

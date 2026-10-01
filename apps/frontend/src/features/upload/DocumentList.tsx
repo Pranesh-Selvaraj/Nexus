@@ -112,6 +112,14 @@ function DocumentRow({ doc, onDelete, onRetry, isDeleting }: RowProps) {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {doc.needsReindex && (
+            <span
+              title="Indexed with a different embedding setup - re-index to use the current model"
+              className="rounded-full bg-amber-950/50 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-400"
+            >
+              reindex
+            </span>
+          )}
           <StatusBadge status={status} />
           {status === 'failed' && (
             <button

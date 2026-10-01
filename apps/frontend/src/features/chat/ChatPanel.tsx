@@ -4,6 +4,7 @@ import type { KeyboardEvent } from 'react';
 import type {
   ChatHistoryMessage,
   MessageDTO,
+  RetrievalDebug,
   Source,
   Usage,
 } from '@nexus/shared-types';
@@ -28,6 +29,8 @@ interface Message {
   content: string;
   sources?: Source[];
   usage?: Usage | null;
+  feedback?: 'up' | 'down' | null;
+  retrieval?: RetrievalDebug | null;
   error?: boolean;
   stopped?: boolean;
 }
@@ -66,8 +69,11 @@ export function ChatPanel({ workspaceId }: Props) {
   const streamText = useRef('');
   const streamSources = useRef<Source[]>([]);
   const flushTimer = useRef<number | null>(null);
+  const streamRetrieval = useRef<RetrievalDebug | null>(null);
   const [liveText, setLiveText] = useState('');
   const [liveSources, setLiveSources] = useState<Source[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [inspector, setInspector] = useState<RetrievalDebug | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -116,6 +122,20 @@ export function ChatPanel({ workspaceId }: Props) {
       toast.push({ kind: 'error', message: `Delete failed: ${err.message}` }),
   });
 
+  const feedbackMutation = trpc.chat.feedback.useMutation({
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Feedback failed: ${err.message}` }),
+  });
+
+  /** Toggle thumbs up/down on an assistant answer. */
+  function setFeedback(message: Message, value: 'up' | 'down'): void {
+    const next = message.feedback === value ? null : value;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === message.id ? { ...m, feedback: next } : m)),
+    );
+    feedbackMutation.mutate({ messageId: message.id, feedback: next });
+  }
+
   // Watch for the persisted conversation id when starting a fresh chat.
   const streamStartedFor = useRef<string | null>(null);
   useEffect(() => {
@@ -131,8 +151,10 @@ export function ChatPanel({ workspaceId }: Props) {
     streamMessageId.current = null;
     streamText.current = '';
     streamSources.current = [];
+    streamRetrieval.current = null;
     setLiveText('');
     setLiveSources([]);
+    setSearchQuery('');
   }
 
   function scheduleLiveTextFlush(): void {
@@ -160,7 +182,9 @@ export function ChatPanel({ workspaceId }: Props) {
           break;
         case 'sources':
           streamSources.current = event.sources;
+          streamRetrieval.current = event.retrieval ?? null;
           setLiveSources(event.sources);
+          setSearchQuery(event.query);
           setStatus(
             event.sources.length > 0
               ? `Found ${event.sources.length} source${event.sources.length === 1 ? '' : 's'}. Writing answer...`
@@ -176,6 +200,7 @@ export function ChatPanel({ workspaceId }: Props) {
           const id = streamMessageId.current;
           const content = streamText.current;
           const sources = streamSources.current;
+          const retrieval = streamRetrieval.current;
           resetStreamState();
           setPending(null);
           setStatus('Answer complete');
@@ -183,7 +208,13 @@ export function ChatPanel({ workspaceId }: Props) {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === id && m.role === 'assistant'
-                  ? { ...m, content, sources }
+                  ? {
+                      ...m,
+                      id: event.messageId,
+                      content,
+                      sources,
+                      retrieval,
+                    }
                   : m,
               ),
             );
@@ -346,8 +377,9 @@ export function ChatPanel({ workspaceId }: Props) {
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
-        {/* Conversation history */}
-        <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/40">
+        {/* Conversation history (desktop); on smaller screens the header
+            exposes a conversation picker instead. */}
+        <aside className="hidden w-60 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/40 lg:flex">
           <div className="border-b border-zinc-800 p-3">
             <button
               onClick={newChat}
@@ -414,9 +446,12 @@ export function ChatPanel({ workspaceId }: Props) {
         {/* Chat */}
         <div className="relative flex min-w-0 flex-1 flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
-            <div>
-              <h1 className="text-lg font-bold">
+          <div className="flex items-start justify-between gap-3 border-b border-zinc-800 px-4 py-3 md:px-6 md:py-4">
+            <div className="min-w-0 flex-1">
+              <h1
+                className="truncate text-base font-bold md:text-lg"
+                title={activeTitle ?? workspaceName}
+              >
                 {activeTitle ?? workspaceName}
               </h1>
               <p className="text-xs text-zinc-500">
@@ -424,12 +459,30 @@ export function ChatPanel({ workspaceId }: Props) {
                   ? 'Saved conversation · grounded in your documents'
                   : 'Answers are grounded in your uploaded documents'}
               </p>
+              {conversations.data && conversations.data.length > 0 && (
+                <select
+                  value={activeConversationId ?? ''}
+                  disabled={streaming}
+                  onChange={(event) => {
+                    setActiveConversationId(event.target.value || null);
+                  }}
+                  aria-label="Conversation"
+                  className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-nexus-500 disabled:opacity-50 lg:hidden"
+                >
+                  <option value="">New chat</option>
+                  {conversations.data.map((conversation) => (
+                    <option key={conversation.id} value={conversation.id}>
+                      {conversation.title}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             {messages.length > 0 && (
               <button
                 onClick={newChat}
                 disabled={streaming}
-                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 disabled:opacity-40"
+                className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 disabled:opacity-40"
               >
                 Clear chat
               </button>
@@ -448,7 +501,7 @@ export function ChatPanel({ workspaceId }: Props) {
             role="log"
             className="flex-1 overflow-y-auto"
           >
-            <div className="mx-auto max-w-3xl px-6 py-6">
+            <div className="mx-auto max-w-3xl px-3 py-4 md:px-6 md:py-6">
               {messages.length === 0 && !streaming && (
                 <div className="mt-16 text-center text-zinc-500">
                   <p className="text-sm">
@@ -516,7 +569,15 @@ export function ChatPanel({ workspaceId }: Props) {
                               </p>
                             )}
                             {message.sources && message.sources.length > 0 && (
-                              <SourcesPanel sources={message.sources} />
+                              <SourcesPanel
+                                sources={message.sources}
+                                onInspect={
+                                  message.retrieval
+                                    ? () =>
+                                        setInspector(message.retrieval ?? null)
+                                    : undefined
+                                }
+                              />
                             )}
                             {message.usage && (
                               <p className="mt-1.5 text-[10px] text-zinc-600">
@@ -551,6 +612,49 @@ export function ChatPanel({ workspaceId }: Props) {
                                       Regenerate
                                     </button>
                                   )}
+                                {message.retrieval && (
+                                  <button
+                                    onClick={() =>
+                                      setInspector(message.retrieval ?? null)
+                                    }
+                                    className="hover:text-zinc-300"
+                                  >
+                                    Why?
+                                  </button>
+                                )}
+                                {!message.error &&
+                                  activeConversationId !== null && (
+                                    <span className="ml-auto flex items-center gap-2">
+                                      <button
+                                        onClick={() =>
+                                          setFeedback(message, 'up')
+                                        }
+                                        aria-label="Helpful answer"
+                                        title="Helpful"
+                                        className={
+                                          message.feedback === 'up'
+                                            ? 'text-emerald-400'
+                                            : 'hover:text-zinc-300'
+                                        }
+                                      >
+                                        👍
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          setFeedback(message, 'down')
+                                        }
+                                        aria-label="Not helpful"
+                                        title="Not helpful"
+                                        className={
+                                          message.feedback === 'down'
+                                            ? 'text-red-400'
+                                            : 'hover:text-zinc-300'
+                                        }
+                                      >
+                                        👎
+                                      </button>
+                                    </span>
+                                  )}
                               </div>
                             )}
                           </>
@@ -569,9 +673,14 @@ export function ChatPanel({ workspaceId }: Props) {
                   <div className="flex justify-start">
                     <div className="max-w-[85%] rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm leading-relaxed">
                       {liveSources.length > 0 && (
-                        <p className="mb-2 text-xs text-emerald-400">
+                        <p className="mb-1 text-xs text-emerald-400">
                           Found {liveSources.length} relevant source
                           {liveSources.length === 1 ? '' : 's'}
+                        </p>
+                      )}
+                      {searchQuery && searchQuery !== pending?.message && (
+                        <p className="mb-2 text-[10px] text-zinc-500">
+                          Searched for: “{searchQuery}”
                         </p>
                       )}
                       <div className="markdown-body">
@@ -614,7 +723,7 @@ export function ChatPanel({ workspaceId }: Props) {
           </div>
 
           {/* Composer */}
-          <div className="border-t border-zinc-800 p-4">
+          <div className="border-t border-zinc-800 p-3 md:p-4">
             <div className="mx-auto max-w-3xl">
               <div className="flex items-end gap-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2 focus-within:border-nexus-500">
                 <textarea
@@ -654,6 +763,13 @@ export function ChatPanel({ workspaceId }: Props) {
           </div>
         </div>
       </div>
+
+      {inspector && (
+        <RetrievalInspector
+          debug={inspector}
+          onClose={() => setInspector(null)}
+        />
+      )}
     </div>
   );
 }
@@ -665,6 +781,8 @@ function toLocalMessage(message: MessageDTO): Message {
     content: message.content,
     sources: message.sources ?? undefined,
     usage: message.usage,
+    feedback: message.feedback ?? null,
+    retrieval: message.retrievalDebug ?? null,
     error: message.kind === 'error',
   };
 }
@@ -684,35 +802,214 @@ function formatRelative(iso: string): string {
   });
 }
 
-function SourcesPanel({ sources }: { sources: Source[] }) {
+function pct(value: number | undefined): string {
+  return value == null ? '—' : `${Math.round(value * 100)}%`;
+}
+
+function SourcesPanel({
+  sources,
+  onInspect,
+}: {
+  sources: Source[];
+  onInspect?: () => void;
+}) {
   return (
     <div className="mt-3 border-t border-zinc-800 pt-2">
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-        Sources
-      </p>
+      <div className="mb-1.5 flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          Sources
+        </p>
+        {onInspect && (
+          <button
+            onClick={onInspect}
+            className="text-[10px] text-nexus-300 hover:underline"
+          >
+            Why these sources?
+          </button>
+        )}
+      </div>
       <div className="space-y-1">
         {sources.map((source, i) => (
           <details
             key={source.id}
             className="group rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5 py-1.5"
           >
-            <summary className="cursor-pointer list-none text-xs text-zinc-300">
-              <span className="font-mono text-nexus-400">{i + 1}</span>
-              <span className="mx-1.5 text-zinc-600">·</span>
-              {source.title}
-              {source.page != null && (
-                <span className="ml-1.5 text-zinc-600">p.{source.page}</span>
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-zinc-300">
+              <span className="shrink-0 font-mono text-nexus-400">{i + 1}</span>
+              {source.cited && (
+                <span
+                  title="Cited in the answer"
+                  className="shrink-0 text-emerald-400"
+                >
+                  ✓
+                </span>
               )}
-              <span className="float-right text-zinc-600">
+              <span className="shrink-0 text-zinc-600">·</span>
+              <span className="min-w-0 flex-1 truncate">{source.title}</span>
+              {source.page != null && (
+                <span className="shrink-0 text-zinc-600">
+                  p.{source.page}
+                  {source.pageEnd != null && source.pageEnd !== source.page
+                    ? `–${source.pageEnd}`
+                    : ''}
+                </span>
+              )}
+              <span className="shrink-0 text-zinc-600">
                 {Math.round(source.similarity * 100)}%
               </span>
             </summary>
+            {source.headingPath && source.headingPath.length > 0 && (
+              <p className="mt-1 text-[10px] uppercase tracking-wide text-zinc-600">
+                {source.headingPath.join(' › ')}
+              </p>
+            )}
             <p className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-zinc-500 group-open:line-clamp-none line-clamp-4">
               {source.content}
             </p>
+            {(source.vectorScore != null ||
+              source.keywordScore != null ||
+              source.fusedScore != null) && (
+              <p className="mt-1 text-[10px] text-zinc-600">
+                vector {pct(source.vectorScore)} · keyword{' '}
+                {pct(source.keywordScore)} · fused {pct(source.fusedScore)}
+              </p>
+            )}
           </details>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Modal explaining how the sources for an answer were selected. */
+function RetrievalInspector({
+  debug,
+  onClose,
+}: {
+  debug: RetrievalDebug;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Retrieval inspector"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 p-5"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-3 flex items-start justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Retrieval inspector</h2>
+            <p className="text-xs text-zinc-500">
+              How this answer's sources were selected.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close inspector"
+            className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+          >
+            ✕
+          </button>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
+          <Stat label="Profile" value={debug.profile} />
+          <Stat
+            label="Rewritten query"
+            value={debug.rewritten ? 'yes' : 'no'}
+          />
+          <Stat label="Reranked" value={debug.reranked ? 'yes' : 'no'} />
+          <Stat
+            label="Vector candidates"
+            value={String(debug.vectorCandidates)}
+          />
+          <Stat
+            label="Keyword candidates"
+            value={String(debug.keywordCandidates)}
+          />
+          <Stat
+            label="Context budget"
+            value={`${debug.usedTokens} / ${debug.tokenBudget} tokens`}
+          />
+          <Stat label="Min vector score" value={String(debug.minScore)} />
+        </dl>
+
+        {debug.rewritten && (
+          <p className="mt-3 rounded-lg bg-zinc-950/60 px-3 py-2 text-xs text-zinc-400">
+            <span className="text-zinc-500">Original:</span>{' '}
+            {debug.originalQuery}
+            <br />
+            <span className="text-zinc-500">Searched for:</span>{' '}
+            {debug.searchQuery}
+          </p>
+        )}
+
+        <div className="mt-4">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            Candidates ({debug.candidates.length})
+          </p>
+          <div className="space-y-1">
+            {debug.candidates.map((candidate) => (
+              <div
+                key={candidate.id}
+                className={`rounded-lg border px-3 py-2 text-xs ${
+                  candidate.selected
+                    ? 'border-nexus-700/60 bg-nexus-950/20'
+                    : 'border-zinc-800 bg-zinc-950/40'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-zinc-500">
+                    #{candidate.rank}
+                    {candidate.rerankedRank != null &&
+                    candidate.rerankedRank !== candidate.rank
+                      ? ` → ${candidate.rerankedRank}`
+                      : ''}
+                  </span>
+                  {candidate.selected && (
+                    <span className="rounded bg-nexus-600/30 px-1.5 text-[10px] text-nexus-200">
+                      selected
+                    </span>
+                  )}
+                  <span className="truncate text-zinc-300">
+                    {candidate.title}
+                  </span>
+                  {candidate.page != null && (
+                    <span className="text-zinc-600">p.{candidate.page}</span>
+                  )}
+                  <span className="ml-auto shrink-0 text-zinc-500">
+                    v {pct(candidate.vectorScore)} · k{' '}
+                    {pct(candidate.keywordScore)} · f{' '}
+                    {pct(candidate.fusedScore)}
+                  </span>
+                </div>
+                <p className="mt-1 line-clamp-2 text-zinc-500">
+                  {candidate.contentPreview}
+                </p>
+              </div>
+            ))}
+            {debug.candidates.length === 0 && (
+              <p className="text-xs text-zinc-600">
+                No candidates were retrieved for this question.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-zinc-500">{label}</dt>
+      <dd className="text-zinc-300">{value}</dd>
     </div>
   );
 }
