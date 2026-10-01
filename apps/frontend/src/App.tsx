@@ -37,6 +37,8 @@ export default function App() {
     null,
   );
   const [view, setView] = useState<'workspace' | 'settings'>('workspace');
+  // Mobile: the sidebar is an off-canvas drawer instead of a fixed column.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Public config is available before login (the protected settings list is
   // not), so the shell renders correctly on the login screen too.
@@ -94,24 +96,60 @@ export default function App() {
     );
   }
 
+  const sidebarProps = {
+    activeWorkspaceId,
+    onSelect: (id: string) => {
+      setActiveWorkspaceId(id);
+      setView('workspace');
+      setSidebarOpen(false);
+    },
+    user: gate.user,
+    onLoggedOut: () => setGate({ status: 'anonymous' }),
+    onWorkspaceDeleted: (workspaceId: string) => {
+      if (workspaceId === activeWorkspaceId) setActiveWorkspaceId(null);
+    },
+    onOpenSettings: () => {
+      setView('settings');
+      setSidebarOpen(false);
+    },
+    settingsActive: view === 'settings',
+    appName,
+  };
+
   return (
     <div className="flex h-full bg-zinc-950 text-zinc-100">
-      <WorkspaceSidebar
-        activeWorkspaceId={activeWorkspaceId}
-        onSelect={(id) => {
-          setActiveWorkspaceId(id);
-          setView('workspace');
-        }}
-        user={gate.user}
-        onLoggedOut={() => setGate({ status: 'anonymous' })}
-        onWorkspaceDeleted={(workspaceId) => {
-          if (workspaceId === activeWorkspaceId) setActiveWorkspaceId(null);
-        }}
-        onOpenSettings={() => setView('settings')}
-        settingsActive={view === 'settings'}
-        appName={appName}
-      />
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex">
+        <WorkspaceSidebar {...sidebarProps} />
+      </div>
+
+      {/* Mobile sidebar drawer */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 flex md:hidden">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden
+          />
+          <div className="relative flex h-full">
+            <WorkspaceSidebar {...sidebarProps} />
+          </div>
+        </div>
+      )}
+
       <main className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile top bar */}
+        <div className="flex items-center gap-3 border-b border-zinc-800 px-3 py-2 md:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+            className="rounded-lg border border-zinc-700 p-2 text-zinc-300 hover:bg-zinc-800"
+          >
+            <MenuIcon className="h-4 w-4" />
+          </button>
+          <NexusLogo className="h-5 w-5 text-nexus-400" />
+          <span className="truncate text-sm font-semibold">{appName}</span>
+        </div>
         <Suspense
           fallback={
             <div className="flex flex-1 items-center justify-center text-zinc-500">
@@ -149,6 +187,22 @@ function EmptyState() {
         </p>
       </div>
     </div>
+  );
+}
+
+function MenuIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
   );
 }
 

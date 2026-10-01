@@ -308,6 +308,17 @@ export function SettingsPanel() {
               onPick={(model) => void pickModel('openai.model', model)}
             />
           </div>
+          <div className="border-t border-zinc-800/60 px-5 py-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Job models
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              Optional cheaper models for retrieval helper calls (query
+              rewriting and reranking). Leave empty to use the chat model.
+            </p>
+          </div>
+          {renderField('job.queryRewrite.model')}
+          {renderField('job.rerank.model')}
           {renderField('openai.temperature')}
         </ProviderPane>
 
@@ -683,6 +694,16 @@ function Field({
               </option>
             ))}
           </select>
+        ) : def.type === 'boolean' ? (
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
+            <input
+              type="checkbox"
+              checked={(draft === '' ? setting.value : draft) === 'true'}
+              onChange={(e) => onChange(e.target.checked ? 'true' : 'false')}
+              className="h-4 w-4 accent-nexus-600"
+            />
+            Enabled
+          </label>
         ) : (
           <input
             type={isNumber ? 'number' : 'text'}
