@@ -2,8 +2,9 @@ import { TRPCError } from '@trpc/server';
 import { observable } from '@trpc/server/observable';
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 
-import type { ChatEvent, Source } from '@nexus/shared-types';
+import type { ChatEvent, RetrievalDebug, Source } from '@nexus/shared-types';
 import {
+  chatFeedbackInputSchema,
   chatStreamInputSchema,
   conversationIdSchema,
   workspaceIdSchema,
@@ -14,10 +15,13 @@ import { conversations, messages, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
 import {
   generateConversationTitle,
-  hybridRetrieveChunks,
   streamAnswer,
 } from '../services/llm.service.js';
 import type { ChatHistoryItem } from '../services/llm.service.js';
+import {
+  retrieveForChat,
+  validateCitations,
+} from '../services/retrieval.service.js';
 import { friendlyErrorMessage } from '../utils/errors.js';
 
 function toConversationDTO(row: {
@@ -122,8 +126,42 @@ export const chatRouter = t.router({
         content: m.content,
         sources: m.sources,
         usage: m.usage,
+        feedback: m.feedback ?? null,
+        retrievalDebug: m.retrievalDebug ?? null,
         createdAt: new Date(m.createdAt).toISOString(),
       }));
+    }),
+
+  /**
+   * Thumbs up/down on an assistant answer. Feedback is stored per message
+   * and is the seed for retrieval quality evaluation.
+   */
+  feedback: protectedProcedure
+    .input(chatFeedbackInputSchema)
+    .mutation(async ({ ctx, input }): Promise<{ saved: boolean }> => {
+      const [row] = await db
+        .select({ id: messages.id, conversationId: messages.conversationId })
+        .from(messages)
+        .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+        .innerJoin(workspaces, eq(workspaces.id, conversations.workspaceId))
+        .where(
+          and(
+            eq(messages.id, input.messageId),
+            eq(workspaces.userId, ctx.user.id),
+          ),
+        )
+        .limit(1);
+      if (!row) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Message not found',
+        });
+      }
+      await db
+        .update(messages)
+        .set({ feedback: input.feedback })
+        .where(eq(messages.id, row.id));
+      return { saved: true };
     }),
 
   delete: protectedProcedure
@@ -310,12 +348,20 @@ export const chatRouter = t.router({
               currentUserMessageId,
             );
 
-            const sources = await hybridRetrieveChunks(
-              input.workspaceId,
+            const retrieval = await retrieveForChat({
+              workspaceId: input.workspaceId,
               query,
-            );
+              history,
+              sessionId: conversation,
+            });
+            const sources = retrieval.sources;
             if (cancelled) return;
-            emit.next({ type: 'sources', sources });
+            emit.next({
+              type: 'sources',
+              sources,
+              query: retrieval.searchQuery,
+              retrieval: retrieval.debug,
+            });
 
             const stream = await streamAnswer(
               { query, history, sources },
@@ -347,8 +393,25 @@ export const chatRouter = t.router({
             }
             if (cancelled) return;
 
-            await persistAssistantMessage(conversation, answer, sources, usage);
-            emit.next({ type: 'done', sources });
+            // Mark the sources the answer actually cited (citation integrity)
+            // and persist them with the inspector payload.
+            const cited = new Set(validateCitations(answer, sources.length));
+            const citedSources: Source[] = sources.map((source, index) => ({
+              ...source,
+              cited: cited.has(index + 1),
+            }));
+            const messageId = await persistAssistantMessage(
+              conversation,
+              answer,
+              citedSources,
+              usage,
+              'answer',
+              retrieval.debug,
+            );
+            if (!messageId) {
+              throw new Error('Failed to persist the assistant message');
+            }
+            emit.next({ type: 'done', sources: citedSources, messageId });
           } catch (error) {
             if (cancelled) return;
             // Provider errors can embed whole HTML pages (wrong base URL,
@@ -432,17 +495,23 @@ async function persistAssistantMessage(
     totalTokens: number;
   } | null = null,
   kind: 'answer' | 'error' = 'answer',
-): Promise<void> {
+  retrievalDebug?: RetrievalDebug | null,
+): Promise<string | null> {
   await db
     .update(conversations)
     .set({ updatedAt: new Date() })
     .where(eq(conversations.id, conversationId));
-  await db.insert(messages).values({
-    conversationId,
-    role: 'assistant',
-    kind,
-    content,
-    sources: sources.length > 0 ? sources : null,
-    usage,
-  });
+  const [inserted] = await db
+    .insert(messages)
+    .values({
+      conversationId,
+      role: 'assistant',
+      kind,
+      content,
+      sources: sources.length > 0 ? sources : null,
+      usage,
+      retrievalDebug: retrievalDebug ?? null,
+    })
+    .returning({ id: messages.id });
+  return inserted?.id ?? null;
 }
