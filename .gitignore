@@ -14,3 +14,20 @@ apps/backend/uploads/.env
 # Playwright artifacts
 apps/frontend/test-results/
 apps/frontend/playwright-report/
+
+# Agent / AI tooling (local development only - the repository ships Nexus).
+# Everything under .agents/ stays local: phase plan and work orders, product
+# review, workflow skill, visual QA harness and its screenshots.
+.agents/
+.pi/
+.claude/
+.cursor/
+.continue/
+.windsurf/
+.gemini/
+.codex/
+.openai/
+.aider*
+AGENTS.md
+CLAUDE.md
+.github/copilot-instructions.md
