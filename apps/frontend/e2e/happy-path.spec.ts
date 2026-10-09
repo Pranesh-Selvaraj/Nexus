@@ -99,4 +99,38 @@ test('workspace -> upload -> index -> streamed chat answer', async ({
   await expect(
     page.getByRole('button', { name: 'Helpful answer' }),
   ).toHaveClass(/text-emerald-400/);
+
+  // --- study loop: generate cards, review one, save a highlight --------
+  await page.getByRole('button', { name: 'Study' }).click();
+  await page.getByRole('button', { name: 'Decks' }).click();
+  await page.getByLabel('Document', { exact: true }).selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Generate' }).click();
+  await expect(page.getByText(/Created 3 flashcards/)).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await page.getByRole('button', { name: 'Dashboard' }).click();
+  await page.getByRole('button', { name: /Start review/ }).click();
+  await expect(
+    page.getByText('What does Nexus combine for retrieval?'),
+  ).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(
+    page.getByText(
+      'Vector similarity and Postgres full-text search, fused by rank.',
+    ),
+  ).toBeVisible();
+  await page.getByRole('button', { name: /Good/ }).click();
+
+  // The selection toolbar saves a highlight into the study notes.
+  await page.getByRole('button', { name: 'Chat' }).click();
+  const answer = page
+    .locator('p')
+    .filter({ hasText: 'Stub answer: Nexus is a retrieval-augmented' })
+    .first();
+  await answer.selectText();
+  await page.getByRole('button', { name: 'Highlight' }).click();
+  await expect(page.getByText('Highlight saved')).toBeVisible({
+    timeout: 10_000,
+  });
 });

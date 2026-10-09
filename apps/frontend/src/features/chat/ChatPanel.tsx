@@ -74,6 +74,13 @@ export function ChatPanel({ workspaceId }: Props) {
   const [liveSources, setLiveSources] = useState<Source[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [inspector, setInspector] = useState<RetrievalDebug | null>(null);
+  // Text selection inside the message log, for the Ask/Highlight/Cards bar.
+  const [selection, setSelection] = useState<{
+    text: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -126,6 +133,68 @@ export function ChatPanel({ workspaceId }: Props) {
     onError: (err) =>
       toast.push({ kind: 'error', message: `Feedback failed: ${err.message}` }),
   });
+
+  const createHighlight = trpc.notes.highlights.create.useMutation({
+    onSuccess: () =>
+      toast.push({ kind: 'success', message: 'Highlight saved' }),
+    onError: (err) =>
+      toast.push({
+        kind: 'error',
+        message: `Highlight failed: ${err.message}`,
+      }),
+  });
+  const generateCards = trpc.study.cards.generate.useMutation({
+    onSuccess: (data) => {
+      toast.push({
+        kind: 'success',
+        message: `Created ${data.created.length} flashcard${data.created.length === 1 ? '' : 's'} — open Study to review.`,
+      });
+      void utils.study.progress.invalidate({ workspaceId });
+      void utils.study.decks.list.invalidate({ workspaceId });
+    },
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Cards failed: ${err.message}` }),
+  });
+
+  /**
+   * Show the Ask/Highlight/Cards toolbar for any selection inside the
+   * message log. Listens to selectionchange so keyboard selection works too
+   * (mouseup alone missed programmatic and shift+arrow selections).
+   */
+  useEffect(() => {
+    function onSelectionChange(): void {
+      const sel = window.getSelection();
+      const container = scrollContainerRef.current;
+      const text = sel?.toString().trim() ?? '';
+      if (!sel || !container || sel.rangeCount === 0 || text.length < 3) {
+        setSelection(null);
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      if (!container.contains(range.commonAncestorContainer)) {
+        setSelection(null);
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) {
+        setSelection(null);
+        return;
+      }
+      setSelection({
+        text: text.slice(0, 4000),
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+      });
+    }
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () =>
+      document.removeEventListener('selectionchange', onSelectionChange);
+  }, []);
+
+  function clearSelection(): void {
+    window.getSelection()?.removeAllRanges();
+    setSelection(null);
+  }
 
   /** Toggle thumbs up/down on an assistant answer. */
   function setFeedback(message: Message, value: 'up' | 'down'): void {
@@ -358,6 +427,15 @@ export function ChatPanel({ workspaceId }: Props) {
       e.preventDefault();
       handleSend();
     }
+  }
+
+  function askAboutSelection(): void {
+    if (!selection) return;
+    setInput((current) =>
+      `${current}About this passage: “${selection.text}”\n\n`.trimStart(),
+    );
+    clearSelection();
+    composerRef.current?.focus();
   }
 
   function newChat() {
@@ -727,6 +805,7 @@ export function ChatPanel({ workspaceId }: Props) {
             <div className="mx-auto max-w-3xl">
               <div className="flex items-end gap-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2 focus-within:border-nexus-500">
                 <textarea
+                  ref={composerRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -763,6 +842,53 @@ export function ChatPanel({ workspaceId }: Props) {
           </div>
         </div>
       </div>
+
+      {selection && (
+        <div
+          className="fixed z-30 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl"
+          style={{ left: selection.x, top: Math.max(8, selection.y - 10) }}
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          <button
+            onClick={askAboutSelection}
+            className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          >
+            Ask
+          </button>
+          <button
+            onClick={() => {
+              createHighlight.mutate({
+                workspaceId,
+                quotedText: selection.text,
+              });
+              clearSelection();
+            }}
+            disabled={createHighlight.isPending}
+            className="rounded px-2 py-1 text-xs text-amber-300 hover:bg-zinc-800 disabled:opacity-40"
+          >
+            Highlight
+          </button>
+          <button
+            onClick={() => {
+              generateCards.mutate({
+                workspaceId,
+                text: selection.text,
+                count: 5,
+              });
+              clearSelection();
+            }}
+            disabled={generateCards.isPending || selection.text.length < 20}
+            className="rounded px-2 py-1 text-xs text-nexus-200 hover:bg-zinc-800 disabled:opacity-40"
+            title={
+              selection.text.length < 20
+                ? 'Select a longer passage to make cards'
+                : 'Generate flashcards from this passage'
+            }
+          >
+            Cards
+          </button>
+        </div>
+      )}
 
       {inspector && (
         <RetrievalInspector
