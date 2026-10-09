@@ -4,6 +4,40 @@ Every Nexus release is documented here in detail. The release workflow extracts 
 
 ## [Unreleased]
 
+## [v1.4.0] - 2026-10-01
+
+Phase 2a adds the study loop's recall core to each workspace: highlights and notes, flashcards generated from your own documents and scheduled with FSRS, a review session with interval previews, and a dashboard that reports what is due and how retention is trending. This is the release where Nexus stops being only a place to ask questions and becomes a place to remember answers.
+
+### Added
+
+- **Study mode per workspace.** A Chat / Study switch sits above each workspace; Study contains Dashboard, Review, Decks and Notes tabs. The chat view stays mounted while Study is open, so the conversation and any in-flight answer survive tab switches.
+- **AI-generated flashcards.** A document (via the cards button on a ready document, or the Decks tab) or any selected passage is sent to the chat model with a strict JSON contract; the response is parsed tolerantly (code fences stripped, malformed entries dropped) and creates QA cards in the workspace's default deck. Generation reports how many cards were created and surfaces a friendly error when the material yields none.
+- **FSRS spaced repetition.** Cards are scheduled with ts-fsrs: the full scheduler state (due date, stability, difficulty, elapsed/scheduled days, learning steps, reps, lapses, state) is stored per card, so scheduling is deterministic across restarts and instances. New cards are due immediately; every rating produces a real next interval.
+- **Review sessions.** The queue shows the card front, reveals the answer on Space, and offers Again / Hard / Good / Easy buttons with the interval each rating would schedule plus number-key shortcuts (1-4). The session ends with a reviewed count and returns to the dashboard.
+- **Deck management and Anki export.** Create, review and delete decks; each deck reports total, due and new counts. Cards export as a quoted `front,back` CSV that Anki imports directly.
+- **Highlights and notes.** Selecting text in a chat answer opens a toolbar with **Ask** (prefills the composer with the passage), **Highlight** (stores the passage with an optional note) and **Cards** (generates flashcards from the passage). The Notes tab lists highlights and Markdown notes with tags, both editable in place.
+- **Progress dashboard.** Due now, new cards, reviews today, streak (consecutive UTC review days), 30-day retention and cards added in the last seven days, aggregated from the review and progress-event tables.
+- **Per-document card generation.** Every ready document row has a cards button that generates a starter deck in one click.
+
+### Fixed
+
+- **Security: five dependency advisories cleared, including a critical production issue.** `proxy-addr` 2.0.7 → 2.0.8 (GHSA-jqcg-44mw-7w3h, critical, IP spoofing via IPv4-mapped addresses, reachable through express and express-rate-limit in the production graph), `shell-quote` 1.9.0 → 1.12.0 (GHSA-pqg4-j6r4-53mv, critical command injection, concurrently dev tooling), `source-map-js` 1.2.1 → 1.2.2 (GHSA-68fv-2mgg-jv7q, high, vite/tailwind), `katex` 0.16.47 → 0.18.9 (GHSA-238p-pmpm-9mq7, low, pulled by rehype-katex), and `sprintf-js` removed from the tree entirely by overriding mammoth's CLI-only `argparse` 1.x to 2.x (GHSA-hp3w-g68c-fv3c, moderate; the library entry point Nexus uses never imports argparse). `pnpm audit` is clean for both the full and production dependency graphs again.
+- **Cards never graduated from the FSRS learning state.** The scheduler's `learning_steps` counter was not persisted with the rest of the card state, so every review restarted the learning steps and cards never reached the review state. The column is now stored (migration 0009) with a regression test that asserts graduation after two successful steps.
+- **The selection toolbar missed keyboard and programmatic selections** because it only listened to `mouseup`; it now reacts to `selectionchange` scoped to the message log.
+
+### Improved
+
+- The smoke suite grew from 59 to 69 checks (card generation, due previews, review scheduling, progress aggregation, CSV export, note and highlight storage), backend unit tests from 75 to 90 (FSRS scheduling, streak computation, tolerant card parsing), and the Playwright happy path now covers the whole study flow: generate cards from a document, review one with the keyboard, and save a highlight from the selection toolbar.
+
+### Limitations and deliberate omissions
+
+- **Phase 2b is not in this release:** quizzes with grading and a mistake notebook, tutor personas/modes, and studio artifacts (study guides, summaries, glossaries, mind maps). The next release continues the study loop.
+- **Anki export is CSV, not `.apkg`.** Anki imports the CSV directly; packaged decks with media are deferred.
+- **Only QA cards are generated.** Cloze deletion and image occlusion are not implemented yet.
+- **FSRS runs with its default parameters.** There is no per-user retention/parameter optimization yet, and no per-day new-card limit beyond the due queue size.
+- **Notes and highlights are not indexed into retrieval yet.** They are stored and shown, but chat answers do not search them until the notes-as-sources opt-in ships.
+- **Streaks are computed in UTC** and retention is a simple share of Hard/Good/Easy ratings over 30 days, not a stability-based metric.
+
 ## [v1.3.0] - 2026-10-01
 
 Phase 1 makes retrieval trustworthy and the workspace usable on a phone. The headline fix is that semantic-only matches are no longer silently dropped by a keyword filter (B-2); around it, answers now use a token budget, cite verifiable sources, and can be inspected, while changing the embedding model surfaces a re-index banner instead of a pgvector error.
