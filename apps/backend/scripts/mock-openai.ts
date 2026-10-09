@@ -91,6 +91,49 @@ const server = createServer(async (req, res) => {
       const answer =
         'Stub answer: Nexus is a retrieval-augmented generation system. [1]';
 
+      // Deterministic flashcards for the study-loop flows: the backend's
+      // card-generation prompt asks for "study flashcards".
+      const promptText = Array.isArray(body.messages)
+        ? body.messages
+            .map((message: { content?: unknown }) =>
+              String(message?.content ?? ''),
+            )
+            .join('\n')
+        : '';
+      if (!body.stream && /flashcards/i.test(promptText)) {
+        json(res, {
+          id: 'chatcmpl-stub-cards',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: JSON.stringify([
+                  {
+                    front: 'What does Nexus combine for retrieval?',
+                    back: 'Vector similarity and Postgres full-text search, fused by rank.',
+                  },
+                  {
+                    front: 'What schedules flashcard reviews?',
+                    back: 'FSRS spaced-repetition scheduling.',
+                  },
+                  {
+                    front: 'Where do answers come from?',
+                    back: 'Only the sources retrieved from the workspace.',
+                  },
+                ]),
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 20, completion_tokens: 40, total_tokens: 60 },
+        });
+        return;
+      }
+
       if (body.stream) {
         // Server-Sent Events stream (matches the OpenAI SDK's expectations,
         // including a final usage chunk when stream_options.include_usage).

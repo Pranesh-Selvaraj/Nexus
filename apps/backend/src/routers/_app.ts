@@ -1,6 +1,8 @@
 import { chatRouter } from './chat.router.js';
 import { documentRouter } from './document.router.js';
+import { notesRouter } from './notes.router.js';
 import { settingsRouter } from './settings.router.js';
+import { studyRouter } from './study.router.js';
 import { workspaceRouter } from './workspace.router.js';
 import { t } from '../middleware/auth.js';
 import { getSetting } from '../services/settings.service.js';
@@ -20,6 +22,8 @@ export const appRouter = t.router({
   workspace: workspaceRouter,
   document: documentRouter,
   chat: chatRouter,
+  study: studyRouter,
+  notes: notesRouter,
   settings: settingsRouter,
 });
 

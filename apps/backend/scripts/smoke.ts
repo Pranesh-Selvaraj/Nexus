@@ -622,6 +622,137 @@ try {
   });
 
   // -------------------------------------------------------------------
+  // Study loop: decks, flashcard generation, review, progress, notes
+  // -------------------------------------------------------------------
+  const studyWs = await fetchJson('/trpc/workspace.create', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Study Smoke' }),
+  });
+  const studyWsId = studyWs.body?.result?.data?.id;
+  print('study smoke workspace', Boolean(studyWsId));
+
+  const generated = await fetchJson('/trpc/study.cards.generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: studyWsId,
+      text: 'Nexus combines vector similarity with keyword search and schedules cards with FSRS.',
+      count: 5,
+    }),
+  });
+  const createdCards = generated.body?.result?.data?.created ?? [];
+  print(
+    'study.cards.generate creates cards',
+    createdCards.length === 3 &&
+      typeof createdCards[0]?.front === 'string' &&
+      typeof createdCards[0]?.back === 'string',
+    { count: createdCards.length },
+  );
+
+  const deckList = await fetchJson(
+    `/trpc/study.decks.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  const firstDeck = deckList.body?.result?.data?.[0];
+  print(
+    'study.decks.list reports due cards',
+    firstDeck?.cardCount === 3 && firstDeck?.dueCount === 3,
+    { deck: firstDeck?.name, cards: firstDeck?.cardCount },
+  );
+
+  const dueCards = await fetchJson(
+    `/trpc/study.cards.due?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  const dueList = dueCards.body?.result?.data ?? [];
+  print(
+    'study.cards.due returns interval previews',
+    dueList.length === 3 && typeof dueList[0]?.intervals?.good === 'string',
+    { intervals: dueList[0]?.intervals },
+  );
+
+  const reviewed = await fetchJson('/trpc/study.cards.review', {
+    method: 'POST',
+    body: JSON.stringify({ cardId: createdCards[0]?.id, rating: 'good' }),
+  });
+  print(
+    'study.cards.review schedules the next due date',
+    reviewed.body?.result?.data?.remaining === 2 &&
+      typeof reviewed.body?.result?.data?.nextDueAt === 'string' &&
+      new Date(reviewed.body.result.data.nextDueAt).getTime() > Date.now(),
+    reviewed.body?.result?.data,
+  );
+
+  const progress = await fetchJson(
+    `/trpc/study.progress?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'study.progress aggregates reviews',
+    progress.body?.result?.data?.totalCards === 3 &&
+      progress.body?.result?.data?.reviewsToday === 1 &&
+      progress.body?.result?.data?.streakDays === 1,
+    progress.body?.result?.data,
+  );
+
+  const exportCsv = await fetchJson(
+    `/trpc/study.cards.exportCsv?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'study.cards.exportCsv produces an Anki-importable CSV',
+    typeof exportCsv.body?.result?.data?.csv === 'string' &&
+      exportCsv.body.result.data.csv.startsWith('front,back'),
+  );
+
+  const createdNote = await fetchJson('/trpc/notes.notes.create', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: studyWsId,
+      title: 'Smoke note',
+      contentMd: 'hello',
+      tags: ['smoke'],
+    }),
+  });
+  print(
+    'notes.notes.create stores a note',
+    createdNote.body?.result?.data?.title === 'Smoke note' &&
+      createdNote.body?.result?.data?.tags?.[0] === 'smoke',
+  );
+
+  const createdHighlight = await fetchJson('/trpc/notes.highlights.create', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: studyWsId,
+      quotedText: 'quoted passage',
+      note: 'remember this',
+    }),
+  });
+  print(
+    'notes.highlights.create stores a highlight',
+    createdHighlight.body?.result?.data?.quotedText === 'quoted passage' &&
+      createdHighlight.body?.result?.data?.note === 'remember this',
+  );
+
+  const notesList = await fetchJson(
+    `/trpc/notes.notes.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  const highlightsList = await fetchJson(
+    `/trpc/notes.highlights.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'notes lists return stored notes + highlights',
+    notesList.body?.result?.data?.length === 1 &&
+      highlightsList.body?.result?.data?.length === 1,
+  );
+
+  await fetchJson('/trpc/workspace.delete', {
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: studyWsId }),
+  });
+
+  // -------------------------------------------------------------------
   // Workspace archive export/import over the streaming REST endpoint
   // -------------------------------------------------------------------
   const importWs = await fetchJson('/trpc/workspace.create', {

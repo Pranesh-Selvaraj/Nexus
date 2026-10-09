@@ -57,6 +57,20 @@
       "when": 1790868089615,
       "tag": "0007_strong_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791548691755,
+      "tag": "0008_oval_maggott",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791548877309,
+      "tag": "0009_wooden_sugar_man",
+      "breakpoints": true
     }
   ]
 }
