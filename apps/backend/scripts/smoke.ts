@@ -622,6 +622,283 @@ try {
   });
 
   // -------------------------------------------------------------------
+  // Study loop: decks, flashcard generation, review, progress, notes
+  // -------------------------------------------------------------------
+  const studyWs = await fetchJson('/trpc/workspace.create', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Study Smoke' }),
+  });
+  const studyWsId = studyWs.body?.result?.data?.id;
+  print('study smoke workspace', Boolean(studyWsId));
+
+  const generated = await fetchJson('/trpc/study.cards.generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: studyWsId,
+      text: 'Nexus combines vector similarity with keyword search and schedules cards with FSRS.',
+      count: 5,
+    }),
+  });
+  const createdCards = generated.body?.result?.data?.created ?? [];
+  print(
+    'study.cards.generate creates cards',
+    createdCards.length === 3 &&
+      typeof createdCards[0]?.front === 'string' &&
+      typeof createdCards[0]?.back === 'string',
+    { count: createdCards.length },
+  );
+
+  const deckList = await fetchJson(
+    `/trpc/study.decks.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  const firstDeck = deckList.body?.result?.data?.[0];
+  print(
+    'study.decks.list reports due cards',
+    firstDeck?.cardCount === 3 && firstDeck?.dueCount === 3,
+    { deck: firstDeck?.name, cards: firstDeck?.cardCount },
+  );
+
+  const dueCards = await fetchJson(
+    `/trpc/study.cards.due?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  const dueList = dueCards.body?.result?.data ?? [];
+  print(
+    'study.cards.due returns interval previews',
+    dueList.length === 3 && typeof dueList[0]?.intervals?.good === 'string',
+    { intervals: dueList[0]?.intervals },
+  );
+
+  const reviewed = await fetchJson('/trpc/study.cards.review', {
+    method: 'POST',
+    body: JSON.stringify({ cardId: createdCards[0]?.id, rating: 'good' }),
+  });
+  print(
+    'study.cards.review schedules the next due date',
+    reviewed.body?.result?.data?.remaining === 2 &&
+      typeof reviewed.body?.result?.data?.nextDueAt === 'string' &&
+      new Date(reviewed.body.result.data.nextDueAt).getTime() > Date.now(),
+    reviewed.body?.result?.data,
+  );
+
+  const progress = await fetchJson(
+    `/trpc/study.progress?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'study.progress aggregates reviews',
+    progress.body?.result?.data?.totalCards === 3 &&
+      progress.body?.result?.data?.reviewsToday === 1 &&
+      progress.body?.result?.data?.streakDays === 1,
+    progress.body?.result?.data,
+  );
+
+  const exportCsv = await fetchJson(
+    `/trpc/study.cards.exportCsv?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'study.cards.exportCsv produces an Anki-importable CSV',
+    typeof exportCsv.body?.result?.data?.csv === 'string' &&
+      exportCsv.body.result.data.csv.startsWith('front,back'),
+  );
+
+  const createdNote = await fetchJson('/trpc/notes.notes.create', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: studyWsId,
+      title: 'Smoke note',
+      contentMd: 'hello',
+      tags: ['smoke'],
+    }),
+  });
+  print(
+    'notes.notes.create stores a note',
+    createdNote.body?.result?.data?.title === 'Smoke note' &&
+      createdNote.body?.result?.data?.tags?.[0] === 'smoke',
+  );
+
+  const createdHighlight = await fetchJson('/trpc/notes.highlights.create', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: studyWsId,
+      quotedText: 'quoted passage',
+      note: 'remember this',
+    }),
+  });
+  print(
+    'notes.highlights.create stores a highlight',
+    createdHighlight.body?.result?.data?.quotedText === 'quoted passage' &&
+      createdHighlight.body?.result?.data?.note === 'remember this',
+  );
+
+  const notesList = await fetchJson(
+    `/trpc/notes.notes.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  const highlightsList = await fetchJson(
+    `/trpc/notes.highlights.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: studyWsId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'notes lists return stored notes + highlights',
+    notesList.body?.result?.data?.length === 1 &&
+      highlightsList.body?.result?.data?.length === 1,
+  );
+
+  await fetchJson('/trpc/workspace.delete', {
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: studyWsId }),
+  });
+
+  // -------------------------------------------------------------------
+  // Phase 2b: personas, quizzes and studio artifacts
+  // -------------------------------------------------------------------
+  const lateWs = await fetchJson('/trpc/workspace.create', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Study Smoke 2' }),
+  });
+  const lateWsId = lateWs.body?.result?.data?.id;
+
+  const personas = await fetchJson('/trpc/chat.personas', { method: 'GET' });
+  const personaList = personas.body?.result?.data ?? [];
+  print(
+    'chat.personas lists personas with a default',
+    personaList.length >= 6 &&
+      personaList.filter((p: any) => p.isDefault).length === 1 &&
+      personaList.every(
+        (p: any) => typeof p.id === 'string' && typeof p.label === 'string',
+      ),
+    {
+      count: personaList.length,
+      default: personaList.find((p: any) => p.isDefault)?.id,
+    },
+  );
+
+  const quizGenerated = await fetchJson('/trpc/quiz.generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: lateWsId,
+      text: 'Nexus combines vector similarity with keyword search and schedules flashcards with FSRS.',
+      count: 5,
+      kinds: ['mcq', 'truefalse', 'short'],
+    }),
+  });
+  const quizId = quizGenerated.body?.result?.data?.id;
+  print(
+    'quiz.generate creates a quiz',
+    Boolean(quizId) && quizGenerated.body?.result?.data?.questionCount === 3,
+    { questionCount: quizGenerated.body?.result?.data?.questionCount },
+  );
+
+  const quizDetail = await fetchJson(
+    `/trpc/quiz.get?input=${encodeURIComponent(JSON.stringify({ quizId }))}`,
+    { method: 'GET' },
+  );
+  const questions = quizDetail.body?.result?.data?.questions ?? [];
+  print(
+    'quiz.get never returns stored answers',
+    questions.length === 3 &&
+      questions.every((q: any) => q.answer === undefined) &&
+      questions.some((q: any) => q.kind === 'mcq' && Array.isArray(q.options)),
+    { kinds: questions.map((q: any) => q.kind) },
+  );
+
+  const correctAnswers = questions.map((question: any) => {
+    if (question.kind === 'mcq') {
+      return {
+        questionId: question.id,
+        answer: 'Vector similarity and keyword search',
+      };
+    }
+    if (question.kind === 'truefalse') {
+      return { questionId: question.id, answer: 'true' };
+    }
+    return { questionId: question.id, answer: 'flashcard reviews' };
+  });
+
+  const perfectAttempt = await fetchJson('/trpc/quiz.submit', {
+    method: 'POST',
+    body: JSON.stringify({ quizId, answers: correctAnswers }),
+  });
+  print(
+    'quiz.submit grades a perfect attempt',
+    perfectAttempt.body?.result?.data?.score === 1 &&
+      perfectAttempt.body?.result?.data?.cardsCreated === 0,
+    { score: perfectAttempt.body?.result?.data?.score },
+  );
+
+  const wrongAnswers = questions.map((question: any) => ({
+    questionId: question.id,
+    answer: question.kind === 'mcq' ? 'Only keyword search' : 'wrong',
+  }));
+  const failedAttempt = await fetchJson('/trpc/quiz.submit', {
+    method: 'POST',
+    body: JSON.stringify({ quizId, answers: wrongAnswers }),
+  });
+  const failedData = failedAttempt.body?.result?.data;
+  print(
+    'quiz.submit creates cards for the mistakes',
+    failedData?.score === 1 / 3 &&
+      failedData?.cardsCreated === 2 &&
+      failedData?.results?.every(
+        (r: any) => typeof r.correctAnswer === 'string',
+      ),
+    { score: failedData?.score, cardsCreated: failedData?.cardsCreated },
+  );
+
+  const artifact = await fetchJson('/trpc/artifacts.generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: lateWsId,
+      text: 'Nexus combines vector similarity with keyword search and schedules flashcards with FSRS.',
+      kind: 'summary',
+    }),
+  });
+  print(
+    'artifacts.generate stores an artifact',
+    artifact.body?.result?.data?.kind === 'summary' &&
+      String(artifact.body?.result?.data?.contentMd).length > 20,
+  );
+
+  const mindmap = await fetchJson('/trpc/artifacts.generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: lateWsId,
+      text: 'Nexus combines vector similarity with keyword search and schedules flashcards with FSRS.',
+      kind: 'mindmap',
+    }),
+  });
+  print(
+    'artifacts.generate produces a Mermaid mind map',
+    String(mindmap.body?.result?.data?.contentMd).includes('mermaid'),
+  );
+
+  const artifactList = await fetchJson(
+    `/trpc/artifacts.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: lateWsId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'artifacts.list returns the gallery',
+    artifactList.body?.result?.data?.length === 2,
+  );
+  const artifactId = artifact.body?.result?.data?.id;
+  const artifactDeleted = await fetchJson('/trpc/artifacts.delete', {
+    method: 'POST',
+    body: JSON.stringify({ artifactId }),
+  });
+  print(
+    'artifacts.delete removes an artifact',
+    artifactDeleted.body?.result?.data?.deleted === true,
+  );
+
+  await fetchJson('/trpc/workspace.delete', {
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: lateWsId }),
+  });
+
+  // -------------------------------------------------------------------
   // Workspace archive export/import over the streaming REST endpoint
   // -------------------------------------------------------------------
   const importWs = await fetchJson('/trpc/workspace.create', {

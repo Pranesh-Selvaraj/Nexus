@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { settings } from '../db/schema.js';
 import { baseUrlEndpointPath, suggestBaseUrl } from '../utils/provider-url.js';
+import { PERSONA_IDS } from './personas.js';
 
 // ---------------------------------------------------------------------------
 // Settings registry
@@ -323,6 +324,17 @@ export const SETTING_DEFS: SettingDef[] = [
     min: 1,
     max: 365,
     group: 'auth',
+  },
+  {
+    key: 'chat.persona',
+    label: 'Default tutor persona',
+    description:
+      'Persona used for new chats: Socratic tutor, patient explainer, exam coach, writing coach, debate partner, language partner or code mentor. Can be overridden per chat in the composer.',
+    type: 'select',
+    env: null,
+    default: 'default',
+    group: 'ui',
+    options: PERSONA_IDS,
   },
   {
     key: 'prompt.system',

@@ -37,6 +37,18 @@ export function DocumentList({ workspaceId }: Props) {
     onError: (err) =>
       toast.push({ kind: 'error', message: `Retry failed: ${err.message}` }),
   });
+  const generateCards = trpc.study.cards.generate.useMutation({
+    onSuccess: (data) => {
+      toast.push({
+        kind: 'success',
+        message: `Created ${data.created.length} flashcard${data.created.length === 1 ? '' : 's'} — open Study to review.`,
+      });
+      void utils.study.progress.invalidate({ workspaceId });
+      void utils.study.decks.list.invalidate({ workspaceId });
+    },
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Cards failed: ${err.message}` }),
+  });
 
   const documents = query.data ?? [];
 
@@ -64,6 +76,13 @@ export function DocumentList({ workspaceId }: Props) {
               doc={doc}
               onDelete={() => removeDocument.mutate({ documentId: doc.id })}
               onRetry={() => retryDocument.mutate({ documentId: doc.id })}
+              onMakeCards={() =>
+                generateCards.mutate({
+                  workspaceId,
+                  documentId: doc.id,
+                  count: 8,
+                })
+              }
               isDeleting={removeDocument.isPending}
             />
           ))}
@@ -77,10 +96,17 @@ interface RowProps {
   doc: DocumentDTO;
   onDelete: () => void;
   onRetry: () => void;
+  onMakeCards: () => void;
   isDeleting: boolean;
 }
 
-function DocumentRow({ doc, onDelete, onRetry, isDeleting }: RowProps) {
+function DocumentRow({
+  doc,
+  onDelete,
+  onRetry,
+  onMakeCards,
+  isDeleting,
+}: RowProps) {
   const status = doc.status;
   return (
     <li className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
@@ -121,6 +147,16 @@ function DocumentRow({ doc, onDelete, onRetry, isDeleting }: RowProps) {
             </span>
           )}
           <StatusBadge status={status} />
+          {status === 'ready' && (
+            <button
+              title="Generate flashcards from this document"
+              aria-label="Generate flashcards"
+              onClick={onMakeCards}
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-nexus-300"
+            >
+              <CardsIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
           {status === 'failed' && (
             <button
               title="Retry indexing"
@@ -175,6 +211,21 @@ function FileIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <path d="M14 2v6h6M9 13h6M9 17h6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CardsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className={className}
+    >
+      <rect x="3" y="5" width="14" height="10" rx="2" />
+      <path d="M7 19h12a2 2 0 0 0 2-2V9" strokeLinecap="round" />
     </svg>
   );
 }

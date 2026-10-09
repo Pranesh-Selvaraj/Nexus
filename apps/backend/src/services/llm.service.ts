@@ -2,6 +2,7 @@ import type OpenAI from 'openai';
 
 import { assertChatConfigured } from './embedding.service.js';
 import { getOpenAIClient, sessionHeaders } from './openai-client.js';
+import { getPersona } from './personas.js';
 import { getSetting, getSettingNumber } from './settings.service.js';
 import type { ChatHistoryItem, SourceHit } from './retrieval.service.js';
 
@@ -17,6 +18,8 @@ export interface AnswerRequest {
   query: string;
   history: ChatHistoryItem[];
   sources: SourceHit[];
+  /** Tutor persona id; layers its instruction over the system prompt. */
+  persona?: string;
 }
 
 export const DEFAULT_SYSTEM_PROMPT = [
@@ -93,10 +96,19 @@ export async function streamAnswer(
   ]);
   const client = await getOpenAIClient('chat');
 
+  // Personas layer their instruction on top of the configured (or default)
+  // system prompt, so grounding and citation rules always apply.
+  const basePrompt = systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  const persona = getPersona(req.persona);
+  const effectivePrompt =
+    persona && persona.id !== 'default'
+      ? `${basePrompt}\n\n${persona.systemPrompt}`
+      : basePrompt;
+
   const stream = await client.chat.completions.create(
     {
       model,
-      messages: buildMessages(req, systemPrompt),
+      messages: buildMessages(req, effectivePrompt),
       temperature,
       stream: true,
       stream_options: { include_usage: true },
@@ -116,6 +128,11 @@ export async function streamAnswer(
  * to the message-prefix title. No max_tokens is sent - some OpenAI-compatible
  * providers reject it - so the result is capped on the server instead.
  */
+export function personaSystemPrompt(personaId: string | undefined): string {
+  const persona = getPersona(personaId);
+  return persona && persona.id !== 'default' ? persona.systemPrompt : '';
+}
+
 export async function generateConversationTitle(
   firstMessage: string,
   sessionId?: string,

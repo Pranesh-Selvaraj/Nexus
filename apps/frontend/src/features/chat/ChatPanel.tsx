@@ -45,6 +45,7 @@ interface PendingQuestion {
   conversationId?: string;
   history: ChatHistoryMessage[];
   regenerate?: boolean;
+  persona?: string;
 }
 
 /** Tokens are flushed to state at most this often while streaming. */
@@ -74,6 +75,25 @@ export function ChatPanel({ workspaceId }: Props) {
   const [liveSources, setLiveSources] = useState<Source[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [inspector, setInspector] = useState<RetrievalDebug | null>(null);
+  // Text selection inside the message log, for the Ask/Highlight/Cards bar.
+  const [selection, setSelection] = useState<{
+    text: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Tutor persona for new answers: seeded from the stored default, then a
+  // per-chat choice the user can change at any time.
+  const personas = trpc.chat.personas.useQuery(undefined);
+  const [persona, setPersona] = useState<string | null>(null);
+  if (persona === null && personas.data && personas.data.length > 0) {
+    setPersona(
+      personas.data.find((item) => item.isDefault)?.id ??
+        personas.data[0]?.id ??
+        null,
+    );
+  }
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -127,6 +147,68 @@ export function ChatPanel({ workspaceId }: Props) {
       toast.push({ kind: 'error', message: `Feedback failed: ${err.message}` }),
   });
 
+  const createHighlight = trpc.notes.highlights.create.useMutation({
+    onSuccess: () =>
+      toast.push({ kind: 'success', message: 'Highlight saved' }),
+    onError: (err) =>
+      toast.push({
+        kind: 'error',
+        message: `Highlight failed: ${err.message}`,
+      }),
+  });
+  const generateCards = trpc.study.cards.generate.useMutation({
+    onSuccess: (data) => {
+      toast.push({
+        kind: 'success',
+        message: `Created ${data.created.length} flashcard${data.created.length === 1 ? '' : 's'} — open Study to review.`,
+      });
+      void utils.study.progress.invalidate({ workspaceId });
+      void utils.study.decks.list.invalidate({ workspaceId });
+    },
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Cards failed: ${err.message}` }),
+  });
+
+  /**
+   * Show the Ask/Highlight/Cards toolbar for any selection inside the
+   * message log. Listens to selectionchange so keyboard selection works too
+   * (mouseup alone missed programmatic and shift+arrow selections).
+   */
+  useEffect(() => {
+    function onSelectionChange(): void {
+      const sel = window.getSelection();
+      const container = scrollContainerRef.current;
+      const text = sel?.toString().trim() ?? '';
+      if (!sel || !container || sel.rangeCount === 0 || text.length < 3) {
+        setSelection(null);
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      if (!container.contains(range.commonAncestorContainer)) {
+        setSelection(null);
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) {
+        setSelection(null);
+        return;
+      }
+      setSelection({
+        text: text.slice(0, 4000),
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+      });
+    }
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () =>
+      document.removeEventListener('selectionchange', onSelectionChange);
+  }, []);
+
+  function clearSelection(): void {
+    window.getSelection()?.removeAllRanges();
+    setSelection(null);
+  }
+
   /** Toggle thumbs up/down on an assistant answer. */
   function setFeedback(message: Message, value: 'up' | 'down'): void {
     const next = message.feedback === value ? null : value;
@@ -169,6 +251,7 @@ export function ChatPanel({ workspaceId }: Props) {
     workspaceId,
     message: '',
     history: [],
+    persona: persona ?? undefined,
   };
 
   trpc.chat.stream.useSubscription(subInput, {
@@ -283,6 +366,7 @@ export function ChatPanel({ workspaceId }: Props) {
       // The server builds history from persisted messages; the field is kept
       // for wire compatibility only.
       history: [],
+      persona: persona ?? undefined,
     });
     setInput('');
     setMessages((prev) => [
@@ -336,6 +420,7 @@ export function ChatPanel({ workspaceId }: Props) {
       conversationId: activeConversationId,
       history: [],
       regenerate: true,
+      persona: persona ?? undefined,
     });
     setMessages((prev) => {
       // Drop trailing assistant rows; the server replaces its stored answer.
@@ -358,6 +443,15 @@ export function ChatPanel({ workspaceId }: Props) {
       e.preventDefault();
       handleSend();
     }
+  }
+
+  function askAboutSelection(): void {
+    if (!selection) return;
+    setInput((current) =>
+      `${current}About this passage: “${selection.text}”\n\n`.trimStart(),
+    );
+    clearSelection();
+    composerRef.current?.focus();
   }
 
   function newChat() {
@@ -725,8 +819,36 @@ export function ChatPanel({ workspaceId }: Props) {
           {/* Composer */}
           <div className="border-t border-zinc-800 p-3 md:p-4">
             <div className="mx-auto max-w-3xl">
+              {personas.data && personas.data.length > 0 && (
+                <div className="mb-2 flex items-center gap-2">
+                  <label
+                    htmlFor="persona-select"
+                    className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Mode
+                  </label>
+                  <select
+                    id="persona-select"
+                    value={persona ?? 'default'}
+                    disabled={streaming}
+                    onChange={(event) => setPersona(event.target.value)}
+                    className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-300 outline-none focus:border-nexus-500 disabled:opacity-50"
+                  >
+                    {personas.data.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="truncate text-[10px] text-zinc-600">
+                    {personas.data.find((item) => item.id === persona)
+                      ?.description ?? ''}
+                  </span>
+                </div>
+              )}
               <div className="flex items-end gap-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2 focus-within:border-nexus-500">
                 <textarea
+                  ref={composerRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -763,6 +885,53 @@ export function ChatPanel({ workspaceId }: Props) {
           </div>
         </div>
       </div>
+
+      {selection && (
+        <div
+          className="fixed z-30 flex -translate-x-1/2 -translate-y-full items-center gap-0.5 rounded-lg border border-zinc-700 bg-zinc-900 p-1 shadow-xl"
+          style={{ left: selection.x, top: Math.max(8, selection.y - 10) }}
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          <button
+            onClick={askAboutSelection}
+            className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          >
+            Ask
+          </button>
+          <button
+            onClick={() => {
+              createHighlight.mutate({
+                workspaceId,
+                quotedText: selection.text,
+              });
+              clearSelection();
+            }}
+            disabled={createHighlight.isPending}
+            className="rounded px-2 py-1 text-xs text-amber-300 hover:bg-zinc-800 disabled:opacity-40"
+          >
+            Highlight
+          </button>
+          <button
+            onClick={() => {
+              generateCards.mutate({
+                workspaceId,
+                text: selection.text,
+                count: 5,
+              });
+              clearSelection();
+            }}
+            disabled={generateCards.isPending || selection.text.length < 20}
+            className="rounded px-2 py-1 text-xs text-nexus-200 hover:bg-zinc-800 disabled:opacity-40"
+            title={
+              selection.text.length < 20
+                ? 'Select a longer passage to make cards'
+                : 'Generate flashcards from this passage'
+            }
+          >
+            Cards
+          </button>
+        </div>
+      )}
 
       {inspector && (
         <RetrievalInspector
