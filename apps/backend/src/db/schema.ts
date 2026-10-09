@@ -367,6 +367,95 @@ export const progressEvents = pgTable(
   ],
 );
 
+export const quizzes = pgTable(
+  'quizzes',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('quizzes_workspace_id_idx').on(table.workspaceId)],
+);
+
+export const quizQuestions = pgTable(
+  'quiz_questions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    quizId: uuid('quiz_id')
+      .notNull()
+      .references(() => quizzes.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    kind: text('kind').notNull(),
+    prompt: text('prompt').notNull(),
+    options: jsonb('options').$type<string[] | null>(),
+    answer: jsonb('answer').$type<string | boolean | null>(),
+    explanation: text('explanation'),
+    sourceChunkId: uuid('source_chunk_id').references(() => chunks.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('quiz_questions_quiz_id_idx').on(table.quizId)],
+);
+
+export const quizAttempts = pgTable(
+  'quiz_attempts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    quizId: uuid('quiz_id')
+      .notNull()
+      .references(() => quizzes.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    answers: jsonb('answers').$type<unknown>(),
+    score: real('score').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('quiz_attempts_quiz_id_idx').on(table.quizId)],
+);
+
+export const artifacts = pgTable(
+  'artifacts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    title: text('title').notNull(),
+    contentMd: text('content_md').notNull(),
+    sourceDocumentId: uuid('source_document_id').references(
+      () => documents.id,
+      { onDelete: 'set null' },
+    ),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index('artifacts_workspace_id_idx').on(table.workspaceId)],
+);
+
 export const settings = pgTable('settings', {
   key: text('key').primaryKey(),
   // For secret settings this holds the AES-256-GCM ciphertext
@@ -413,3 +502,7 @@ export type CardReview = typeof cardReviews.$inferSelect;
 export type Highlight = typeof highlights.$inferSelect;
 export type Note = typeof notes.$inferSelect;
 export type ProgressEvent = typeof progressEvents.$inferSelect;
+export type Quiz = typeof quizzes.$inferSelect;
+export type QuizQuestion = typeof quizQuestions.$inferSelect;
+export type QuizAttempt = typeof quizAttempts.$inferSelect;
+export type Artifact = typeof artifacts.$inferSelect;

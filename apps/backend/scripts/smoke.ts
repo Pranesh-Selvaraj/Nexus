@@ -753,6 +753,152 @@ try {
   });
 
   // -------------------------------------------------------------------
+  // Phase 2b: personas, quizzes and studio artifacts
+  // -------------------------------------------------------------------
+  const lateWs = await fetchJson('/trpc/workspace.create', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Study Smoke 2' }),
+  });
+  const lateWsId = lateWs.body?.result?.data?.id;
+
+  const personas = await fetchJson('/trpc/chat.personas', { method: 'GET' });
+  const personaList = personas.body?.result?.data ?? [];
+  print(
+    'chat.personas lists personas with a default',
+    personaList.length >= 6 &&
+      personaList.filter((p: any) => p.isDefault).length === 1 &&
+      personaList.every(
+        (p: any) => typeof p.id === 'string' && typeof p.label === 'string',
+      ),
+    {
+      count: personaList.length,
+      default: personaList.find((p: any) => p.isDefault)?.id,
+    },
+  );
+
+  const quizGenerated = await fetchJson('/trpc/quiz.generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: lateWsId,
+      text: 'Nexus combines vector similarity with keyword search and schedules flashcards with FSRS.',
+      count: 5,
+      kinds: ['mcq', 'truefalse', 'short'],
+    }),
+  });
+  const quizId = quizGenerated.body?.result?.data?.id;
+  print(
+    'quiz.generate creates a quiz',
+    Boolean(quizId) && quizGenerated.body?.result?.data?.questionCount === 3,
+    { questionCount: quizGenerated.body?.result?.data?.questionCount },
+  );
+
+  const quizDetail = await fetchJson(
+    `/trpc/quiz.get?input=${encodeURIComponent(JSON.stringify({ quizId }))}`,
+    { method: 'GET' },
+  );
+  const questions = quizDetail.body?.result?.data?.questions ?? [];
+  print(
+    'quiz.get never returns stored answers',
+    questions.length === 3 &&
+      questions.every((q: any) => q.answer === undefined) &&
+      questions.some((q: any) => q.kind === 'mcq' && Array.isArray(q.options)),
+    { kinds: questions.map((q: any) => q.kind) },
+  );
+
+  const correctAnswers = questions.map((question: any) => {
+    if (question.kind === 'mcq') {
+      return {
+        questionId: question.id,
+        answer: 'Vector similarity and keyword search',
+      };
+    }
+    if (question.kind === 'truefalse') {
+      return { questionId: question.id, answer: 'true' };
+    }
+    return { questionId: question.id, answer: 'flashcard reviews' };
+  });
+
+  const perfectAttempt = await fetchJson('/trpc/quiz.submit', {
+    method: 'POST',
+    body: JSON.stringify({ quizId, answers: correctAnswers }),
+  });
+  print(
+    'quiz.submit grades a perfect attempt',
+    perfectAttempt.body?.result?.data?.score === 1 &&
+      perfectAttempt.body?.result?.data?.cardsCreated === 0,
+    { score: perfectAttempt.body?.result?.data?.score },
+  );
+
+  const wrongAnswers = questions.map((question: any) => ({
+    questionId: question.id,
+    answer: question.kind === 'mcq' ? 'Only keyword search' : 'wrong',
+  }));
+  const failedAttempt = await fetchJson('/trpc/quiz.submit', {
+    method: 'POST',
+    body: JSON.stringify({ quizId, answers: wrongAnswers }),
+  });
+  const failedData = failedAttempt.body?.result?.data;
+  print(
+    'quiz.submit creates cards for the mistakes',
+    failedData?.score === 1 / 3 &&
+      failedData?.cardsCreated === 2 &&
+      failedData?.results?.every(
+        (r: any) => typeof r.correctAnswer === 'string',
+      ),
+    { score: failedData?.score, cardsCreated: failedData?.cardsCreated },
+  );
+
+  const artifact = await fetchJson('/trpc/artifacts.generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: lateWsId,
+      text: 'Nexus combines vector similarity with keyword search and schedules flashcards with FSRS.',
+      kind: 'summary',
+    }),
+  });
+  print(
+    'artifacts.generate stores an artifact',
+    artifact.body?.result?.data?.kind === 'summary' &&
+      String(artifact.body?.result?.data?.contentMd).length > 20,
+  );
+
+  const mindmap = await fetchJson('/trpc/artifacts.generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      workspaceId: lateWsId,
+      text: 'Nexus combines vector similarity with keyword search and schedules flashcards with FSRS.',
+      kind: 'mindmap',
+    }),
+  });
+  print(
+    'artifacts.generate produces a Mermaid mind map',
+    String(mindmap.body?.result?.data?.contentMd).includes('mermaid'),
+  );
+
+  const artifactList = await fetchJson(
+    `/trpc/artifacts.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: lateWsId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'artifacts.list returns the gallery',
+    artifactList.body?.result?.data?.length === 2,
+  );
+  const artifactId = artifact.body?.result?.data?.id;
+  const artifactDeleted = await fetchJson('/trpc/artifacts.delete', {
+    method: 'POST',
+    body: JSON.stringify({ artifactId }),
+  });
+  print(
+    'artifacts.delete removes an artifact',
+    artifactDeleted.body?.result?.data?.deleted === true,
+  );
+
+  await fetchJson('/trpc/workspace.delete', {
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: lateWsId }),
+  });
+
+  // -------------------------------------------------------------------
   // Workspace archive export/import over the streaming REST endpoint
   // -------------------------------------------------------------------
   const importWs = await fetchJson('/trpc/workspace.create', {

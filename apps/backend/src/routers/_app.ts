@@ -1,6 +1,8 @@
+import { artifactsRouter } from './artifacts.router.js';
 import { chatRouter } from './chat.router.js';
 import { documentRouter } from './document.router.js';
 import { notesRouter } from './notes.router.js';
+import { quizRouter } from './quiz.router.js';
 import { settingsRouter } from './settings.router.js';
 import { studyRouter } from './study.router.js';
 import { workspaceRouter } from './workspace.router.js';
@@ -23,6 +25,8 @@ export const appRouter = t.router({
   document: documentRouter,
   chat: chatRouter,
   study: studyRouter,
+  quiz: quizRouter,
+  artifacts: artifactsRouter,
   notes: notesRouter,
   settings: settingsRouter,
 });

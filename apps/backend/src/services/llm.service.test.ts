@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { buildMessages, generateConversationTitle } from './llm.service.js';
+import {
+  buildMessages,
+  generateConversationTitle,
+  personaSystemPrompt,
+} from './llm.service.js';
 import type { SourceHit } from './llm.service.js';
 
 const completionsCreate = vi.hoisted(() => vi.fn());
@@ -29,6 +33,15 @@ const source = (overrides: Partial<SourceHit> = {}): SourceHit => ({
   fusedScore: 1,
   tokenCount: 12,
   ...overrides,
+});
+
+describe('personaSystemPrompt', () => {
+  it('returns instructions for real personas and nothing otherwise', () => {
+    expect(personaSystemPrompt('socratic').length).toBeGreaterThan(20);
+    expect(personaSystemPrompt('default')).toBe('');
+    expect(personaSystemPrompt('nope')).toBe('');
+    expect(personaSystemPrompt(undefined)).toBe('');
+  });
 });
 
 describe('buildMessages', () => {

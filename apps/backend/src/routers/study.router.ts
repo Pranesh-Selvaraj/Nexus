@@ -24,12 +24,12 @@ import { db } from '../db/index.js';
 import {
   cardReviews,
   decks,
-  documents,
   flashcards,
   progressEvents,
   workspaces,
 } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
+import { getOrCreateDefaultDeck } from '../services/deck.service.js';
 import {
   computeStreak,
   emptySchedule,
@@ -37,6 +37,7 @@ import {
   scheduleReview,
 } from '../services/fsrs.service.js';
 import type { FlashcardSchedule } from '../services/fsrs.service.js';
+import { loadDocumentText } from '../services/source-text.service.js';
 import { generateCardsFromText } from '../services/study.service.js';
 
 const RATING_VALUE: Record<ReviewRating, number> = {
@@ -91,29 +92,6 @@ function toCardDTO(row: CardRow): FlashcardDTO {
     suspended: row.suspended,
     createdAt: new Date(row.createdAt).toISOString(),
   };
-}
-
-/** The workspace's default deck, created on first use. */
-async function getOrCreateDefaultDeck(workspaceId: string): Promise<string> {
-  const [existing] = await db
-    .select({ id: decks.id })
-    .from(decks)
-    .where(eq(decks.workspaceId, workspaceId))
-    .orderBy(asc(decks.createdAt))
-    .limit(1);
-  if (existing) return existing.id;
-
-  const [created] = await db
-    .insert(decks)
-    .values({ workspaceId, name: 'Study' })
-    .returning({ id: decks.id });
-  if (!created) {
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Failed to create the default deck',
-    });
-  }
-  return created.id;
 }
 
 export const studyRouter = t.router({
@@ -516,46 +494,9 @@ export const studyRouter = t.router({
         }): Promise<{ deckId: string; created: FlashcardDTO[] }> => {
           await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
 
-          let sourceText = input.text ?? '';
-          if (input.documentId) {
-            const [doc] = await db
-              .select({ id: documents.id, title: documents.title })
-              .from(documents)
-              .where(
-                and(
-                  eq(documents.id, input.documentId),
-                  eq(documents.workspaceId, input.workspaceId),
-                ),
-              )
-              .limit(1);
-            if (!doc) {
-              throw new TRPCError({
-                code: 'NOT_FOUND',
-                message: 'Document not found',
-              });
-            }
-            const chunkResult = await db.execute(
-              sql`
-              SELECT content FROM chunks
-              WHERE document_id = ${doc.id}
-              ORDER BY (metadata->>'chunkIndex')::int ASC
-              LIMIT 25
-            `,
-            );
-            const rowList = (
-              chunkResult as unknown as { rows: Array<{ content: string }> }
-            ).rows;
-            if (rowList.length === 0) {
-              throw new TRPCError({
-                code: 'BAD_REQUEST',
-                message: 'This document has no indexed content yet',
-              });
-            }
-            sourceText = rowList
-              .map((row) => row.content)
-              .join('\n\n')
-              .slice(0, 12000);
-          }
+          const sourceText = input.documentId
+            ? await loadDocumentText(input.workspaceId, input.documentId)
+            : (input.text ?? '');
 
           const generated = await generateCardsFromText(
             sourceText,

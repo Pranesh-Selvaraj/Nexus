@@ -100,6 +100,114 @@ const server = createServer(async (req, res) => {
             )
             .join('\n')
         : '';
+      // Deterministic quiz generation (backend prompt mentions "quiz
+      // questions").
+      if (!body.stream && /quiz questions/i.test(promptText)) {
+        json(res, {
+          id: 'chatcmpl-stub-quiz',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: JSON.stringify([
+                  {
+                    kind: 'mcq',
+                    prompt: 'What does Nexus combine for retrieval?',
+                    options: [
+                      'Vector similarity and keyword search',
+                      'Only keyword search',
+                      'Only vector similarity',
+                    ],
+                    answer: 'Vector similarity and keyword search',
+                    explanation: 'Hybrid retrieval fuses both arms.',
+                  },
+                  {
+                    kind: 'truefalse',
+                    prompt: 'Flashcards are scheduled with FSRS.',
+                    answer: true,
+                    explanation: 'FSRS schedules spaced reviews.',
+                  },
+                  {
+                    kind: 'short',
+                    prompt: 'What does FSRS schedule?',
+                    answer: 'flashcard reviews',
+                    explanation: 'It schedules spaced reviews.',
+                  },
+                ]),
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 30, completion_tokens: 60, total_tokens: 90 },
+        });
+        return;
+      }
+
+      // Short-answer grading (one grade is enough for the stub quiz).
+      if (!body.stream && /Grade these short answers/i.test(promptText)) {
+        json(res, {
+          id: 'chatcmpl-stub-grade',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: JSON.stringify([
+                  {
+                    correct: true,
+                    feedback: 'Matches the expected answer.',
+                  },
+                ]),
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 },
+        });
+        return;
+      }
+
+      // Deterministic studio artifacts (backend prompt mentions "learning
+      // artifact" and carries an "Artifact kind:" marker).
+      if (!body.stream && /learning artifact/i.test(promptText)) {
+        const kind = /Artifact kind: (\w+)/.exec(promptText)?.[1] ?? 'summary';
+        const artifacts: Record<string, string> = {
+          summary:
+            '## Summary\n\nNexus combines vector similarity with keyword search and turns documents into study material.\n\n- Hybrid retrieval melts both arms into one ranking.\n- Indexing runs asynchronously.\n- Flashcards and quizzes close the learning loop.',
+          study_guide:
+            '# Study guide\n\n## Key concepts\n- **Hybrid retrieval**: fuses vector and keyword candidates.\n- **FSRS**: schedules flashcard reviews.\n\n## Self-test\n1. What does RRF fuse?\n2. What schedules reviews?',
+          glossary:
+            '| Term | Definition |\n| --- | --- |\n| RRF | Reciprocal rank fusion of two ranked lists. |\n| FSRS | Free Spaced Repetition Scheduler. |',
+          mindmap:
+            '```mermaid\nmindmap\n  root((Nexus))\n    Retrieval\n      Vectors\n      Keywords\n    Study\n      Flashcards\n      Quizzes\n      Artifacts\n```',
+        };
+        json(res, {
+          id: 'chatcmpl-stub-artifact',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: artifacts[kind] ?? artifacts.summary,
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 30, completion_tokens: 60, total_tokens: 90 },
+        });
+        return;
+      }
+
       if (!body.stream && /flashcards/i.test(promptText)) {
         json(res, {
           id: 'chatcmpl-stub-cards',

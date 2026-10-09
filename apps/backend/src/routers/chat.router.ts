@@ -2,7 +2,12 @@ import { TRPCError } from '@trpc/server';
 import { observable } from '@trpc/server/observable';
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 
-import type { ChatEvent, RetrievalDebug, Source } from '@nexus/shared-types';
+import type {
+  ChatEvent,
+  PersonaDTO,
+  RetrievalDebug,
+  Source,
+} from '@nexus/shared-types';
 import {
   chatFeedbackInputSchema,
   chatStreamInputSchema,
@@ -18,10 +23,12 @@ import {
   streamAnswer,
 } from '../services/llm.service.js';
 import type { ChatHistoryItem } from '../services/llm.service.js';
+import { PERSONAS } from '../services/personas.js';
 import {
   retrieveForChat,
   validateCitations,
 } from '../services/retrieval.service.js';
+import { getSetting } from '../services/settings.service.js';
 import { friendlyErrorMessage } from '../utils/errors.js';
 
 function toConversationDTO(row: {
@@ -69,6 +76,17 @@ async function assertConversationOwnership(
 }
 
 export const chatRouter = t.router({
+  /** Tutor personas for the composer, with the stored default marked. */
+  personas: protectedProcedure.query(async (): Promise<PersonaDTO[]> => {
+    const selected = await getSetting('chat.persona');
+    return PERSONAS.map((persona) => ({
+      id: persona.id,
+      label: persona.label,
+      description: persona.description,
+      isDefault: persona.id === selected,
+    }));
+  }),
+
   /** Conversations for a workspace, most recently active first. */
   listByWorkspace: protectedProcedure
     .input(workspaceIdSchema)
@@ -364,7 +382,7 @@ export const chatRouter = t.router({
             });
 
             const stream = await streamAnswer(
-              { query, history, sources },
+              { query, history, sources, persona: input.persona },
               conversation,
             );
 
