@@ -45,6 +45,7 @@ interface PendingQuestion {
   conversationId?: string;
   history: ChatHistoryMessage[];
   regenerate?: boolean;
+  persona?: string;
 }
 
 /** Tokens are flushed to state at most this often while streaming. */
@@ -81,6 +82,18 @@ export function ChatPanel({ workspaceId }: Props) {
     y: number;
   } | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Tutor persona for new answers: seeded from the stored default, then a
+  // per-chat choice the user can change at any time.
+  const personas = trpc.chat.personas.useQuery(undefined);
+  const [persona, setPersona] = useState<string | null>(null);
+  if (persona === null && personas.data && personas.data.length > 0) {
+    setPersona(
+      personas.data.find((item) => item.isDefault)?.id ??
+        personas.data[0]?.id ??
+        null,
+    );
+  }
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -238,6 +251,7 @@ export function ChatPanel({ workspaceId }: Props) {
     workspaceId,
     message: '',
     history: [],
+    persona: persona ?? undefined,
   };
 
   trpc.chat.stream.useSubscription(subInput, {
@@ -352,6 +366,7 @@ export function ChatPanel({ workspaceId }: Props) {
       // The server builds history from persisted messages; the field is kept
       // for wire compatibility only.
       history: [],
+      persona: persona ?? undefined,
     });
     setInput('');
     setMessages((prev) => [
@@ -405,6 +420,7 @@ export function ChatPanel({ workspaceId }: Props) {
       conversationId: activeConversationId,
       history: [],
       regenerate: true,
+      persona: persona ?? undefined,
     });
     setMessages((prev) => {
       // Drop trailing assistant rows; the server replaces its stored answer.
@@ -803,6 +819,33 @@ export function ChatPanel({ workspaceId }: Props) {
           {/* Composer */}
           <div className="border-t border-zinc-800 p-3 md:p-4">
             <div className="mx-auto max-w-3xl">
+              {personas.data && personas.data.length > 0 && (
+                <div className="mb-2 flex items-center gap-2">
+                  <label
+                    htmlFor="persona-select"
+                    className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Mode
+                  </label>
+                  <select
+                    id="persona-select"
+                    value={persona ?? 'default'}
+                    disabled={streaming}
+                    onChange={(event) => setPersona(event.target.value)}
+                    className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-300 outline-none focus:border-nexus-500 disabled:opacity-50"
+                  >
+                    {personas.data.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="truncate text-[10px] text-zinc-600">
+                    {personas.data.find((item) => item.id === persona)
+                      ?.description ?? ''}
+                  </span>
+                </div>
+              )}
               <div className="flex items-end gap-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2 focus-within:border-nexus-500">
                 <textarea
                   ref={composerRef}

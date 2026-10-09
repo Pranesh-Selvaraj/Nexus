@@ -133,4 +133,43 @@ test('workspace -> upload -> index -> streamed chat answer', async ({
   await expect(page.getByText('Highlight saved')).toBeVisible({
     timeout: 10_000,
   });
+
+  // --- phase 2b: personas, quizzes and studio artifacts -----------------
+  await page.getByLabel('Mode').selectOption('socratic');
+  await expect(page.getByLabel('Mode')).toHaveValue('socratic');
+
+  await page.getByRole('button', { name: 'Study' }).click();
+  await page.getByRole('button', { name: 'Quizzes' }).click();
+  await page
+    .getByLabel('Quiz document', { exact: true })
+    .selectOption({ index: 1 });
+  await page.getByLabel('Short answer').check();
+  await page.getByRole('button', { name: 'Generate' }).click();
+  await expect(
+    page.getByText('What does Nexus combine for retrieval?'),
+  ).toBeVisible({ timeout: 15_000 });
+  await page.getByText('Vector similarity and keyword search').click();
+  await page.getByText('True', { exact: true }).click();
+  await page.getByPlaceholder('Your answer…').fill('flashcard reviews');
+  await page.getByRole('button', { name: 'Submit quiz' }).click();
+  await expect(page.getByText('100%', { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByRole('button', { name: 'Back to quizzes' }).click();
+
+  await page.getByRole('button', { name: 'Artifacts' }).click();
+  await expect(page.getByText('Generate a study artifact')).toBeVisible({
+    timeout: 10_000,
+  });
+  await page
+    .getByLabel('Artifact document', { exact: true })
+    .selectOption({ index: 1 });
+  await page.getByRole('button', { name: 'Generate' }).click();
+  await expect(page.getByText('Artifact created')).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByText('View', { exact: true }).first().click();
+  await expect(
+    page.getByText(/Nexus combines vector similarity/).first(),
+  ).toBeVisible();
 });
