@@ -19,12 +19,12 @@ test('voice & language: read-aloud, mining, drills, CEFR and voice chat', async 
 }) => {
   // The flow exercises five panels and two recordings; the default 60 s budget
   // is too tight once server speech and transcription are involved.
-  // Must be set before the app loads so `voice.config` returns it. The
-  // request API resolves `localhost` to ::1 before some dev servers bind it,
-  // so target IPv4 explicitly.
-  const vitePort = process.env.E2E_PORT ?? '5173';
+  // Must be set before the app loads so `voice.config` returns it. Target the
+  // API port directly: the Vite dev server binds only one address family on
+  // some CI runners, while Express listens on all interfaces.
+  const apiPort = process.env.E2E_API_PORT ?? '3000';
   const setting = await page.request.post(
-    `http://127.0.0.1:${vitePort}/trpc/settings.update`,
+    `http://127.0.0.1:${apiPort}/trpc/settings.update`,
     { data: { key: 'voice.sttMode', value: 'server' } },
   );
   expect(setting.ok()).toBeTruthy();
