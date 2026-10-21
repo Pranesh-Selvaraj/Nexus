@@ -1,6 +1,7 @@
 import './utils/env.js';
 
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,7 +15,12 @@ import rateLimit from 'express-rate-limit';
 import { and, eq, ne } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { WebSocketServer } from 'ws';
-import { workspaceArchiveSchema, workspaceIdSchema } from '@nexus/shared-types';
+import { z } from 'zod';
+import {
+  ttsRequestSchema,
+  workspaceArchiveSchema,
+  workspaceIdSchema,
+} from '@nexus/shared-types';
 
 import { db, pool } from './db/index.js';
 import { documents, sessions, users, workspaces } from './db/schema.js';
@@ -31,11 +37,21 @@ import { appRouter } from './routers/_app.js';
 import { UPLOAD_DIR } from './utils/paths.js';
 import {
   archiveUpload,
+  audioUpload,
   sanitizeForLog,
   upload,
 } from './utils/multer.config.js';
 import { toDocumentDTO } from './utils/dto.js';
 import { getSettingNumber } from './services/settings.service.js';
+import {
+  audioFilePath,
+  getOwnedAudio,
+  parseRange,
+  safeAudioMimeType,
+} from './services/audio.service.js';
+import { transcribeAudio } from './services/stt.service.js';
+import { synthesizeSpeech } from './services/tts.service.js';
+import { friendlyErrorMessage } from './utils/errors.js';
 import { importWorkspaceArchive } from './services/workspace-archive.service.js';
 import {
   createSession,
@@ -391,6 +407,224 @@ async function main(): Promise<void> {
       }
     },
   );
+
+  // --- Speech: transcription and synthesis -----------------------------
+  // Dictation and pronunciation send recorded audio as multipart (never JSON:
+  // the 1 MB JSON body limit would reject any real recording). Audio bytes for
+  // playback are served by GET /api/audio/:id with HTTP Range support so
+  // <audio> can seek and start fast from the cache.
+  const transcribeLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 30,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many transcriptions, please retry in a minute' },
+  });
+  const ttsLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 60,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many speech requests, please retry in a minute' },
+  });
+  const audioIdSchema = z.string().uuid();
+
+  app.post(
+    '/api/transcribe',
+    transcribeLimiter,
+    audioUpload.single('audio'),
+    async (req, res) => {
+      try {
+        const currentUser = await resolveUser(readSessionCookie(req.headers));
+        if (!currentUser) {
+          res.status(401).json({ error: 'Not authenticated' });
+          return;
+        }
+        if (!req.file) {
+          res.status(400).json({ error: 'No audio provided' });
+          return;
+        }
+
+        // Optional workspace: validated as a UUID and confirmed to belong to
+        // the caller before it is stored on the audio asset.
+        const rawWorkspace = String(req.body?.workspaceId ?? '').trim();
+        let workspaceId: string | null = null;
+        if (rawWorkspace) {
+          const parsed = workspaceIdSchema.safeParse({
+            workspaceId: rawWorkspace,
+          });
+          if (!parsed.success) {
+            res.status(400).json({ error: 'Invalid workspaceId' });
+            return;
+          }
+          const [workspace] = await db
+            .select({ id: workspaces.id })
+            .from(workspaces)
+            .where(
+              and(
+                eq(workspaces.id, parsed.data.workspaceId),
+                eq(workspaces.userId, currentUser.id),
+              ),
+            )
+            .limit(1);
+          if (!workspace) {
+            res.status(404).json({ error: 'Workspace not found' });
+            return;
+          }
+          workspaceId = workspace.id;
+        }
+
+        const store = String(req.body?.store ?? '') === 'true';
+        const language =
+          typeof req.body?.language === 'string' && req.body.language
+            ? req.body.language
+            : undefined;
+        const result = await transcribeAudio({
+          buffer: req.file.buffer,
+          filename: req.file.originalname || 'recording.webm',
+          // Derived from the allowlisted extension, never the client MIME.
+          mimeType: safeAudioMimeType(
+            req.file.originalname || 'recording.webm',
+          ),
+          userId: currentUser.id,
+          workspaceId,
+          language,
+          store,
+        });
+        res.json(result);
+      } catch (err) {
+        console.error('[transcribe] failed:', sanitizeForLog(err));
+        if (!res.headersSent) {
+          res.status(502).json({
+            error: friendlyErrorMessage(err) || 'Transcription failed',
+          });
+        }
+      }
+    },
+  );
+
+  app.post('/api/tts', ttsLimiter, async (req, res) => {
+    try {
+      const currentUser = await resolveUser(readSessionCookie(req.headers));
+      if (!currentUser) {
+        res.status(401).json({ error: 'Not authenticated' });
+        return;
+      }
+      const parsed = ttsRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: 'Invalid speech request' });
+        return;
+      }
+      if (parsed.data.workspaceId) {
+        const [workspace] = await db
+          .select({ id: workspaces.id })
+          .from(workspaces)
+          .where(
+            and(
+              eq(workspaces.id, parsed.data.workspaceId),
+              eq(workspaces.userId, currentUser.id),
+            ),
+          )
+          .limit(1);
+        if (!workspace) {
+          res.status(404).json({ error: 'Workspace not found' });
+          return;
+        }
+      }
+      const result = await synthesizeSpeech({
+        text: parsed.data.text,
+        voice: parsed.data.voice,
+        speed: parsed.data.speed,
+        format: parsed.data.format,
+        userId: currentUser.id,
+        workspaceId: parsed.data.workspaceId ?? null,
+      });
+      res.json(result);
+    } catch (err) {
+      console.error('[tts] failed:', sanitizeForLog(err));
+      if (!res.headersSent) {
+        res.status(502).json({
+          error: friendlyErrorMessage(err) || 'Speech synthesis failed',
+        });
+      }
+    }
+  });
+
+  app.get('/api/audio/:audioId', async (req, res) => {
+    try {
+      const currentUser = await resolveUser(readSessionCookie(req.headers));
+      if (!currentUser) {
+        res.status(401).json({ error: 'Not authenticated' });
+        return;
+      }
+      const parsedId = audioIdSchema.safeParse(req.params.audioId);
+      if (!parsedId.success) {
+        res.status(400).json({ error: 'Invalid audio id' });
+        return;
+      }
+      const asset = await getOwnedAudio(currentUser.id, parsedId.data);
+      if (!asset) {
+        res.status(404).json({ error: 'Audio not found' });
+        return;
+      }
+      const filePath = audioFilePath(asset.filePath);
+      const info = await stat(filePath);
+      const download = req.query.download === '1';
+
+      res.setHeader('Content-Type', asset.mimeType);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      if (download) {
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="nexus-audio.${asset.format}"`,
+        );
+      } else {
+        res.setHeader('Content-Disposition', 'inline');
+      }
+
+      const range = parseRange(req.headers.range, info.size);
+      if (!range && req.headers.range) {
+        // Present but unsatisfiable (RFC 7233): report 416 rather than
+        // silently downgrading to a full 200 response.
+        res.status(416);
+        res.setHeader('Content-Range', `bytes */${info.size}`);
+        res.end();
+        return;
+      }
+      // A read error (or a client abort) must not surface as an unhandled
+      // stream 'error' event and crash the process.
+      const pipeFile = (options?: { start: number; end: number }): void => {
+        const stream = options
+          ? createReadStream(filePath, options)
+          : createReadStream(filePath);
+        stream.on('error', (streamErr) => {
+          console.error('[audio] stream failed:', sanitizeForLog(streamErr));
+          res.destroy();
+        });
+        stream.pipe(res);
+      };
+
+      if (range) {
+        res.status(206);
+        res.setHeader(
+          'Content-Range',
+          `bytes ${range.start}-${range.end}/${info.size}`,
+        );
+        res.setHeader('Content-Length', String(range.end - range.start + 1));
+        pipeFile({ start: range.start, end: range.end });
+      } else {
+        res.setHeader('Content-Length', String(info.size));
+        pipeFile();
+      }
+    } catch (err) {
+      console.error('[audio] failed:', sanitizeForLog(err));
+      if (!res.headersSent) {
+        res.status(404).json({ error: 'Audio not found' });
+      }
+    }
+  });
 
   // --- Workspace archive import (multipart JSON, no JSON body cap) ------
   // The tRPC `workspace.import` mutation shares the 1 MB JSON body limit of

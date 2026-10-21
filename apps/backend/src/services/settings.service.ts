@@ -30,7 +30,8 @@ export interface SettingDef {
   type: SettingType;
   env: string | null;
   default: string | number;
-  group: 'openai' | 'retrieval' | 'server' | 'auth' | 'ui';
+  group:
+    'openai' | 'retrieval' | 'server' | 'auth' | 'ui' | 'voice' | 'language';
   min?: number;
   max?: number;
   step?: number;
@@ -357,6 +358,205 @@ export const SETTING_DEFS: SettingDef[] = [
     max: 40,
     group: 'ui',
   },
+  // --- Voice (speech-to-text, text-to-speech, retention) ----------------
+  {
+    key: 'voice.sttMode',
+    label: 'Speech-to-text engine',
+    description:
+      'Browser uses the Web Speech API (fast, free, Chromium/Edge/Safari). Server records audio and sends it to the configured STT provider for higher accuracy and all browsers.',
+    type: 'select',
+    env: null,
+    default: 'browser',
+    group: 'voice',
+    options: ['browser', 'server'],
+  },
+  {
+    key: 'voice.sttModel',
+    label: 'Transcription model',
+    description:
+      'Provider model for server transcription, e.g. whisper-1 or gpt-4o-transcribe.',
+    type: 'text',
+    env: 'OPENAI_STT_MODEL',
+    default: 'whisper-1',
+    group: 'voice',
+    placeholder: 'whisper-1',
+  },
+  {
+    key: 'voice.sttBaseUrl',
+    label: 'Transcription base URL',
+    description:
+      'Optional OpenAI-compatible endpoint dedicated to transcription. Empty uses the main API base URL.',
+    type: 'text',
+    env: 'OPENAI_STT_BASE_URL',
+    default: '',
+    group: 'voice',
+    placeholder: 'e.g. https://api.openai.com/v1',
+  },
+  {
+    key: 'voice.sttApiKey',
+    label: 'Transcription API key',
+    description:
+      'Optional key for the transcription provider. Stored encrypted; empty uses the main API key.',
+    type: 'secret',
+    env: 'OPENAI_STT_API_KEY',
+    default: '',
+    group: 'voice',
+  },
+  {
+    key: 'voice.sttLanguage',
+    label: 'Dictation language',
+    description:
+      'BCP-47 language tag for dictation (e.g. en-US, es-ES), or “auto” to let the provider detect it.',
+    type: 'text',
+    env: 'STT_LANGUAGE',
+    default: 'auto',
+    max: 20,
+    group: 'voice',
+    placeholder: 'auto',
+  },
+  {
+    key: 'voice.ttsProvider',
+    label: 'Text-to-speech engine',
+    description:
+      'Server uses the configured TTS provider and caches audio (needed for download and karaoke highlighting). Browser uses the operating system voices and never leaves the device.',
+    type: 'select',
+    env: null,
+    default: 'server',
+    group: 'voice',
+    options: ['browser', 'server'],
+  },
+  {
+    key: 'voice.ttsModel',
+    label: 'Speech model',
+    description: 'Provider model for read-aloud, e.g. tts-1.',
+    type: 'text',
+    env: 'OPENAI_TTS_MODEL',
+    default: 'tts-1',
+    group: 'voice',
+    placeholder: 'tts-1',
+  },
+  {
+    key: 'voice.ttsVoice',
+    label: 'Default voice',
+    description: 'Voice used when a message or document is read aloud.',
+    type: 'select',
+    env: 'OPENAI_TTS_VOICE',
+    default: 'alloy',
+    group: 'voice',
+    options: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
+  },
+  {
+    key: 'voice.ttsSpeed',
+    label: 'Default speed',
+    description: 'Playback speed multiplier for read-aloud (0.5×–2×).',
+    type: 'slider',
+    env: null,
+    default: 1,
+    min: 0.5,
+    max: 2,
+    step: 0.05,
+    group: 'voice',
+  },
+  {
+    key: 'voice.ttsBaseUrl',
+    label: 'Speech base URL',
+    description:
+      'Optional OpenAI-compatible endpoint dedicated to text-to-speech. Empty uses the main API base URL.',
+    type: 'text',
+    env: 'OPENAI_TTS_BASE_URL',
+    default: '',
+    group: 'voice',
+    placeholder: 'e.g. https://api.openai.com/v1',
+  },
+  {
+    key: 'voice.ttsApiKey',
+    label: 'Speech API key',
+    description:
+      'Optional key for the speech provider. Stored encrypted; empty uses the main API key.',
+    type: 'secret',
+    env: 'OPENAI_TTS_API_KEY',
+    default: '',
+    group: 'voice',
+  },
+  {
+    key: 'voice.autoSend',
+    label: 'Send after dictation',
+    description:
+      'Automatically send the message once dictation finishes and silence is detected.',
+    type: 'boolean',
+    env: null,
+    default: 'false',
+    group: 'voice',
+  },
+  {
+    key: 'voice.correctionPolicy',
+    label: 'Correction policy',
+    description:
+      'How the tutor corrects spoken language: interrupt immediately, recap gently at the end, or only when asked.',
+    type: 'select',
+    env: null,
+    default: 'recap',
+    group: 'voice',
+    options: ['immediate', 'recap', 'asked'],
+  },
+  {
+    key: 'voice.retentionDays',
+    label: 'Audio retention (days)',
+    description:
+      'Delete cached speech and retained recordings after this many days (0 keeps them until the storage quota forces eviction).',
+    type: 'number',
+    env: 'AUDIO_RETENTION_DAYS',
+    default: 7,
+    min: 0,
+    max: 365,
+    group: 'voice',
+  },
+  {
+    key: 'voice.maxStorageMb',
+    label: 'Audio storage cap (MB)',
+    description:
+      'Total audio bytes kept per user; the oldest assets are evicted when the cap is exceeded.',
+    type: 'number',
+    env: 'AUDIO_MAX_STORAGE_MB',
+    default: 200,
+    min: 10,
+    max: 5000,
+    group: 'voice',
+  },
+  // --- Language learning -----------------------------------------------
+  {
+    key: 'language.target',
+    label: 'Target language',
+    description:
+      'Language being learned (used for vocabulary translation, dictation and pronunciation).',
+    type: 'text',
+    env: null,
+    default: '',
+    max: 40,
+    group: 'language',
+    placeholder: 'e.g. Spanish',
+  },
+  {
+    key: 'language.native',
+    label: 'Native language',
+    description: 'Language translations and explanations are given in.',
+    type: 'text',
+    env: null,
+    default: 'English',
+    max: 40,
+    group: 'language',
+  },
+  {
+    key: 'language.level',
+    label: 'Starting level',
+    description:
+      'CEFR level used to seed the estimate before enough practice has been recorded.',
+    type: 'select',
+    env: null,
+    default: 'B1',
+    group: 'language',
+    options: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'],
+  },
 ];
 
 const defByKey = new Map(SETTING_DEFS.map((d) => [d.key, d]));
@@ -602,7 +802,12 @@ export async function listSettings(): Promise<SettingView[]> {
 /** Type validation / clamping for one raw (non-empty) value. */
 function normalizeSettingValue(def: SettingDef, value: string): string {
   let stored = value;
-  if (def.key === 'openai.baseUrl' || def.key === 'openai.embeddingBaseUrl') {
+  if (
+    def.key === 'openai.baseUrl' ||
+    def.key === 'openai.embeddingBaseUrl' ||
+    def.key === 'voice.sttBaseUrl' ||
+    def.key === 'voice.ttsBaseUrl'
+  ) {
     // A base URL that already contains an endpoint path can never work:
     // Nexus (like the OpenAI SDK) appends /chat/completions, /models, ...
     // itself, so the full endpoint URL pasted from a provider dashboard

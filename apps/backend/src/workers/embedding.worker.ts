@@ -25,6 +25,7 @@ import {
   getEmbeddingDimensions,
 } from '../services/embedding.service.js';
 import { safeFtsLanguage } from '../services/retrieval-language.js';
+import { purgeExpiredAudio } from '../services/audio.service.js';
 import { sanitizeForLog } from '../utils/sanitize.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
 
@@ -128,8 +129,11 @@ const worker = new Worker<EmbeddingJobData>(
   async (job) => {
     if (job.name === MAINTENANCE_JOB) {
       const purged = await purgeExpiredSessions();
-      console.log(`[worker] maintenance: purged ${purged} expired session(s)`);
-      return { maintenance: 'sessions-purged', purged };
+      const audioPurged = await purgeExpiredAudio();
+      console.log(
+        `[worker] maintenance: purged ${purged} expired session(s), ${audioPurged} audio asset(s)`,
+      );
+      return { maintenance: 'sessions-purged', purged, audioPurged };
     }
     const documentId = job.data.documentId;
     await processDocument(documentId);

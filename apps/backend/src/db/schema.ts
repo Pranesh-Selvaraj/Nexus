@@ -10,6 +10,7 @@ import {
   real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -487,6 +488,153 @@ export const sessions = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Voice & language: audio assets (cache + retention), vocabulary, CEFR,
+// pronunciation attempts
+// ---------------------------------------------------------------------------
+
+export const audioAssets = pgTable(
+  'audio_assets',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, {
+      onDelete: 'set null',
+    }),
+    kind: text('kind').notNull(),
+    // Content address for the TTS cache: sha256(owner|model|voice|speed|format|text).
+    // The owner is part of the key because playback is owner-scoped, so a
+    // shared key would hand one user another user's audio. Null for retained
+    // recordings, which are never reused.
+    cacheKey: text('cache_key').unique(),
+    voice: text('voice'),
+    speed: real('speed'),
+    mimeType: text('mime_type').notNull(),
+    format: text('format').notNull().default('mp3'),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    durationMs: integer('duration_ms'),
+    // Relative to the uploads directory; never contains user input.
+    filePath: text('file_path').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // Retention deadline; null means keep until the quota forces eviction.
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('audio_assets_user_id_idx').on(table.userId),
+    index('audio_assets_expires_at_idx').on(table.expiresAt),
+  ],
+);
+
+export const vocabularyItems = pgTable(
+  'vocabulary_items',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    term: text('term').notNull(),
+    /** Normalized lookup key (lowercased, accent-stripped). */
+    lemma: text('lemma').notNull(),
+    language: text('language').notNull().default(''),
+    translation: text('translation'),
+    partOfSpeech: text('part_of_speech'),
+    example: text('example'),
+    frequencyRank: integer('frequency_rank'),
+    state: text('state').notNull().default('learning'),
+    /** SRS card created for this term, when createCards was enabled. */
+    cardId: uuid('card_id').references(() => flashcards.id, {
+      onDelete: 'set null',
+    }),
+    sourceChunkId: uuid('source_chunk_id').references(() => chunks.id, {
+      onDelete: 'set null',
+    }),
+    sourceMessageId: uuid('source_message_id').references(() => messages.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('vocabulary_items_workspace_id_idx').on(table.workspaceId),
+    // One entry per term per language per workspace; also serves the
+    // (workspace, lemma, language) lookup mining uses to skip duplicates.
+    uniqueIndex('vocabulary_items_workspace_lemma_language_idx').on(
+      table.workspaceId,
+      table.lemma,
+      table.language,
+    ),
+  ],
+);
+
+export const cefrEstimates = pgTable(
+  'cefr_estimates',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    skill: text('skill').notNull(),
+    level: text('level').notNull(),
+    score: real('score').notNull().default(0),
+    evidence: integer('evidence').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('cefr_estimates_workspace_id_idx').on(table.workspaceId),
+    uniqueIndex('cefr_estimates_workspace_skill_idx').on(
+      table.workspaceId,
+      table.skill,
+    ),
+  ],
+);
+
+export const pronunciationAttempts = pgTable(
+  'pronunciation_attempts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, {
+      onDelete: 'cascade',
+    }),
+    target: text('target').notNull(),
+    transcript: text('transcript').notNull(),
+    overall: real('overall').notNull(),
+    words: jsonb('words').$type<
+      Array<{
+        word: string;
+        heard: string | null;
+        score: number;
+        status: 'good' | 'close' | 'off' | 'missing';
+      }>
+    >(),
+    language: text('language'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('pronunciation_attempts_user_id_idx').on(table.userId),
+    index('pronunciation_attempts_workspace_id_idx').on(table.workspaceId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Inferred row types
 // ---------------------------------------------------------------------------
 
@@ -506,3 +654,7 @@ export type Quiz = typeof quizzes.$inferSelect;
 export type QuizQuestion = typeof quizQuestions.$inferSelect;
 export type QuizAttempt = typeof quizAttempts.$inferSelect;
 export type Artifact = typeof artifacts.$inferSelect;
+export type AudioAsset = typeof audioAssets.$inferSelect;
+export type VocabularyItem = typeof vocabularyItems.$inferSelect;
+export type CefrEstimate = typeof cefrEstimates.$inferSelect;
+export type PronunciationAttempt = typeof pronunciationAttempts.$inferSelect;
