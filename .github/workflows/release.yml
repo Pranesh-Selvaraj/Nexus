@@ -87,10 +87,13 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$GITHUB_REF_NAME"
+          # CHANGELOG headings use the bare version (`## [1.5.0]`); tags keep
+          # the `v` prefix (`v1.5.0`). Strip it for the section lookup.
+          VERSION_NO_V="${VERSION#v}"
           NOTES_FILE="$(mktemp)"
-          # Extract the section that starts with "## [<tag>]" up to the next
-          # "## [" heading. index() avoids regex escaping issues in the tag.
-          awk -v ver="$VERSION" '
+          # Extract the section that starts with "## [<version>]" up to the
+          # next "## [" heading. index() avoids regex escaping issues.
+          awk -v ver="$VERSION_NO_V" '
             index($0, "## [" ver "]") == 1 { found = 1; next }
             found && index($0, "## [") == 1 { exit }
             found { print }

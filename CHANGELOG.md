@@ -1,10 +1,61 @@
 # Changelog
 
-Every Nexus release is documented here in detail. The release workflow extracts the section for the pushed tag and uses it verbatim as the GitHub Release body, so each entry is self-contained: what was added, changed, improved and fixed, why it happened, and what the user-visible effect is. Each roadmap phase ships as a normal minor release (`v1.2.0` = Phase 0, `v1.3.0` = Phase 1, ...), in order. Newest entries first.
+All notable changes to Nexus are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows [Semantic Versioning](https://semver.org/).
+
+Releases are listed newest first. Every release uses the same layout: a `## [X.Y.Z] - YYYY-MM-DD` heading, an emoji on each section, and one emoji-prefixed, single-line entry per change. The release workflow extracts the section matching the pushed tag and publishes it verbatim as the GitHub Release body. Each roadmap phase ships as a normal minor release (`1.2.0` = Phase 0, `1.3.0` = Phase 1, ...), in order.
 
 ## [Unreleased]
 
-## [v1.4.0] - 2026-10-01
+## [1.5.0] - 2026-10-21
+
+Phase 3 gives Nexus a voice and turns it into a language-learning system. You can dictate questions, hear answers read aloud with sentence-by-sentence highlighting, hold a push-to-talk conversation with the tutor, and practise a language: mine vocabulary into spaced-repetition cards, score dictation and pronunciation, and track a CEFR estimate for every skill. This is the release where the workspace becomes something you can speak with and learn from, not just read.
+
+### ✨ Added
+
+- 🎙️ **Dictation in the composer (V-1).** The microphone supports click-to-toggle and press-and-hold, a live waveform, language selection and silence auto-stop. It uses the browser Web Speech API when available and otherwise records with `MediaRecorder` and posts the clip to `POST /api/transcribe`, which tries the configured OpenAI-compatible transcription model and falls back to a local faster-whisper sidecar (`WHISPER_LOCAL_URL`) when the provider fails. Recordings are capped, type-checked, written to server-generated paths, and not retained unless explicitly requested.
+- 🔊 **Read-aloud with a cached server voice (V-2).** `POST /api/tts` synthesizes speech server-side and caches it under a content address of owner, model, voice, speed, format and text, so identical requests never re-synthesize and one user can never receive another user's audio. `GET /api/audio/:id` serves the clip with HTTP Range support, owner scoping, `X-Content-Type-Options: nosniff` and an inline disposition, so playback starts fast and is seekable and downloadable. Any answer, selection or vocabulary term gets Play/Pause/Stop, speed and voice controls, the active sentence is highlighted by distributing the sentence list over the clip's real duration, and the operating system's `SpeechSynthesis` voices are the automatic fallback when no server provider is configured.
+- 🗣️ **Push-to-talk voice chat (V-3).** A Voice workspace mode runs the turn-based loop transcribe → grounded chat → spoken reply using the language-partner persona and the configured correction policy. Transcripts are ordinary persisted messages, so a spoken session appears in the conversation list and can be continued as text with one click; a latency HUD reports time-to-first-token and time-to-audio.
+- 🎯 **Pronunciation practice (V-4).** Record a word or sentence and get a per-word score with the aligned text the recognizer heard, colour-coded feedback, minimal-pair drills, attempt history and speaking progress events. Scoring is deliberately local and transparent (character-level alignment), presented as feedback rather than a grade.
+- ✍️ **Dictation practice (L-8).** Play a sentence, type what you heard, and get a word-level diff with accuracy, correct/total counts and per-word markers; every attempt records a listening progress event.
+- 📚 **Vocabulary mining with spaced repetition (L-10, L-6).** Mine terms from any passage or chat selection. The model returns terms with translation, part of speech and an example sentence, with a heuristic fallback when the provider is unavailable, and each new term is stored with a `known/learning/ignored` state and a spaced-repetition card in the workspace's default deck. Terms can be replayed with the cached speech engine.
+- 🏅 **CEFR estimates per skill (L-10).** Reading, writing, listening and speaking are estimated from card reviews, dictation, pronunciation and quiz evidence, stored per skill in `cefr_estimates`, and shown as level badges on the Study dashboard and in Language → Progress, with a configured starting level until enough evidence exists.
+- 🧰 **Provider capability matrix extended to speech (P-2).** The provider client resolves dedicated `stt` and `tts` connections that fall back field-by-field to the main OpenAI-compatible provider, and the settings registry gained Voice and Language groups so both render automatically in Settings. Transcription and speech models, voices, base URLs and keys are configurable without a restart.
+- 💾 **Audio retention and quota (S-5).** Cached speech expires after `voice.retentionDays` (purged by the daily maintenance job) and the per-user audio cache is capped by `voice.maxStorageMb`, evicting the oldest assets first so audio cannot grow without bound.
+- 🎛️ **Voice and Language settings cards.** Engine/mode, model, language, voice, speed, auto-send, correction policy, retention and quota are first-class settings rendered by the generic settings panel, alongside the language-learning defaults.
+
+### 🔧 Changed
+
+- 🧭 **The workspace modes grew to Chat, Study, Voice and Language.** Voice is the push-to-talk tutor loop, and Language bundles vocabulary, dictation, pronunciation and the per-skill progress view; both reuse the existing workspace and conversation state rather than forking it.
+- 🔤 **The selection toolbar gained Speak and Mine.** Selecting text in a chat answer now offers Speak (read the passage with the cached voice) and Mine (extract vocabulary and create cards) next to Ask, Highlight and Cards.
+- 🧹 **The daily maintenance job now also purges expired audio.** It previously only removed expired sessions; it now deletes cached speech past `voice.retentionDays` and enforces the per-user quota, so retention keeps working without a request touching the asset.
+- 🔉 **Read-aloud prefers the server voice and falls back to the browser.** The browser `SpeechSynthesis` path is used automatically when no TTS provider is configured or synthesis fails, so the feature works offline-ish and without a key.
+
+### 🐛 Fixed
+
+- 🎤 **The microphone could stay active when recording was stopped before the permission prompt resolved.** The recorder awaited `getUserMedia` and only afterwards created the `MediaRecorder`, so a stop or unmount during the await was a no-op and the audio track leaked. A cancellation flag is now checked after the await and the stream is disposed immediately.
+- 📝 **Browser dictation could silently discard the final transcript.** The accumulated text was published before recognition flushed its last result, and a recognition session that ended on its own never published at all. Publishing now happens once from the recognition `end` event, with a timeout fallback.
+- ⏩ **Changing read-aloud speed re-synthesized at the previous speed.** The restart was scheduled through a closure that still held the old state value; the speech request and browser utterance now read the speed from a ref updated synchronously with the control.
+- 🎭 **The stored content type of an uploaded recording was client-controlled.** The audio filter accepted a file when either the extension or the declared MIME looked valid, and the declared MIME was stored and echoed back on playback. The type is now derived from the allowlisted extension, and the streaming endpoint sends `nosniff` and an inline disposition.
+- 🗂️ **`voice.audio.list` ignored its `workspaceId` parameter**, listing every asset for the user; it now scopes to the workspace as well.
+- ⚖️ **Audio quota eviction was nondeterministic on equal timestamps**, so the evicted asset could vary between runs; ties now break on id.
+- 🔇 **The browser voice-list helper leaked its global `onvoiceschanged` handler**, accumulating listeners page-long; it is now cleared on resolve.
+
+### 🔒 Security
+
+- 🛡️ **Audio uploads are hardened (S-2).** Transcription clips are capped by `MAX_AUDIO_MB`, filtered by an extension **and** MIME allowlist, buffered in memory and written only to a server-generated path, and nothing is persisted unless the user opts in to keeping recordings.
+- 🔐 **Cached speech is owner-scoped and served defensively.** Audio assets are looked up by owner, streamed with `X-Content-Type-Options: nosniff`, an inline disposition and Range support, and the stored MIME is derived from the extension rather than trusted from the upload.
+- 📦 **Vite 8.2.1 → 8.3.5 (GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw).** A high-severity `launch-editor` file-existence issue and two moderate argument-handling issues, all build/dev-time through the Vite toolchain; `pnpm audit` is back to 0 vulnerabilities on both the full and production graphs.
+- 🧹 **Retention defaults stay conservative.** Cached speech is kept for 7 days by default and capped at 200 MB per user; recordings are not stored unless explicitly requested.
+
+### 📝 Notes
+
+- 🧪 **Verification for this release:** 157 backend unit tests across 18 files (plus 6 shared), 94/94 smoke checks against real Postgres and Redis with the deterministic mock provider, two Playwright suites (happy path plus a full voice/language flow that records through a fake media device), and 35 visual-QA captures; `typecheck`, `lint`, `format:check`, `build` and `pnpm audit` are clean.
+- ⏳ **Deliberately deferred:** audio overviews (V-5, two-host podcast generation and listen-to-my-cards playlists), graded readers, grammar explanation and drills, exam presets, roleplay scenarios, fluency metrics (rate/pauses/fillers), parallel text, and PWA offline/sleep-timer playback.
+- 🎙️ **Voice chat is turn-based push-to-talk.** Full-duplex barge-in and streaming partial transcripts over WebSocket are not implemented; pronunciation scoring is local alignment, not a cloud phoneme assessment API, and is presented as feedback rather than a grade.
+- 🔊 **Server speech has no word timestamps**, so sentence highlighting is proportional to sentence length over the real clip duration; the local STT fallback expects an externally run faster-whisper server (no bundled sidecar or container).
+- 🗄️ **Migrations 0011 and 0012** add `audio_assets`, `vocabulary_items`, `cefr_estimates` and `pronunciation_attempts`, plus the unique vocabulary/CEFR indexes; the e2e voice suite forces `voice.sttMode=server` for determinism (the per-run database is disposable).
+
+## [1.4.0] - 2026-10-01
 
 Phase 2 adds the complete study loop to each workspace: highlights and notes, flashcards generated from your own documents and scheduled with FSRS, review sessions with interval previews, quiz generation with grading and a mistake notebook, tutor personas, Mermaid-capable studio artifacts, and a dashboard that reports what is due and how retention is trending. This is the release where Nexus stops being only a place to ask questions and becomes a place to remember, practise and be examined.
 
@@ -43,7 +94,7 @@ Phase 2 adds the complete study loop to each workspace: highlights and notes, fl
 - **Personas are a global default plus a per-chat override.** Per-workspace persona defaults and learner-context injection from progress are not implemented.
 - **Streaks are computed in UTC** and retention is a simple share of Hard/Good/Easy ratings over 30 days, not a stability-based metric.
 
-## [v1.3.0] - 2026-10-01
+## [1.3.0] - 2026-10-01
 
 Phase 1 makes retrieval trustworthy and the workspace usable on a phone. The headline fix is that semantic-only matches are no longer silently dropped by a keyword filter (B-2); around it, answers now use a token budget, cite verifiable sources, and can be inspected, while changing the embedding model surfaces a re-index banner instead of a pgvector error.
 
@@ -87,7 +138,7 @@ Phase 1 makes retrieval trustworthy and the workspace usable on a phone. The hea
 - **Pre-Phase-1 documents show the re-index banner** because the embedding input now includes heading context (`embedding_version` changed). Retrieval keeps working meanwhile through the legacy dimension match; re-indexing is recommended, not required.
 - **Mobile is usable but not fully redesigned** - the reader-mode, typography, and offline study work remain in later phases.
 
-## [v1.2.0] - 2026-10-01
+## [1.2.0] - 2026-10-01
 
 Phase 0 is the hygiene and blockers phase: every item here was either a correctness bug, a security/dependency issue, or the infrastructure needed for the later phases. Retrieval quality itself (hybrid fusion, reranking, mixed embedding dimensions, multilingual FTS indexing, mobile layout) is deliberately **not** in this release; it is Phase 1 and is listed under limitations below.
 
@@ -145,6 +196,6 @@ Phase 0 is the hygiene and blockers phase: every item here was either a correctn
 - **Archive import still decodes the JSON in memory** (bounded by `MAX_IMPORT_MB`); a streaming zip format is Phase 1+.
 - The screenshot harness's mid-stream capture can still catch a completed answer because the mock provider streams quickly; the retrieval inspector and slower fixtures will make the streaming state easier to capture.
 
-## [v1.1.0] and earlier
+## [1.1.0] and earlier
 
 See the GitHub Releases for `v1.1.0`, `v1.0.0`, `v0.3.1`, `v0.3.0`, and `v0.2.0` at https://github.com/Pranesh-Selvaraj/Nexus/releases.
