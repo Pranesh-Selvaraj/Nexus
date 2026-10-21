@@ -2,11 +2,11 @@
 
 All notable changes to Nexus are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versioning follows [Semantic Versioning](https://semver.org/).
 
-Releases are listed newest first. Every release uses the same layout: a `## [X.Y.Z] - YYYY-MM-DD` heading, an emoji on each section, and one emoji-prefixed, single-line entry per change. The release workflow extracts the section matching the pushed tag and publishes it verbatim as the GitHub Release body. Each roadmap phase ships as a normal minor release (`1.2.0` = Phase 0, `1.3.0` = Phase 1, ...), in order.
+Releases are listed newest first. Every release uses the same layout: a `## [X.Y.Z] - YYYY-MM-DD` heading, an emoji on each section, and one emoji-prefixed, single-line entry per change. The release workflow extracts the section matching the pushed tag and publishes it verbatim as the GitHub Release body. Nexus is pre-1.0: the line continues in small, contained steps (`0.3.1 → 0.4.0 → … → 0.4.5`), and a feature-heavy release gets a patch bump rather than a new major.
 
 ## [Unreleased]
 
-## [1.5.0] - 2026-10-21
+## [0.4.5] - 2026-10-21
 
 Phase 3 gives Nexus a voice and turns it into a language-learning system. You can dictate questions, hear answers read aloud with sentence-by-sentence highlighting, hold a push-to-talk conversation with the tutor, and practise a language: mine vocabulary into spaced-repetition cards, score dictation and pronunciation, and track a CEFR estimate for every skill. This is the release where the workspace becomes something you can speak with and learn from, not just read.
 
@@ -28,7 +28,7 @@ Phase 3 gives Nexus a voice and turns it into a language-learning system. You ca
 - 🧭 **The workspace modes grew to Chat, Study, Voice and Language.** Voice is the push-to-talk tutor loop, and Language bundles vocabulary, dictation, pronunciation and the per-skill progress view; both reuse the existing workspace and conversation state rather than forking it.
 - 🔤 **The selection toolbar gained Speak and Mine.** Selecting text in a chat answer now offers Speak (read the passage with the cached voice) and Mine (extract vocabulary and create cards) next to Ask, Highlight and Cards.
 - 🧹 **The daily maintenance job now also purges expired audio.** It previously only removed expired sessions; it now deletes cached speech past `voice.retentionDays` and enforces the per-user quota, so retention keeps working without a request touching the asset.
-- 🔉 **Read-aloud prefers the server voice and falls back to the browser.** The browser `SpeechSynthesis` path is used automatically when no TTS provider is configured or synthesis fails, so the feature works offline-ish and without a key.
+- 🔉 **Read-aloud prefers the server voice and falls back to the browser.** The browser `SpeechSynthesis` path is used automatically when no TTS provider is configured or synthesis fails, so the feature still works without a key.
 
 ### 🐛 Fixed
 
@@ -39,6 +39,7 @@ Phase 3 gives Nexus a voice and turns it into a language-learning system. You ca
 - 🗂️ **`voice.audio.list` ignored its `workspaceId` parameter**, listing every asset for the user; it now scopes to the workspace as well.
 - ⚖️ **Audio quota eviction was nondeterministic on equal timestamps**, so the evicted asset could vary between runs; ties now break on id.
 - 🔇 **The browser voice-list helper leaked its global `onvoiceschanged` handler**, accumulating listeners page-long; it is now cleared on resolve.
+- 🧪 **The voice e2e setup call targeted Vite's address family instead of the API.** On runners where the dev server binds a single address family the setup request was refused while the browser still worked; the test now posts to the API port directly. Test-only change, no product behavior.
 
 ### 🔒 Security
 
@@ -49,153 +50,277 @@ Phase 3 gives Nexus a voice and turns it into a language-learning system. You ca
 
 ### 📝 Notes
 
-- 🧪 **Verification for this release:** 157 backend unit tests across 18 files (plus 6 shared), 94/94 smoke checks against real Postgres and Redis with the deterministic mock provider, two Playwright suites (happy path plus a full voice/language flow that records through a fake media device), and 35 visual-QA captures; `typecheck`, `lint`, `format:check`, `build` and `pnpm audit` are clean.
+- 🧪 **Verification:** 157 backend unit tests across 18 files (plus 6 shared), 94/94 smoke checks against real Postgres and Redis with the deterministic mock provider, two Playwright suites (happy path plus a full voice/language flow that records through a fake media device), and 35 visual-QA captures; `typecheck`, `lint`, `format:check`, `build` and `pnpm audit` are clean.
 - ⏳ **Deliberately deferred:** audio overviews (V-5, two-host podcast generation and listen-to-my-cards playlists), graded readers, grammar explanation and drills, exam presets, roleplay scenarios, fluency metrics (rate/pauses/fillers), parallel text, and PWA offline/sleep-timer playback.
 - 🎙️ **Voice chat is turn-based push-to-talk.** Full-duplex barge-in and streaming partial transcripts over WebSocket are not implemented; pronunciation scoring is local alignment, not a cloud phoneme assessment API, and is presented as feedback rather than a grade.
 - 🔊 **Server speech has no word timestamps**, so sentence highlighting is proportional to sentence length over the real clip duration; the local STT fallback expects an externally run faster-whisper server (no bundled sidecar or container).
 - 🗄️ **Migrations 0011 and 0012** add `audio_assets`, `vocabulary_items`, `cefr_estimates` and `pronunciation_attempts`, plus the unique vocabulary/CEFR indexes; the e2e voice suite forces `voice.sttMode=server` for determinism (the per-run database is disposable).
 
-## [1.4.0] - 2026-10-01
+## [0.4.4] - 2026-10-01
 
 Phase 2 adds the complete study loop to each workspace: highlights and notes, flashcards generated from your own documents and scheduled with FSRS, review sessions with interval previews, quiz generation with grading and a mistake notebook, tutor personas, Mermaid-capable studio artifacts, and a dashboard that reports what is due and how retention is trending. This is the release where Nexus stops being only a place to ask questions and becomes a place to remember, practise and be examined.
 
-### Added
+### ✨ Added
 
-- **Study mode per workspace.** A Chat / Study switch sits above each workspace; Study contains Dashboard, Review, Decks and Notes tabs. The chat view stays mounted while Study is open, so the conversation and any in-flight answer survive tab switches.
-- **AI-generated flashcards.** A document (via the cards button on a ready document, or the Decks tab) or any selected passage is sent to the chat model with a strict JSON contract; the response is parsed tolerantly (code fences stripped, malformed entries dropped) and creates QA cards in the workspace's default deck. Generation reports how many cards were created and surfaces a friendly error when the material yields none.
-- **FSRS spaced repetition.** Cards are scheduled with ts-fsrs: the full scheduler state (due date, stability, difficulty, elapsed/scheduled days, learning steps, reps, lapses, state) is stored per card, so scheduling is deterministic across restarts and instances. New cards are due immediately; every rating produces a real next interval.
-- **Review sessions.** The queue shows the card front, reveals the answer on Space, and offers Again / Hard / Good / Easy buttons with the interval each rating would schedule plus number-key shortcuts (1-4). The session ends with a reviewed count and returns to the dashboard.
-- **Deck management and Anki export.** Create, review and delete decks; each deck reports total, due and new counts. Cards export as a quoted `front,back` CSV that Anki imports directly.
-- **Highlights and notes.** Selecting text in a chat answer opens a toolbar with **Ask** (prefills the composer with the passage), **Highlight** (stores the passage with an optional note) and **Cards** (generates flashcards from the passage). The Notes tab lists highlights and Markdown notes with tags, both editable in place.
-- **Progress dashboard.** Due now, new cards, reviews today, streak (consecutive UTC review days), 30-day retention and cards added in the last seven days, aggregated from the review and progress-event tables.
-- **Per-document card generation.** Every ready document row has a cards button that generates a starter deck in one click.
-- **Tutor personas.** Eight built-in modes - default, Socratic tutor, patient explainer, exam coach, writing coach, debate partner, language partner and code mentor - each layer a mode-specific instruction on top of the configured system prompt, so grounding and citation rules always apply. The default is stored in settings and the composer overrides it per chat; the active description is shown next to the picker.
-- **Quizzes with grading.** Quizzes are generated from a document (or any selected passage) as multiple choice, true/false and short-answer questions. Multiple choice and true/false are graded exactly; short answers are graded by meaning with one model call and fall back to keyword overlap when the provider is unavailable. Every attempt is scored and stored.
-- **The mistake notebook.** Wrong answers can be turned into flashcards in the default deck in the same submission, so a failed quiz immediately feeds the spaced-repetition queue. The result screen explains each question and shows the cards created.
-- **Studio artifacts.** A per-workspace studio generates summaries, study guides, glossaries (Markdown tables) and Mermaid mind maps from any indexed document, renders them with the same Markdown/KaTeX renderer used by chat, and supports copy and delete.
+- 🧠 **Study mode per workspace.** A Chat / Study switch sits above each workspace; Study contains Dashboard, Review, Decks, Quizzes, Artifacts and Notes. The chat view stays mounted while Study is open, so the conversation and any in-flight answer survive tab switches.
+- 🃏 **AI-generated flashcards.** A document (via the cards button on a ready document, or the Decks tab) or any selected passage is sent to the chat model with a strict JSON contract; the response is parsed tolerantly (code fences stripped, malformed entries dropped) and creates QA cards in the workspace's default deck. Generation reports how many cards were created and surfaces a friendly error when the material yields none.
+- ⏱️ **FSRS spaced repetition.** Cards are scheduled with ts-fsrs: the full scheduler state (due date, stability, difficulty, elapsed/scheduled days, learning steps, reps, lapses, state) is stored per card, so scheduling is deterministic across restarts and instances. New cards are due immediately; every rating produces a real next interval.
+- 🎯 **Review sessions.** The queue shows the card front, reveals the answer on Space, and offers Again / Hard / Good / Easy buttons with the interval each rating would schedule plus number-key shortcuts (1–4). The session ends with a reviewed count and returns to the dashboard.
+- 🗂️ **Deck management and Anki export.** Create, review and delete decks; each deck reports total, due and new counts. Cards export as a quoted `front,back` CSV that Anki imports directly.
+- 🖍️ **Highlights and notes.** Selecting text in a chat answer opens a toolbar with **Ask** (prefills the composer with the passage), **Highlight** (stores the passage with an optional note) and **Cards** (generates flashcards from the passage). The Notes tab lists highlights and Markdown notes with tags, both editable in place.
+- 📊 **Progress dashboard.** Due now, new cards, reviews today, streak (consecutive UTC review days), 30-day retention and cards added in the last seven days, aggregated from the review and progress-event tables.
+- 🎓 **Tutor personas.** Eight built-in modes — default, Socratic tutor, patient explainer, exam coach, writing coach, debate partner, language partner and code mentor — layer a mode-specific instruction on top of the configured system prompt, so grounding and citation rules always apply. The default is stored in settings and the composer overrides it per chat.
+- ❓ **Quizzes with grading.** Quizzes are generated from a document (or a selected passage) as multiple choice, true/false and short-answer questions. Objective answers are graded exactly; short answers are graded by meaning with one model call and fall back to keyword overlap when the provider is unavailable. Every attempt is scored and stored.
+- 📓 **The mistake notebook.** Wrong answers can be turned into flashcards in the default deck in the same submission, so a failed quiz immediately feeds the spaced-repetition queue. The result screen explains each question and shows the cards created.
+- 🎨 **Studio artifacts.** A per-workspace studio generates summaries, study guides, glossaries (Markdown tables) and Mermaid mind maps from any indexed document, renders them with the same Markdown/KaTeX renderer used by chat, and supports copy and delete.
+- 🖱️ **Per-document card generation.** Every ready document row has a cards button that generates a starter deck in one click.
 
-### Fixed
+### 🔧 Changed
 
-- **Security: five dependency advisories cleared, including a critical production issue.** `proxy-addr` 2.0.7 → 2.0.8 (GHSA-jqcg-44mw-7w3h, critical, IP spoofing via IPv4-mapped addresses, reachable through express and express-rate-limit in the production graph), `shell-quote` 1.9.0 → 1.12.0 (GHSA-pqg4-j6r4-53mv, critical command injection, concurrently dev tooling), `source-map-js` 1.2.1 → 1.2.2 (GHSA-68fv-2mgg-jv7q, high, vite/tailwind), `katex` 0.16.47 → 0.18.9 (GHSA-238p-pmpm-9mq7, low, pulled by rehype-katex), and `sprintf-js` removed from the tree entirely by overriding mammoth's CLI-only `argparse` 1.x to 2.x (GHSA-hp3w-g68c-fv3c, moderate; the library entry point Nexus uses never imports argparse). `pnpm audit` is clean for both the full and production dependency graphs again.
-- **Cards never graduated from the FSRS learning state.** The scheduler's `learning_steps` counter was not persisted with the rest of the card state, so every review restarted the learning steps and cards never reached the review state. The column is now stored (migration 0009) with a regression test that asserts graduation after two successful steps.
-- **The selection toolbar missed keyboard and programmatic selections** because it only listened to `mouseup`; it now reacts to `selectionchange` scoped to the message log.
+- 🧭 **The study shell is a first-class workspace mode.** Switching to Study no longer unmounts the chat panel (the open conversation is preserved), and the Notes panel, deck list and review runner all live inside one consistent shell.
+- 🎛️ **Settings render boolean fields and new retrieval/study groups.** The generic settings panel gained checkbox rendering for toggles and the new job-model and retrieval controls, without bespoke UI per field.
 
-### Improved
+### 🐛 Fixed
 
-- The smoke suite grew from 59 to 78 checks (card generation, due previews, review scheduling, progress aggregation, CSV export, note and highlight storage, persona listing, quiz generation/get/submit/mistake cards, artifact generation/list/delete), backend unit tests from 75 to 103 (FSRS scheduling, streak computation, tolerant card and quiz parsing, heuristic grading, persona registry), and the Playwright happy path now covers the whole study flow: generate cards from a document, review one with the keyboard, save a highlight from the selection toolbar, switch persona, generate a quiz, answer it to 100%, and generate and open a studio artifact.
+- 🧮 **FSRS cards never graduated from the learning state.** The scheduler's `learning_steps` counter was not persisted with the rest of the card state, so every review restarted the learning steps and cards never reached the review state. The column is now stored (migration 0009) with a regression test that asserts graduation after two successful steps.
+- 🖱️ **The selection toolbar missed keyboard and programmatic selections** because it only listened to `mouseup`; it now reacts to `selectionchange` scoped to the message log.
+- 🎯 **Hybrid search silently excluded semantic-only candidates (B-2).** The old query required a full-text match before ranking; retrieval now fetches a vector arm and a keyword arm independently and fuses them with Reciprocal Rank Fusion, so a paraphrased question still finds the right passage. Covered by the smoke check "hybrid retrieval keeps semantic-only matches (B-2)" and `fuseRrf` unit tests.
+- 🧬 **Switching embedding models could break chat with a pgvector dimension error (B-3).** Vector comparisons are scoped to the active model, legacy rows are matched by `vector_dims()`, and a workspace banner with a bulk re-index action replaces the old "delete and re-upload" advice.
+- 🔎 **Non-English keyword search bypassed its index (B-10).** The English-only expression index is replaced by a GIN index on a populated `content_fts` tsvector written at ingestion with the configured language, and migration 0007 backfills existing chunks.
+- 📏 **Source relevance was vector-only and never thresholded (B-15).** Sources expose vector, keyword and fused scores; `rag.minScore` drops weak vector matches while keeping keyword hits; citation numbers are validated and cited sources are marked ✓.
+- 🖼️ **Source rows overlapped on narrow screens** because the relevance percentage floated over wrapped titles; the summary is now a flex row with a truncated title.
+- 🔐 **Dependency advisories: five cleared, including two criticals.** `proxy-addr` 2.0.7 → 2.0.8 (GHSA-jqcg-44mw-7w3h, critical, IP spoofing reachable through express/express-rate-limit in production), `shell-quote` 1.9.0 → 1.12.0 (GHSA-pqg4-j6r4-53mv, critical, concurrently dev tooling), `source-map-js` 1.2.1 → 1.2.2 (GHSA-68fv-2mgg-jv7q, high, vite/tailwind), `katex` 0.16.47 → 0.18.9 (GHSA-238p-pmpm-9mq7, low, via rehype-katex), and `sprintf-js` removed by overriding mammoth's CLI-only `argparse` to 2.x (GHSA-hp3w-g68c-fv3c, moderate).
 
-### Limitations and deliberate omissions
+### 📝 Notes
 
-- **Quiz questions are generated, not curated.** There is no manual question editor yet, and quizzes are single-document (or selection) rather than workspace-wide.
-- **Anki export is CSV, not `.apkg`.** Anki imports the CSV directly; packaged decks with media are deferred.
-- **Only QA cards are generated and there is no manual card editor in the UI yet.** Cloze deletion and image occlusion are not implemented. Mistakes become plain QA cards.
-- **FSRS runs with its default parameters.** There is no per-user retention/parameter optimization yet, and no per-day new-card limit beyond the due queue size.
-- **Notes and highlights are not indexed into retrieval yet.** They are stored and shown, but chat answers do not search them until the notes-as-sources opt-in ships.
-- **Personas are a global default plus a per-chat override.** Per-workspace persona defaults and learner-context injection from progress are not implemented.
-- **Streaks are computed in UTC** and retention is a simple share of Hard/Good/Easy ratings over 30 days, not a stability-based metric.
+- 🧪 **Verification:** 103 backend unit tests across 13 files (plus 6 shared), 78/78 smoke checks, an extended Playwright happy path covering cards, review, highlight, persona, a 100% quiz and an artifact, and 24 visual-QA captures; `typecheck`, `lint`, `format:check`, `build` and `pnpm audit` are clean.
+- 🗄️ **Migrations 0008–0010** add decks, flashcards, card reviews, highlights, notes, progress events, quizzes, quiz attempts and artifacts (plus the FSRS learning-step column).
+- ⏳ **Deliberately deferred:** `.apkg` export (CSV imports directly into Anki), cloze and image-occlusion cards, a manual card editor, notes indexed into retrieval, per-workspace persona defaults and learner-context injection, workspace-wide quizzes, and FSRS parameter optimization. Study plans and reminders are not implemented yet.
 
-## [1.3.0] - 2026-10-01
+## [0.4.3] - 2026-10-01
 
-Phase 1 makes retrieval trustworthy and the workspace usable on a phone. The headline fix is that semantic-only matches are no longer silently dropped by a keyword filter (B-2); around it, answers now use a token budget, cite verifiable sources, and can be inspected, while changing the embedding model surfaces a re-index banner instead of a pgvector error.
+Phase 1 makes retrieval trustworthy and the workspace usable on a phone. The headline fix is that semantic-only matches are no longer silently dropped by a keyword filter; around it, answers now use a token budget, cite verifiable sources, and can be inspected, while changing the embedding model surfaces a re-index banner instead of a pgvector error.
 
-### Added
+### ✨ Added
 
-- **Hybrid retrieval with Reciprocal Rank Fusion.** Retrieval now fetches two independent candidate arms - the 50 nearest vectors and the 50 best keyword matches (`websearch_to_tsquery` on a populated `chunks.content_fts` column) - and fuses them by rank rather than filtering one arm by the other. A chunk that matches only semantically is therefore retrieved even when other chunks contain the query words, which was the single largest quality defect in the product (B-2). Chunks carry heading context when embedded, and the fused result is diversified (at most three chunks per document, content-hash dedupe) before selection.
-- **Retrieval profiles: Fast, Balanced, Thorough.** Fast is union fusion only; Balanced also rewrites follow-up questions and enforces the context budget; Thorough additionally reranks candidates with the text model. The profile is a setting, so cost and latency are predictable.
-- **Follow-up question rewriting.** When a conversation has history, the cheapest configured model rewrites the latest message into a standalone search query before retrieval (cached for 10 minutes); the query actually used is shown during streaming and in the inspector. `job.queryRewrite.model` can point this at a cheap model.
-- **LLM listwise reranking.** Thorough (or an explicit toggle) asks the text model to reorder the top 20 candidates by relevance, tolerant of any parse failure. Reranked positions are visible in the inspector. `job.rerank.model` overrides the model used.
-- **Retrieval inspector.** Every assistant answer stores a debug payload (profile, original vs rewritten query, candidate counts, vector/keyword/fused score per candidate, selection and rerank positions, token budget). "Why these sources?" opens a modal showing exactly how the answer's context was chosen - the tool that makes every later retrieval change measurable.
-- **Answer feedback.** Thumbs up/down are stored per assistant message (`messages.feedback`, `chat.feedback` endpoint) and survive reloads, giving the evaluation work a real signal to build on.
-- **Embedding provenance and bulk re-index.** Chunks store `embedding_model`, `embedding_dims`, `embedding_version` and `content_hash`; a workspace banner reports how many documents were indexed with a different setup and re-indexes them in one click (`document.retrievalStatus`, `document.reindexAll`), with a REINDEX badge per document.
-- **Heading-aware chunk metadata.** Markdown headings split documents into sections; every chunk stores `heading_path`, page range, token estimate and content hash. Heading context is prepended before embedding (so sections are searchable by name) but not stored in the chunk text.
-- **New settings:** `rag.profile`, `rag.queryRewrite`, `rag.rerank`, `rag.minScore`, `rag.maxContextTokens`, `job.queryRewrite.model`, `job.rerank.model`, plus a checkbox rendering for boolean settings.
+- 🔀 **Hybrid retrieval with Reciprocal Rank Fusion.** Retrieval fetches two independent candidate arms — the 50 nearest vectors and the 50 best keyword matches (`websearch_to_tsquery` on a populated `chunks.content_fts` column) — and fuses them by rank rather than filtering one arm by the other. A chunk that matches only semantically is therefore retrieved even when other chunks contain the query words, which was the single largest quality defect in the product (B-2). Chunks carry heading context when embedded, and the fused result is diversified (at most three chunks per document, content-hash dedupe) before selection.
+- 🎚️ **Retrieval profiles: Fast, Balanced, Thorough.** Fast is union fusion only; Balanced also rewrites follow-up questions and enforces the context budget; Thorough additionally reranks candidates with the text model. The profile is a setting, so cost and latency are predictable.
+- ✍️ **Follow-up question rewriting.** When a conversation has history, the cheapest configured model rewrites the latest message into a standalone search query before retrieval (cached for 10 minutes); the query actually used is shown during streaming and in the inspector. `job.queryRewrite.model` can point this at a cheap model.
+- 🏆 **LLM listwise reranking.** Thorough (or an explicit toggle) asks the text model to reorder the top 20 candidates by relevance, tolerant of any parse failure. Reranked positions are visible in the inspector. `job.rerank.model` overrides the model used.
+- 🔬 **Retrieval inspector.** Every assistant answer stores a debug payload (profile, original vs rewritten query, candidate counts, vector/keyword/fused score per candidate, selection and rerank positions, token budget). "Why these sources?" opens a modal showing exactly how the answer's context was chosen — the tool that makes every later retrieval change measurable.
+- 👍 **Answer feedback.** Thumbs up/down are stored per assistant message (`messages.feedback`, `chat.feedback`) and survive reloads, giving evaluation work a real signal.
+- 🧬 **Embedding provenance and bulk re-index.** Chunks store `embedding_model`, `embedding_dims`, `embedding_version` and `content_hash`; a workspace banner reports how many documents were indexed with a different setup and re-indexes them in one click (`document.retrievalStatus`, `document.reindexAll`), with a REINDEX badge per document.
+- 📚 **Heading-aware chunk metadata.** Markdown headings split documents into sections; every chunk stores `heading_path`, page range, token estimate and content hash. Heading context is prepended before embedding (so sections are searchable by name) but not stored in the chunk text.
+- ⚙️ **New settings:** `rag.profile`, `rag.queryRewrite`, `rag.rerank`, `rag.minScore`, `rag.maxContextTokens`, `job.queryRewrite.model`, `job.rerank.model`, plus checkbox rendering for boolean settings.
 
-### Fixed
+### 🔧 Changed
 
-- **Hybrid search silently excluded semantic-only candidates (B-2).** The old query required a full-text match before ranking, so a paraphrased question retrieved only chunks that shared its words. The keyword arm is now an addition, never a filter; covered by the smoke check "hybrid retrieval keeps semantic-only matches (B-2)" and `fuseRrf` unit tests.
-- **Switching embedding models could break chat with a pgvector dimension error (B-3).** Vector comparisons are now scoped to the active model, with pre-Phase-1 rows matched by `vector_dims()` instead of being mixed into the same comparison. The re-index banner and bulk action replace the old "delete and re-upload every document" advice.
-- **Non-English keyword search bypassed its index (B-10).** The English-only expression index (never declared in the schema) is replaced by a GIN index on a `tsvector` column populated at ingestion with the configured language, and migration 0007 backfills existing chunks so keyword search keeps working immediately after upgrade.
-- **Source relevance was vector-only and never thresholded (B-15).** Sources now expose vector, keyword and fused scores; `rag.minScore` drops weak vector matches while always keeping keyword hits; citation numbers are validated against the actual source list and cited sources are marked with ✓ (so hallucinated `[9]` references cannot masquerade as sources).
-- **The workspace was unusable on a phone (B-22).** The sidebar is an off-canvas drawer below `md`, the document panel stacks under the chat below `xl`, the conversation history becomes a header picker below `lg`, and the header/composer wrap without overlap. The visual harness can now complete the mobile chat flow, which it previously could not reach.
-- **Prompt injection through documents had no guardrail.** Retrieved chunks are wrapped in `<source>` delimiters and the system prompt states that source text is reference material whose instructions must be ignored.
-- **The context window could overflow silently.** `rag.maxContextTokens` budgets the retrieved sources (always keeping the best hit), and the inspector reports used vs allowed tokens.
-- **Source rows overlapped on narrow screens** because the relevance percentage floated over wrapped titles; the summary is now a flex row with a truncated title.
-- **Dev-dependency advisories:** vitest 4.1.10 → 4.1.11 (GHSA-82fw-gwwq-j7x9, path traversal / arbitrary file read via @vitest/mocker) and `brace-expansion` forced to ≥ 5.0.12 (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr, reachable through minimatch/eslint tooling), so the full `pnpm audit` - not only the production graph - is clean and the fail-closed CI audit gate stays green.
+- 📱 **The workspace is usable on a phone.** The sidebar is an off-canvas drawer below `md`, the document panel stacks under the chat below `xl`, the conversation history becomes a header picker below `lg`, and the header/composer wrap without overlap.
+- 📏 **Source relevance is transparent.** The source list shows vector, keyword and fused scores, page ranges, heading trails and a ✓ on cited sources; the inline `<details>` expands the full chunk instead of clamping it.
+- 🆔 **The stream done event returns the persisted message id**, so client-side ids are replaced immediately and per-message actions (feedback) target the stored row.
+- 🧾 **Prompt-injection guardrail.** Retrieved chunks are wrapped in `<source>` delimiters and the system prompt states that source text is reference material whose instructions must be ignored.
+- 🧮 **Context budgeting.** `rag.maxContextTokens` budgets the retrieved sources (always keeping the best hit), and the inspector reports used vs allowed tokens.
 
-### Improved
+### 🐛 Fixed
 
-- Assistant answers now return their persisted message id in the `done` stream event, so client-side ids are replaced immediately and per-message actions (feedback) always target the stored row.
-- The smoke suite grew from 55 to 59 checks (fusion with a semantic-only match, vector-arm fallback without keyword matches, retrieval status, bulk re-index, feedback persistence); backend unit tests grew from 60 to 75 with the pure retrieval helpers; the Playwright happy path now also asserts the sidebar document count, the cited-source marker, the retrieval inspector, and feedback surviving a reload.
-- Chat history is still built server-side from persisted non-error messages, and source text expands fully in the list.
+- 🔀 **B-2: hybrid search dropped semantic-only candidates.** The keyword arm is now an addition, never a filter; covered by the smoke check and `fuseRrf` unit tests.
+- 🧬 **B-3: switching embedding models could break chat with a dimension error.** Vector comparisons are scoped to the active model and legacy rows are matched by `vector_dims()`; the banner and bulk re-index replace manual deletion and re-upload.
+- 🔎 **B-10: non-English keyword search bypassed its index.** The English-only expression index is replaced by a GIN index on a populated `content_fts` tsvector, with migration 0007 backfilling existing chunks.
+- 📏 **B-15: relevance was vector-only and unthresholded.** Three scores, `rag.minScore` and validated citations replace the single number.
+- 💉 **Prompt injection through documents had no guardrail**; source delimiters and the system rule close it.
+- 🧮 **The context window could overflow silently**; the token budget and the inspector prevent it.
+- 🖼️ **Source rows overlapped on narrow screens** because the percentage floated over wrapped titles; the summary is now a flex row.
+- 🔐 **Dev-dependency advisories cleared:** vitest 4.1.10 → 4.1.11 (GHSA-82fw-gwwq-j7x9) and `brace-expansion` forced to ≥ 5.0.12 (GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr), so the full `pnpm audit` is clean.
 
-### Limitations and deliberate omissions
+### 📝 Notes
 
-- **Golden-set evaluation (Recall@k, MRR, nDCG, LLM-judge faithfulness) is not in this release.** The inspector and feedback endpoint are the foundation; the metric harness and a fixture corpus for CI are the next retrieval work item.
-- **Neighbor expansion and parent-child retrieval are not implemented.** Chunks still stand alone; adjacent-chunk expansion needs the section metadata that this release starts storing.
-- **Reranking is listwise-LLM only** (no cross-encoder or provider rerank API); the hook is isolated so a dedicated reranker can be added without touching callers.
-- **The full-text column is built with the language configured at ingestion.** Changing `retrieval.language` later requires re-indexing for keyword matching to use the new configuration; vector search is unaffected.
-- **Query rewriting and reranking each add one model call per answer.** Balanced (the default) disables reranking and skips rewriting when there is no history; Thorough enables both.
-- **Pre-Phase-1 documents show the re-index banner** because the embedding input now includes heading context (`embedding_version` changed). Retrieval keeps working meanwhile through the legacy dimension match; re-indexing is recommended, not required.
-- **Mobile is usable but not fully redesigned** - the reader-mode, typography, and offline study work remain in later phases.
+- 🧪 **Verification:** 75 backend unit tests (plus 6 shared), 59/59 smoke checks, the extended Playwright happy path, and 14 visual-QA captures; `typecheck`, `lint`, `format:check`, `build` and `pnpm audit` are clean.
+- 🗄️ **Migration 0007** adds embedding provenance and heading metadata to chunks, the content FTS column, message feedback and retrieval debug storage.
+- ⏳ **Deliberately deferred:** a golden-set evaluation harness (Recall@k/MRR/nDCG/LLM judge), neighbor expansion and parent-child retrieval, cross-encoder or provider reranking, and language changes after ingestion still requiring a re-index for keyword matching. Pre-Phase-1 documents show the re-index banner because the embedding input now includes heading context.
 
-## [1.2.0] - 2026-10-01
+## [0.4.2] - 2026-10-01
 
-Phase 0 is the hygiene and blockers phase: every item here was either a correctness bug, a security/dependency issue, or the infrastructure needed for the later phases. Retrieval quality itself (hybrid fusion, reranking, mixed embedding dimensions, multilingual FTS indexing, mobile layout) is deliberately **not** in this release; it is Phase 1 and is listed under limitations below.
+Phase 0 is the hygiene and blockers release: every item here was a correctness bug, a security or dependency issue, or infrastructure the later phases depend on. Retrieval quality, embedding-model changes and the mobile layout were deliberately left to the next release and are listed under the notes.
 
-### Added
+### ✨ Added
 
-- **Indexing diagnostics.** Documents now store a sanitized failure reason, the number of attempts, and an update timestamp (`documents.error_message`, `documents.attempts`, `documents.updated_at`, migration `0006`). Failed rows show the reason and attempt count, and offer **Retry** and **Delete** independently. Previously a failed document could only be retried — never removed — and the actual error existed only in the worker console.
-- **Workspace archive import over a streaming endpoint.** `POST /api/workspace/import` accepts the exported JSON as a multipart file with `MAX_IMPORT_MB` (default 100 MB), so real backups are no longer rejected by the 1 MB JSON body cap that applies to tRPC calls. The endpoint validates the decoded payload against document-count and total-size limits, validates document file types against the ingestion allowlist, restores per-message token usage (which the old importer silently dropped), and shares its implementation with the tRPC mutation.
-- **Batch settings endpoint.** `settings.updateMany` validates and persists several settings in one call, so cross-field invariants are checked against the final state instead of the order in which fields happen to be saved.
-- **Public config endpoint.** `config.public` exposes the app name and the effective upload limit before login, so the shell and upload dropzone no longer depend on the protected settings list.
-- **Chat message actions.** Stop generation (disabling the subscription tears the stream down server-side), Copy, Retry on errors, and Regenerate (re-answers the last user message and replaces the trailing assistant/error row instead of duplicating the question).
-- **Rich answer rendering.** GFM tables, KaTeX math (`remark-math` + `rehype-katex`), syntax-highlighted code with a per-block copy button, and safe external links. The renderer is lazy-loaded so KaTeX/highlight.js stay out of the workspace bundle (the workspace chunk dropped from 675 kB to 83 kB).
-- **Toasts** replace `alert()` and silent failures for import, export, delete, copy, and mutation errors; deleting the active workspace clears the selection instead of leaving a dead panel.
-- **Session-expiry handling.** Any `UNAUTHORIZED` tRPC error now routes the app back to the login screen; previously an expired cookie left every panel stuck in a failed state.
-- **Release notes pipeline.** `CHANGELOG.md` is now the source of truth for release bodies: the release workflow extracts the section for the pushed tag and passes it to `gh release create --notes-file` instead of using generated notes. Prerelease tags no longer move the `latest` container tag.
+- 🩺 **Indexing diagnostics.** Documents store a sanitized failure reason, the number of attempts and an update timestamp (`documents.error_message`, `documents.attempts`, `documents.updated_at`, migration 0006). Failed rows show the reason and attempt count and offer **Retry** and **Delete** independently.
+- 📦 **Streaming workspace import.** `POST /api/workspace/import` accepts an exported archive as a multipart file with `MAX_IMPORT_MB` (default 100 MB), validates decoded payload size and row counts, validates document file types, and restores per-message token usage. The old tRPC import path remains for API clients.
+- 🧾 **Batch settings endpoint.** `settings.updateMany` validates and persists several settings in one call, so cross-field invariants are checked against the final state rather than save order.
+- 🧩 **Public config endpoint.** `config.public` exposes the app name and the effective upload limit before login.
+- 💬 **Chat message actions.** Stop generation, Copy, Retry on errors and Regenerate (re-answers the last user message and replaces the trailing assistant/error row).
+- 🎨 **Rich answer rendering.** GFM tables, KaTeX math, syntax-highlighted code with per-block copy, safe external links, and a lazy-loaded renderer that keeps the workspace chunk small.
+- 🔔 **Toasts and session expiry.** Toasts replace `alert()` and silent failures; deleting the active workspace clears the selection; any UNAUTHORIZED tRPC error routes back to login.
 
-### Fixed
+### 🔧 Changed
 
-- **Conversation titles were regenerated on every message.** The title job sat outside the "new conversation" branch, so each follow-up burned an extra LLM completion and renamed the conversation to match the latest question. Titles are now generated only when a conversation is created.
-- **PDF page numbers were always 1.** `pdf-parse` joins pages with blank lines, not form feeds, so the split never found page boundaries and every chunk reported page 1; blank pages would additionally have shifted later numbers. Extraction now uses a custom page renderer that appends a page marker, numbers pages before filtering empty ones, and passes a `Uint8Array` because pdf.js v1 misparses some Node `Buffer`s with "bad XRef entry". Regression tests build real multi-page PDFs including a blank page.
-- **Provider errors were stored as assistant answers.** A failed generation persisted the friendly error text as a normal assistant message, so after reload it rendered as an answer and was replayed to the model as history. Messages now carry `kind` (`answer`/`error`, migration `0006`); errors render distinctly, are excluded from prompts, and chat history is built server-side from persisted non-error messages instead of trusting client-supplied turns.
-- **Removing or rotating `SETTINGS_SECRET` took down the settings page and chat.** Decryption ran unguarded during reads, so one unreadable secret made `settings.list` throw and chat fail with a crypto error. Reads now fall back to the environment/default value, and the settings UI flags unreadable keys with a re-entry banner.
-- **Chunk size/overlap validation was one-directional and save-order dependent.** Only the overlap field was checked against the currently stored size, so `chunkSize=200` with overlap 200 was accepted and every subsequent upload failed in the worker. The new batch endpoint validates `overlap < size` against the post-save values.
-- **Changing `AUTH_PASSWORD` left old sessions valid.** The boot path now verifies the configured password against the stored hash, and only when it changed re-hashes and deletes the user's sessions, so a leaked cookie cannot outlive a credential change.
-- **Workspace import failed above ~1 MB** because the archive was sent as a tRPC JSON body under the global 1 MB limit; see the streaming endpoint above.
-- **Upload limits disagreed across four places.** The dropzone hardcoded 25 MB, multer followed the `MAX_UPLOAD_MB` environment value, the request guard followed the `server.maxUploadMb` setting, and nginx capped `/api` at 30 MB. The dropzone now uses the public config, multer is a 100 MB backstop, and nginx was raised to 110 MB as a backstop so the backend's configured limit is what users experience.
-- **Deleting a document could still burn provider tokens.** Indexing jobs now use the document id as their BullMQ job id (so retries cannot create duplicate work) and deleting a document removes its queued job.
-- **The worker marked documents failed mid-retry.** BullMQ emits `failed` on every attempt, so a document briefly showed as failed while retries were still pending and the error text was never stored. The worker now records the error and attempt count on every failure but only sets `failed` once attempts are exhausted.
-- **Workspace archive export lost token usage** (it hardcoded `usage: null`) and imported messages skipped it; both paths now preserve usage, and invalid archive timestamps no longer reach the database.
-- **Streaming showed a duplicate empty assistant bubble.** The pending assistant message (rendered as "Thinking...") and the live streaming bubble were both visible mid-answer; the empty placeholder is now skipped while streaming, so there is exactly one growing bubble with sources, caret, and Stop.
-- **The sidebar document count stayed stale after upload/delete.** The sidebar reads `workspace.list`, which was never invalidated by document mutations; upload, delete, and retry now invalidate it, and the upload success notice clears itself after six seconds.
-- **Query-embedding cache ignored the embedding provider.** Switching endpoints while keeping the same model name and dimensions served vectors from the previous provider for up to 24 hours; the cache key now includes the provider base URL.
-- **The chat stream trusted an arbitrary conversation id.** After checking only workspace ownership, a reused `conversationId` could point at another user's conversation. Reused conversations are now verified to belong to the caller's workspace.
-- **Dependency advisories:** 7 moderate advisories are cleared. `multer` 2.3.0 → 2.4.0 (GHSA-3pph-fpjx-jg34), `express-rate-limit` 8.6.2 → 8.7.0 which pulls `ip-address` ≥ 10.7.1 (GHSA-rpw4-54j3-4h4q, GHSA-2vr4-cq9g-pvrc, GHSA-j6r3-76f7-8jcv, GHSA-h3mg-xc3c-68pw), and a `qs` override ≥ 6.16.0 (GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g) reachable through express/body-parser. `pnpm audit --prod` is clean again, restoring the fail-closed audit gate.
+- 🚿 **Streaming performance and control.** Tokens are batched into state every 50 ms, the message list auto-scrolls only while the user is near the bottom, and conversation switching is disabled while an answer streams.
+- ♿ **Accessibility.** The streaming phase is announced through a polite live region, icon buttons have labels, the message list is a labelled log, and source text expands fully.
+- 🧪 **Developer experience.** The smoke suite grew from 49 to 55 checks, e2e ports are overridable, `e2e-server.sh` starts Vite from the frontend package, and generated Drizzle meta files are formatted.
 
-### Improved
+### 🐛 Fixed
 
-- **Streaming performance and control.** Tokens are batched into state every 50 ms instead of re-rendering markdown per token, the message list auto-scrolls only while the user is near the bottom (with a "jump to latest" button otherwise), and conversation switching is disabled while an answer streams so the live bubble and query invalidation cannot target the wrong conversation.
-- **Accessibility.** The streaming phase is announced through a polite live region (not per token), icon buttons have labels, the message list is a labelled log, and source text expands fully instead of being clamped.
-- **Error surfaces.** Upload rejections name the configured size limit, workspace import errors are specific (invalid JSON, invalid archive, too many documents, size limit), and settings errors return actionable messages.
-- **Developer experience.** The smoke suite grew from 49 to 55 checks (batch settings validation, archive export/import round-trip, invalid archive rejection), e2e ports are overridable (`E2E_PORT`, `E2E_API_PORT`) so the suite runs when another service owns 3000/5173, `e2e-server.sh` starts Vite from the frontend package regardless of the caller's directory, the mock provider's stream delay is configurable (`MOCK_STREAM_DELAY_MS`) so visual QA can observe mid-stream states, and generated Drizzle meta files are formatted so `pnpm format:check` stays green.
+- 💬 **Conversation titles regenerated on every message.** The title job sat outside the "new conversation" branch, so each follow-up burned an extra completion and renamed the conversation. Titles are now generated only on creation.
+- 📄 **PDF page numbers were always 1.** `pdf-parse` joins pages with blank lines, not form feeds, so every chunk reported page 1; extraction now uses a custom page renderer, numbers pages before filtering empty ones, and passes a `Uint8Array` because pdf.js v1 misparses some Node buffers. Regression tests build real multi-page PDFs with a blank page.
+- 🧾 **Provider errors were stored as assistant answers.** A failed generation persisted the friendly error as a normal assistant message, replaying it to the model on the next turn. Messages carry `kind` (`answer`/`error`), errors render distinctly, are excluded from prompts, and history is built server-side.
+- 🔑 **Removing `SETTINGS_SECRET` took down settings and chat.** Decryption is now guarded; reads fall back to env/default, and the UI flags unreadable keys for re-entry.
+- 📏 **Chunk size/overlap validation was one-directional and save-order dependent.** The batch endpoint validates `overlap < size` against the post-save pair.
+- 🔐 **Changing `AUTH_PASSWORD` left old sessions valid.** The boot path verifies the password against the stored hash and, when it changed, re-hashes and deletes the user's sessions.
+- 📦 **Workspace import failed above ~1 MB** because the archive was a tRPC JSON body under the global 1 MB cap; the streaming endpoint removes that limit.
+- 📤 **Upload limits disagreed across four places.** The dropzone uses the public config, multer is a 100 MB backstop, and nginx was raised to 110 MB as a backstop.
+- 🧵 **Deleting a document could still burn provider tokens**; jobs use the document id as their BullMQ job id and deletion removes the queued job.
+- 🧯 **The worker marked documents failed mid-retry.** BullMQ emits `failed` on every attempt; the worker now records the error/attempts and only sets `failed` once retries are exhausted.
+- 🧾 **Workspace export lost token usage** and imports skipped it; both paths preserve usage.
+- 🗄️ **The query-embedding cache ignored the embedding provider**; the key now includes the provider base URL.
+- 🔒 **The chat stream trusted an arbitrary conversation id** after checking only workspace ownership; reused conversations are now verified against the caller's workspace.
+- 🐞 **Dependency advisories cleared:** `multer` 2.3.0 → 2.4.0 (GHSA-3pph-fpjx-jg34), `express-rate-limit` 8.6.2 → 8.7.0 which pulls fixed `ip-address` (GHSA-rpw4-54j3-4h4q, GHSA-2vr4-cq9g-pvrc, GHSA-j6r3-76f7-8jcv, GHSA-h3mg-xc3c-68pw), and `qs` ≥ 6.16.0 (GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g).
+- 🖼️ **Streaming showed a duplicate empty assistant bubble**; the empty placeholder is skipped while the live bubble streams.
+- 📊 **The sidebar document count was stale after upload/delete**; document mutations now invalidate `workspace.list`, and the upload notice clears itself.
 
-### Security
+### 📝 Notes
 
-- Session invalidation on password change; global UNAUTHORIZED handling in the client.
-- Conversation ownership verification in the chat stream (cross-workspace write closed).
-- Dependency advisories cleared as listed above; no known production vulnerabilities remain.
+- 🧪 **Verification:** 60 backend unit tests (plus 6 shared), 55/55 smoke checks, the Playwright happy path, and 10 visual-QA captures; `typecheck`, `lint`, `format:check`, `build` and `pnpm audit` are clean.
+- 🗄️ **Migration 0006** adds document failure metadata and message kinds.
+- ⏳ **Deliberately deferred:** hybrid retrieval fusion (B-2), embedding re-index guards (B-3), language-agnostic FTS (B-10), a mobile layout (B-22), and undo for deletes (needs soft-delete plus a purge window). `pdf-parse` still has no OCR path for scanned PDFs.
 
-### Limitations and deliberate omissions
+## [0.4.1] - 2026-09-09
 
-- **Hybrid retrieval still filters candidates by keyword match** (a semantic-only chunk is excluded whenever any chunk matches the query terms). This is the highest-impact retrieval defect and is scheduled for Phase 1 together with reranking, score thresholds, citation validation, and a retrieval inspector.
-- **Changing the embedding model still requires re-indexing documents manually.** Per-chunk embedding provenance, a "needs re-index" banner, and bulk re-indexing are Phase 1.
-- **The full-text index is created for the English configuration only**, so non-English search falls back to a sequential scan; the per-language index strategy is Phase 1.
-- **Mobile layout is not usable yet** (fixed-width columns overflow at phone widths); the responsive layout is part of the Phase 1 UI workstream (B-22).
-- **Undo for deletes** was deferred because it needs soft-delete columns and a purge window across workspaces, documents, and conversations; it is scheduled with the storage/retention work in Phase 4.
-- **Archive import still decodes the JSON in memory** (bounded by `MAX_IMPORT_MB`); a streaming zip format is Phase 1+.
-- The screenshot harness's mid-stream capture can still catch a completed answer because the mock provider streams quickly; the retrieval inspector and slower fixtures will make the streaming state easier to capture.
+Provider flexibility: Nexus can now talk to OpenCode Zen and Zen Go, point chat and embeddings at different OpenAI-compatible endpoints, and verify a provider end to end from the Settings panel.
 
-## [1.1.0] and earlier
+### ✨ Added
 
-See the GitHub Releases for `v1.1.0`, `v1.0.0`, `v0.3.1`, `v0.3.0`, and `v0.2.0` at https://github.com/Pranesh-Selvaraj/Nexus/releases.
+- 🔌 **OpenCode Zen and Zen Go support.** Presets for both endpoints, model discovery through `/models`, a connection test that sends a tiny completion (Zen's model list is public, so reachability alone is not proof), and the Go-required `User-Agent: nexus/1.0` plus stable `x-opencode-session` headers per conversation and document.
+- 🧠 **Separate embedding provider.** Chat-only providers (Zen, Groq, ...) can pair with OpenAI, Ollama, Jina or Mistral for embeddings through dedicated base URL/key/model settings that fall back field-by-field to the main provider.
+- ⚙️ **Settings UX.** Provider presets, "Fetch models from this endpoint" pickers for chat and embeddings, masked secrets, an `env` badge for environment-provided values, and a per-card connection test.
+- 📚 **Documentation refresh** covering local providers, separate embeddings, model discovery, container tags and branch/tag protection.
+
+### 🔧 Changed
+
+- 🧪 **The connection test is provider-aware.** It validates the configured chat model with a real completion and the embedding model with a real embedding, reporting dimension mismatches and chat-only 404s with actionable messages.
+- 🔗 **Base URL validation.** A URL that already contains an endpoint path (e.g. a full `/chat/completions` URL copied from a dashboard) is rejected with the corrected base URL to use.
+
+### 🐛 Fixed
+
+- 🚫 **The placeholder key in `.env.example` no longer counts as a configured key**, so a fresh checkout without a real key fails with a clear local-provider hint instead of a confusing auth error.
+- 🧭 **Chat-only embedding failures now name the missing embedding provider** instead of surfacing a bare 404.
+
+### 📝 Notes
+
+- 🐳 Container images are published as `ghcr.io/pranesh-selvaraj/nexus-backend:0.4.1` and `nexus-frontend:0.4.1`; `latest` tracks the newest release.
+- ⏳ Zen/Go models that are only served over non-OpenAI protocols (Anthropic/OpenAI-native routes) are not supported and the connection test reports that clearly.
+
+## [0.4.0] - 2026-08-25
+
+The first production-readiness milestone: document ingestion grew beyond plain text, answers got titles, retrieval got a cache, the frontend split into lazy panels, and CI gained a deterministic smoke suite and a browser end-to-end test.
+
+### ✨ Added
+
+- 📄 **DOCX ingestion** via mammoth: Word documents are parsed to raw text, chunked and embedded like any other source.
+- 💬 **LLM-generated conversation titles.** A background completion names each new conversation, with the message-prefix fallback when the provider is unavailable.
+- ⚡ **Redis query-embedding cache.** Repeated questions skip the embedding round-trip for 24 hours; the cache key includes the model and dimensions.
+- 🧩 **Code-split frontend.** Settings and workspace panels load lazily, keeping the initial bundle small.
+- 🧪 **Deterministic smoke suite in CI.** A mock OpenAI provider plus the real API and worker exercise upload → index → retrieval → settings → auth → archive flows.
+- 🧹 **Daily session purge.** A BullMQ repeat job removes expired sessions so the table cannot grow forever.
+- 🛡️ **Last-resort error boundary** so a render error shows a recoverable screen instead of a blank app.
+- 🎭 **Playwright end-to-end test** for workspace → upload → index → streamed chat.
+- ⚙️ **Settings TTL cache and cached OpenAI clients.** Hot paths read settings from memory for a few seconds and reuse provider connections instead of rebuilding clients per request.
+
+### 🔧 Changed
+
+- 🚀 **Release pipeline and docs.** Version bump, GHCR image publishing, changelog-driven releases and a documentation pass for the 1.0 milestone.
+- 🧪 **Test and CI hardening.** Unit tests, smoke checks and the browser test are required gates on `main`.
+
+### 🐛 Fixed
+
+- 🧵 **Session and client churn** in the request hot path: cached clients remove repeated auth/connection setup, and the settings cache removes repeated Postgres reads.
+- 🧱 **Recoverable render failures** no longer leave a blank page.
+
+### 📝 Notes
+
+- 🧪 Verification at the time: unit tests, the new smoke suite and the Playwright happy path were green; the release was the first tagged as production-ready.
+- ⏳ Still missing at this point: PDF page metadata, indexing diagnostics, hybrid fusion, a mobile layout, and the study/voice features that arrive in later releases.
+
+## [0.3.1] - 2026-08-18
+
+A focused local-model release: Nexus no longer requires a key when it talks to an OpenAI-compatible server, discovers models, and accepts embedding models whose dimensions differ from OpenAI's.
+
+### ✨ Added
+
+- 🖥️ **Full local LLM support.** Ollama and LM Studio work without an API key; model discovery lists what the endpoint serves; embeddings can have any dimension, with the expected size configured in Settings.
+- 📐 **Flexible embedding dimensions.** Migration 0005 makes `chunks.embedding` dimension-flexible and removes the fixed-dimension HNSW index (exact scans are fine at personal scale); the worker validates every new vector against the configured dimensions.
+
+### 🔧 Changed
+
+- 🔤 **Embeddings request plain floats** (`encoding_format: float`) so local servers that ignore base64 work correctly.
+- 🧭 **Provider error messages** distinguish missing keys, unreachable endpoints and dimension mismatches.
+- 📚 **Documentation** for local models, embedding dimension matching, and re-indexing after a model change.
+
+### 🐛 Fixed
+
+- 🧮 **Dimension mismatches** now fail at indexing with a clear message instead of corrupting retrieval later.
+- 🚫 **Placeholder keys** in `.env.example` are not treated as configured credentials.
+
+### 📝 Notes
+
+- ⏳ Changing the embedding model still requires deleting and re-uploading affected documents; the re-index banner arrives in `0.4.3`.
+- 🐳 Images: `ghcr.io/pranesh-selvaraj/nexus-backend:0.3.1` and `nexus-frontend:0.3.1`.
+
+## [0.3.0] - 2026-08-18
+
+The configuration and portability release: settings moved into the UI, providers became pluggable, answers gained token accounting, and workspaces became portable.
+
+### ✨ Added
+
+- ⚙️ **UI-managed settings** with env fallback and AES-256-GCM encrypted secrets; precedence is UI → environment → default, and secret fields are only ever returned masked.
+- 🔌 **OpenAI-compatible base URLs** so Ollama, OpenRouter, Groq and any compatible endpoint can serve chat and embeddings.
+- 📝 **UI-managed system prompt** prepended to every chat request.
+- 🌍 **Configurable full-text search language** (28+ PostgreSQL text-search configurations) for keyword retrieval.
+- 🧮 **Per-message token usage** (prompt, completion, total) stored with each assistant answer.
+- 📦 **Workspace backup and restore**: export documents and chat history as JSON and import them back, re-indexing the documents.
+
+### 🔧 Changed
+
+- 🔐 **Secrets are never sent back in full** — the settings API returns a mask and keeps decrypted keys in process memory only.
+- 🧾 **The settings panel renders generically** from the registry, so bounds, groups and descriptions stay in one place.
+- 📚 **Release notes and GHCR documentation** were corrected (container tags are semver without the `v` prefix).
+
+### 🐛 Fixed
+
+- 🧩 **Settings precedence** matches documentation in every combination of UI value, environment variable and default.
+- 🔒 **Secret settings require `SETTINGS_SECRET`**; saving keys without it fails with an actionable banner instead of storing plaintext.
+
+### 📝 Notes
+
+- 🐳 Images: `ghcr.io/pranesh-selvaraj/nexus-backend:0.3.0` and `nexus-frontend:0.3.0`.
+- ⏳ Local model support (no key, flexible dimensions) lands in `0.3.1`.
+
+## [0.2.0] - 2026-08-12
+
+The first tagged release: a self-hosted RAG workspace with asynchronous ingestion, hybrid retrieval, streamed grounded chat, optional authentication, production images and CI.
+
+### ✨ Added
+
+- 🏗️ **Full-stack monorepo.** React + Vite + tRPC + TanStack Query on the frontend, Express + tRPC + Drizzle on the backend, a BullMQ embedding worker, PostgreSQL with pgvector, and Redis.
+- 📁 **Workspaces and documents.** Upload PDF, TXT, Markdown, CSV and JSON files; documents are parsed, chunked, embedded and indexed asynchronously with retry.
+- 🔍 **Hybrid retrieval and streamed RAG chat.** Vector similarity and PostgreSQL full-text search with weighted ranking, streamed answers over WebSocket, and inline source citations.
+- 🔐 **Optional password authentication** with httpOnly session cookies and scrypt password hashing; without `AUTH_PASSWORD` the app runs in single-user no-auth mode.
+- ❤️ **Dependency-aware health check** (`/healthz` probes Postgres and Redis with memoized results).
+- 🐳 **Production deployment** through multi-stage Docker images and a Compose stack (frontend nginx proxy, API, worker, Postgres, Redis).
+- 🧪 **CI/CD, linting and tests.** ESLint + Prettier, Vitest unit tests, secret scanning, dependency review, CodeQL, Dependabot, and a tag-triggered release workflow that publishes GHCR images.
+- 🛡️ **Upload and input hardening.** Workspace ids are validated before any path is built, files are staged and cleaned up safely, inputs are trimmed, embedding dimensions are validated, and every conversation procedure enforces ownership.
+
+### 🔧 Changed
+
+- ⬆️ **Dependency refresh:** tRPC v11, TanStack Query v5, Vite 8, Zod 4, react-markdown 10, Drizzle Kit 0.31, and LangChain 0.3.37 with a clean production audit.
+
+### 🐛 Fixed
+
+- 📤 **Uploads could stage files outside the intended workspace** or orphan them on failure; the route now validates the workspace, writes to a server-controlled path, and removes leftovers on every failure path.
+- 🔒 **Conversation access was not consistently scoped to the owner**; every conversation procedure now checks it.
+- 🧾 **Validation gaps** in trimming, embedding dimensions and a missing key now fail fast with clear errors.
+- ❤️ **The dependency-aware health check had been dropped in a merge** and was restored.
+
+### 📝 Notes
+
+- 🐳 Images: `ghcr.io/pranesh-selvaraj/nexus-backend:0.2.0` and `nexus-frontend:0.2.0`.
+- ⏳ At this point settings lived in `.env` only, providers were OpenAI-only, and there was no DOCX support, no conversation titles, no backup/restore and no study features.

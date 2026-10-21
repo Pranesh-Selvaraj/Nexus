@@ -4,10 +4,10 @@ Nexus is a self-hosted, single-user tool — but we still take security seriousl
 
 ## Supported versions
 
-| Version | Supported        |
-| ------- | ---------------- |
-| 1.0.x   | ✅ (current)     |
-| < 1.0.0 | ❌ (pre-release) |
+| Version | Supported    |
+| ------- | ------------ |
+| 0.4.x   | ✅ (current) |
+| < 0.4.0 | ❌           |
 
 Releases are tagged `vX.Y.Z` and published as GitHub Releases with container images on GHCR (`ghcr.io/pranesh-selvaraj/nexus-backend`, `ghcr.io/pranesh-selvaraj/nexus-frontend`). Security fixes land on `main` and ship as patch releases.
 

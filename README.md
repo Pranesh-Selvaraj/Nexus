@@ -121,10 +121,10 @@ Every release publishes the images to the GitHub Container Registry. Pull them d
 
 | Image        | Pull command                                                |
 | ------------ | ----------------------------------------------------------- |
-| API + worker | `docker pull ghcr.io/pranesh-selvaraj/nexus-backend:1.0.0`  |
-| Frontend     | `docker pull ghcr.io/pranesh-selvaraj/nexus-frontend:1.0.0` |
+| API + worker | `docker pull ghcr.io/pranesh-selvaraj/nexus-backend:0.4.5`  |
+| Frontend     | `docker pull ghcr.io/pranesh-selvaraj/nexus-frontend:0.4.5` |
 
-Pin a version in production; `latest` tracks the newest release. (Note: the container tags are semver without the `v` prefix — `1.0.0`, not `v1.0.0`.)
+Pin a version in production; `latest` tracks the newest release. (Note: the container tags are semver without the `v` prefix — `0.4.5`, not `v0.4.5`.)
 
 ### Option B — build from source
 
@@ -163,11 +163,11 @@ See [SECURITY.md](SECURITY.md) — without `AUTH_PASSWORD` the app runs in singl
 
 Releases follow [SemVer](https://semver.org/) and are published automatically from the [release workflow](.github/workflows/release.yml): pushing an annotated tag builds the images, publishes them to GHCR, and creates a GitHub Release whose body is the matching section of [CHANGELOG.md](CHANGELOG.md) — the workflow fails if the section is missing, so a release can never ship generated placeholder notes.
 
-Development runs in phases and each phase ships as a normal minor release with its own detailed changelog entry: `v1.2.0` (Phase 0), `v1.3.0` (Phase 1), and so on in order. Every release publishes both container images and updates `latest`.
+Development runs in phases and each phase ships as a contained patch release in the 0.4 line with its own detailed changelog entry: `0.4.2` (Phase 0), `0.4.3` (Phase 1), `0.4.4` (Phase 2), `0.4.5` (Phase 3), and so on in order. Every release publishes both container images and updates `latest`.
 
 ```bash
-# add the `## [v1.3.0]` section to CHANGELOG.md first
-git tag -a v1.3.0 -m "Nexus v1.3.0" && git push origin v1.3.0
+# add the `## [0.4.6]` section to CHANGELOG.md first
+git tag -a v0.4.6 -m "Nexus v0.4.6" && git push origin v0.4.6
 ```
 
 ## Scripts
