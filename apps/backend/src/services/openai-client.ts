@@ -4,10 +4,11 @@ import OpenAI from 'openai';
 
 import { getSetting } from './settings.service.js';
 
-export type OpenAIClientKind = 'chat' | 'embedding';
+export type OpenAIClientKind = 'chat' | 'embedding' | 'stt' | 'tts';
 
 const CHAT_TIMEOUT_MS = 120_000;
 const EMBEDDING_TIMEOUT_MS = 60_000;
+const AUDIO_TIMEOUT_MS = 120_000;
 
 /**
  * Client identity sent with every provider request. OpenCode Go requires
@@ -50,6 +51,7 @@ export function resolveProviderConfig(
   kind: OpenAIClientKind,
   main: ProviderConfig,
   embedding: ProviderConfig,
+  audio: ProviderConfig = { apiKey: '', baseUrl: '' },
 ): ProviderConfig {
   if (kind === 'embedding') {
     return {
@@ -57,7 +59,23 @@ export function resolveProviderConfig(
       baseUrl: embedding.baseUrl || main.baseUrl,
     };
   }
+  if (kind === 'stt' || kind === 'tts') {
+    return {
+      apiKey: audio.apiKey || main.apiKey,
+      baseUrl: audio.baseUrl || main.baseUrl,
+    };
+  }
   return main;
+}
+
+/** Settings key prefix for a speech capability's dedicated provider. */
+function audioSettingKeys(kind: 'stt' | 'tts'): {
+  apiKey: string;
+  baseUrl: string;
+} {
+  return kind === 'stt'
+    ? { apiKey: 'voice.sttApiKey', baseUrl: 'voice.sttBaseUrl' }
+    : { apiKey: 'voice.ttsApiKey', baseUrl: 'voice.ttsBaseUrl' };
 }
 
 /** Effective provider config for a request kind (UI > env > default). */
@@ -71,10 +89,22 @@ export async function getProviderConfig(
       getSetting('openai.embeddingApiKey'),
       getSetting('openai.embeddingBaseUrl'),
     ]);
+
+  let audio: ProviderConfig = { apiKey: '', baseUrl: '' };
+  if (kind === 'stt' || kind === 'tts') {
+    const keys = audioSettingKeys(kind);
+    const [apiKey, baseUrl] = await Promise.all([
+      getSetting(keys.apiKey),
+      getSetting(keys.baseUrl),
+    ]);
+    audio = { apiKey, baseUrl };
+  }
+
   return resolveProviderConfig(
     kind,
     { apiKey: mainApiKey, baseUrl: mainBaseUrl },
     { apiKey: embeddingApiKey, baseUrl: embeddingBaseUrl },
+    audio,
   );
 }
 
@@ -104,7 +134,12 @@ export async function getOpenAIClient(kind: OpenAIClientKind): Promise<OpenAI> {
   const { apiKey, baseUrl } = await getProviderConfig(kind);
   // Local providers accept any key; the OpenAI SDK requires a non-empty string.
   const effectiveKey = apiKey || 'local';
-  const timeoutMs = kind === 'chat' ? CHAT_TIMEOUT_MS : EMBEDDING_TIMEOUT_MS;
+  const timeoutMs =
+    kind === 'chat'
+      ? CHAT_TIMEOUT_MS
+      : kind === 'embedding'
+        ? EMBEDDING_TIMEOUT_MS
+        : AUDIO_TIMEOUT_MS;
 
   const key = clientKey(kind, effectiveKey, baseUrl, timeoutMs);
   const existing = clients.get(key);

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 
 import { ChatPanel } from '../chat/ChatPanel';
+import { LanguagePanel } from '../language/LanguagePanel';
 import { StudyPanel } from '../study/StudyPanel';
+import { VoiceChatPanel } from '../voice/VoiceChatPanel';
 import { DocumentList } from '../upload/DocumentList';
 import { UploadDropzone } from '../upload/UploadDropzone';
 import { useToast } from '../../components/Toast';
@@ -13,7 +15,10 @@ interface Props {
 
 export function WorkspacePanel({ workspaceId }: Props) {
   const toast = useToast();
-  const [view, setView] = useState<'chat' | 'study'>('chat');
+  const [view, setView] = useState<'chat' | 'study' | 'voice' | 'language'>(
+    'chat',
+  );
+  const voiceConfig = trpc.voice.config.useQuery(undefined);
   const utils = trpc.useUtils();
   const exportWorkspace = trpc.workspace.export.useQuery(
     { workspaceId },
@@ -69,7 +74,7 @@ export function WorkspacePanel({ workspaceId }: Props) {
     <div className="flex h-full min-h-0 flex-col">
       {/* Workspace modes: conversation vs the study loop. */}
       <div className="flex items-center gap-1 border-b border-zinc-800 bg-zinc-950 px-3 py-1.5">
-        {(['chat', 'study'] as const).map((mode) => (
+        {(['chat', 'study', 'voice', 'language'] as const).map((mode) => (
           <button
             key={mode}
             onClick={() => setView(mode)}
@@ -149,6 +154,16 @@ export function WorkspacePanel({ workspaceId }: Props) {
       </div>
 
       {view === 'study' && <StudyPanel workspaceId={workspaceId} />}
+      {view === 'voice' && (
+        <VoiceChatPanel
+          workspaceId={workspaceId}
+          config={voiceConfig.data}
+          onOpenChat={() => setView('chat')}
+        />
+      )}
+      {view === 'language' && (
+        <LanguagePanel workspaceId={workspaceId} config={voiceConfig.data} />
+      )}
     </div>
   );
 }

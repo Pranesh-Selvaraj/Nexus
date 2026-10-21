@@ -29,7 +29,15 @@ describe('settings registry', () => {
   it('covers every settings group', () => {
     const groups = new Set(SETTING_DEFS.map((d) => d.group));
     expect(groups).toEqual(
-      new Set(['openai', 'retrieval', 'server', 'auth', 'ui']),
+      new Set([
+        'openai',
+        'retrieval',
+        'server',
+        'auth',
+        'ui',
+        'voice',
+        'language',
+      ]),
     );
   });
 

@@ -11,6 +11,7 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - langsmith@0.8.10
+  - vite@8.3.5
 
 overrides:
   '@langchain/core': 0.3.80

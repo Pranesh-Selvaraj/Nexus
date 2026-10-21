@@ -54,6 +54,42 @@ function readBody(
   });
 }
 
+/** Consume and discard a request body (multipart audio cannot be JSON). */
+function drain(req: import('node:http').IncomingMessage): Promise<void> {
+  return new Promise((resolve, reject) => {
+    req.on('data', () => undefined);
+    req.on('end', () => resolve());
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Minimal mono 16-bit PCM WAV of a quiet tone. Long enough (~0.8 s) that the
+ * frontend's duration-based sentence highlighting has time to advance.
+ */
+function stubWav(seconds = 0.8, sampleRate = 8000): Buffer {
+  const samples = Math.floor(seconds * sampleRate);
+  const dataSize = samples * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write('WAVE', 8);
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(dataSize, 40);
+  for (let i = 0; i < samples; i++) {
+    buffer.writeInt16LE(Math.round(Math.sin(i / 12) * 2000), 44 + i * 2);
+  }
+  return buffer;
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
   try {
@@ -85,6 +121,28 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
+      // The body is multipart audio, which this stub deliberately does not
+      // parse: the real pipeline sends it to the provider and only the text
+      // matters to the callers. A fixed transcript keeps tests deterministic.
+      await drain(req);
+      json(res, {
+        text: 'What does Nexus combine for retrieval, and how are flashcards scheduled?',
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/audio/speech') {
+      await readBody(req);
+      const audio = stubWav();
+      res.writeHead(200, {
+        'content-type': 'audio/wav',
+        'content-length': String(audio.byteLength),
+      });
+      res.end(audio);
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
       const body = await readBody(req);
       const model = String(body.model ?? 'stub-chat-model');
@@ -100,6 +158,48 @@ const server = createServer(async (req, res) => {
             )
             .join('\n')
         : '';
+      // Deterministic vocabulary mining (backend prompt mentions "Mine
+      // vocabulary").
+      if (!body.stream && /mine vocabulary/i.test(promptText)) {
+        json(res, {
+          id: 'chatcmpl-stub-vocab',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: JSON.stringify([
+                  {
+                    term: 'retrieval',
+                    translation: 'recuperación',
+                    partOfSpeech: 'noun',
+                    example: 'Hybrid retrieval combines both signals.',
+                  },
+                  {
+                    term: 'scheduled',
+                    translation: 'programado',
+                    partOfSpeech: 'adjective',
+                    example: 'Flashcards are scheduled with FSRS.',
+                  },
+                  {
+                    term: 'fuse',
+                    translation: 'fusionar',
+                    partOfSpeech: 'verb',
+                    example: 'Both arms fuse into one ranking.',
+                  },
+                ]),
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 30, completion_tokens: 60, total_tokens: 90 },
+        });
+        return;
+      }
+
       // Deterministic quiz generation (backend prompt mentions "quiz
       // questions").
       if (!body.stream && /quiz questions/i.test(promptText)) {

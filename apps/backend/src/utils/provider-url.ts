@@ -11,6 +11,8 @@ export const PROVIDER_ENDPOINT_PATHS = [
   '/models',
   '/responses',
   '/messages',
+  '/audio/transcriptions',
+  '/audio/speech',
 ] as const;
 
 /** Trailing slashes are semantically meaningless on a base URL. */

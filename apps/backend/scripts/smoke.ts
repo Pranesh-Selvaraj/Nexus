@@ -899,6 +899,274 @@ try {
   });
 
   // -------------------------------------------------------------------
+  // Phase 3: voice input, read-aloud, pronunciation and vocabulary
+  // -------------------------------------------------------------------
+  // STT/TTS only run against a local provider (the deterministic stub in CI)
+  // so the suite never spends real provider credits or depends on audio
+  // quality. A cloud run can opt in explicitly with SMOKE_VOICE=1.
+  const voiceProvider =
+    (process.env.OPENAI_BASE_URL ?? '').includes('localhost') ||
+    process.env.SMOKE_VOICE === '1';
+
+  const voiceWs = await fetchJson('/trpc/workspace.create', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Voice Smoke' }),
+  });
+  const voiceWsId = voiceWs.body?.result?.data?.id;
+
+  const voiceConfig = await fetchJson('/trpc/voice.config', { method: 'GET' });
+  const voiceConfigData = voiceConfig.body?.result?.data;
+  print(
+    'voice.config reports engines and defaults',
+    typeof voiceConfigData?.sttMode === 'string' &&
+      typeof voiceConfigData?.ttsProvider === 'string' &&
+      Array.isArray(voiceConfigData?.voices) &&
+      voiceConfigData.voices.includes('alloy'),
+    {
+      sttMode: voiceConfigData?.sttMode,
+      ttsProvider: voiceConfigData?.ttsProvider,
+      sttAvailable: voiceConfigData?.sttServerAvailable,
+    },
+  );
+
+  if (voiceProvider) {
+    // Dictation: multipart audio -> deterministic transcript.
+    const transcribeFd = new FormData();
+    transcribeFd.append('workspaceId', voiceWsId);
+    transcribeFd.append(
+      'audio',
+      new File([new Uint8Array(2048)], 'clip.webm', { type: 'audio/webm' }),
+    );
+    const transcribeRes = await fetch(`${BASE}/api/transcribe`, {
+      method: 'POST',
+      body: transcribeFd,
+    });
+    const transcribeBody = (await transcribeRes.json()) as any;
+    print(
+      'POST /api/transcribe returns text',
+      transcribeRes.status === 200 &&
+        typeof transcribeBody?.text === 'string' &&
+        transcribeBody.text.length > 0 &&
+        typeof transcribeBody?.provider === 'string',
+      { provider: transcribeBody?.provider, text: transcribeBody?.text },
+    );
+
+    // Read-aloud: server synthesis is cached by (text, voice, speed).
+    const ttsFirst = await fetchJson('/api/tts', {
+      method: 'POST',
+      body: JSON.stringify({
+        text: 'Nexus reads this answer aloud.',
+        voice: 'alloy',
+        speed: 1,
+        workspaceId: voiceWsId,
+      }),
+    });
+    const ttsData = ttsFirst.body;
+    print(
+      'POST /api/tts synthesizes and returns sentence units',
+      ttsFirst.status === 200 &&
+        typeof ttsData?.audioId === 'string' &&
+        ttsData?.cached === false &&
+        Array.isArray(ttsData?.sentences) &&
+        ttsData.sentences.length === 1 &&
+        ttsData?.url === `/api/audio/${ttsData.audioId}`,
+      { audioId: ttsData?.audioId, sentences: ttsData?.sentences },
+    );
+
+    const ttsSecond = await fetchJson('/api/tts', {
+      method: 'POST',
+      body: JSON.stringify({
+        text: 'Nexus reads this answer aloud.',
+        voice: 'alloy',
+        speed: 1,
+        workspaceId: voiceWsId,
+      }),
+    });
+    print(
+      'POST /api/tts reuses the cached audio',
+      ttsSecond.body?.cached === true &&
+        ttsSecond.body?.audioId === ttsData?.audioId,
+    );
+
+    // Playback: full GET, then a byte range (what <audio> seeking uses).
+    const audioId = ttsData?.audioId as string;
+    const audioFull = await fetch(`${BASE}/api/audio/${audioId}`);
+    const audioBytes = await audioFull.arrayBuffer();
+    print(
+      'GET /api/audio/:id streams cached audio',
+      audioFull.status === 200 &&
+        (audioFull.headers.get('content-type') ?? '').startsWith('audio/') &&
+        audioBytes.byteLength > 0,
+      {
+        contentType: audioFull.headers.get('content-type'),
+        bytes: audioBytes.byteLength,
+      },
+    );
+
+    const audioRange = await fetch(`${BASE}/api/audio/${audioId}`, {
+      headers: { Range: 'bytes=0-9' },
+    });
+    const rangeBody = await audioRange.arrayBuffer();
+    print(
+      'GET /api/audio/:id honours Range requests',
+      audioRange.status === 206 &&
+        (audioRange.headers.get('content-range') ?? '').startsWith(
+          'bytes 0-9/',
+        ) &&
+        rangeBody.byteLength === 10,
+      { contentRange: audioRange.headers.get('content-range') },
+    );
+
+    // Retention/quota bookkeeping is visible through the audio list.
+    const audioList = await fetchJson(
+      `/trpc/voice.audio.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: voiceWsId }))}`,
+      { method: 'GET' },
+    );
+    const listed = audioList.body?.result?.data ?? [];
+    print(
+      'voice.audio.list reports the cached asset',
+      listed.some((asset: any) => asset.id === audioId && asset.kind === 'tts'),
+      { count: listed.length },
+    );
+
+    // Vocabulary mining -> SRS card with translation and example.
+    const mined = await fetchJson('/trpc/language.vocabulary.mine', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspaceId: voiceWsId,
+        text: 'Hybrid retrieval fuses vector similarity with keyword search.',
+        maxTerms: 5,
+        createCards: true,
+      }),
+    });
+    const mineData = mined.body?.result?.data;
+    print(
+      'language.vocabulary.mine creates vocabulary and cards',
+      mined.status === 200 &&
+        mineData?.items?.length > 0 &&
+        mineData?.cardsCreated > 0 &&
+        mineData.items.every(
+          (item: any) =>
+            typeof item.term === 'string' && item.state === 'learning',
+        ),
+      { items: mineData?.items?.length, cards: mineData?.cardsCreated },
+    );
+
+    const vocabList = await fetchJson(
+      `/trpc/language.vocabulary.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: voiceWsId }))}`,
+      { method: 'GET' },
+    );
+    const firstVocab = vocabList.body?.result?.data?.[0];
+    print(
+      'language.vocabulary.list returns mined terms',
+      Array.isArray(vocabList.body?.result?.data) &&
+        vocabList.body.result.data.length > 0,
+      { first: firstVocab?.term, translation: firstVocab?.translation },
+    );
+
+    if (firstVocab) {
+      const updatedVocab = await fetchJson('/trpc/language.vocabulary.update', {
+        method: 'POST',
+        body: JSON.stringify({ vocabularyId: firstVocab.id, state: 'known' }),
+      });
+      print(
+        'language.vocabulary.update changes state',
+        updatedVocab.body?.result?.data?.state === 'known',
+      );
+    }
+
+    // Pronunciation scoring records per-word feedback and a progress event.
+    const pronScore = await fetchJson('/trpc/voice.pronunciation.score', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspaceId: voiceWsId,
+        target: 'the quick brown fox',
+        transcript: 'the quick brown fox',
+      }),
+    });
+    const pronData = pronScore.body?.result?.data;
+    print(
+      'voice.pronunciation.score returns per-word feedback',
+      pronScore.status === 200 &&
+        typeof pronData?.overall === 'number' &&
+        Array.isArray(pronData?.words) &&
+        pronData.words.length === 4 &&
+        pronData.words.every((word: any) => word.status === 'good'),
+      { overall: pronData?.overall, words: pronData?.words?.length },
+    );
+
+    const pairs = await fetchJson('/trpc/voice.pronunciation.minimalPairs', {
+      method: 'GET',
+    });
+    print(
+      'voice.pronunciation.minimalPairs returns drills',
+      Array.isArray(pairs.body?.result?.data) &&
+        pairs.body.result.data.length > 0,
+    );
+
+    // Dictation scoring records listening practice.
+    const dictation = await fetchJson('/trpc/language.dictation.score', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspaceId: voiceWsId,
+        target: 'the library closes at six',
+        typed: 'the library closes at six',
+      }),
+    });
+    const dictationData = dictation.body?.result?.data;
+    print(
+      'language.dictation.score diffs the transcription',
+      dictation.status === 200 &&
+        dictationData?.accuracy === 1 &&
+        dictationData?.total === 5,
+      { accuracy: dictationData?.accuracy, total: dictationData?.total },
+    );
+
+    // CEFR estimate across the four skills.
+    const cefr = await fetchJson(
+      `/trpc/language.cefr.get?input=${encodeURIComponent(JSON.stringify({ workspaceId: voiceWsId }))}`,
+      { method: 'GET' },
+    );
+    const cefrData = cefr.body?.result?.data;
+    print(
+      'language.cefr.get estimates all four skills',
+      typeof cefrData?.overall === 'string' &&
+        Array.isArray(cefrData?.skills) &&
+        cefrData.skills.length === 4 &&
+        cefrData.skills.some((skill: any) => skill.evidence > 0),
+      { overall: cefrData?.overall },
+    );
+
+    // Audio cleanup keeps the volume free of orphans.
+    const audioDeleted = await fetchJson('/trpc/voice.audio.delete', {
+      method: 'POST',
+      body: JSON.stringify({ audioId }),
+    });
+    print(
+      'voice.audio.delete removes a cached asset',
+      audioDeleted.body?.result?.data?.deleted === true,
+    );
+
+    const audioMissing = await fetchJson(
+      `/trpc/voice.audio.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: voiceWsId }))}`,
+      { method: 'GET' },
+    );
+    print(
+      'deleted audio is gone from the list',
+      !(audioMissing.body?.result?.data ?? []).some(
+        (asset: any) => asset.id === audioId,
+      ),
+    );
+  } else {
+    print('voice STT/TTS checks skipped (no local provider configured)', true);
+  }
+
+  await fetchJson('/trpc/workspace.delete', {
+    method: 'POST',
+    body: JSON.stringify({ workspaceId: voiceWsId }),
+  });
+
+  // -------------------------------------------------------------------
   // Workspace archive export/import over the streaming REST endpoint
   // -------------------------------------------------------------------
   const importWs = await fetchJson('/trpc/workspace.create', {
