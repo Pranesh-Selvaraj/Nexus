@@ -6,6 +6,8 @@ import { trpc } from '../../lib/trpc';
 const GROUPS: { id: string; label: string }[] = [
   // Provider settings (chat + embeddings) render in the dedicated cards above.
   { id: 'retrieval', label: 'Retrieval' },
+  { id: 'voice', label: 'Voice' },
+  { id: 'language', label: 'Language' },
   { id: 'server', label: 'Server' },
   { id: 'auth', label: 'Authentication' },
   { id: 'ui', label: 'Appearance' },

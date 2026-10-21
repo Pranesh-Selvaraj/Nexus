@@ -11,6 +11,8 @@ import type {
 
 import { useToast } from '../../components/Toast';
 import { trpc } from '../../lib/trpc';
+import { ReadAloudPlayer } from '../voice/ReadAloudPlayer';
+import { MicButton } from '../voice/MicButton';
 
 // KaTeX + syntax highlighting are large; keep them out of the workspace chunk
 // and load the renderer the first time an answer is displayed.
@@ -82,6 +84,10 @@ export function ChatPanel({ workspaceId }: Props) {
     y: number;
   } | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  // Voice capabilities/defaults (dictation engine, TTS provider, speech).
+  const voiceConfig = trpc.voice.config.useQuery(undefined);
+  // Selection text being read aloud from the floating toolbar.
+  const [speakSelection, setSpeakSelection] = useState<string | null>(null);
 
   // Tutor persona for new answers: seeded from the stored default, then a
   // per-chat choice the user can change at any time.
@@ -347,8 +353,8 @@ export function ChatPanel({ workspaceId }: Props) {
     setPinnedToBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120);
   }
 
-  function handleSend() {
-    const message = input.trim();
+  function handleSend(override?: string) {
+    const message = (override ?? input).trim();
     if (!message || pending) return;
 
     const id = crypto.randomUUID();
@@ -437,6 +443,17 @@ export function ChatPanel({ workspaceId }: Props) {
       toast.push({ kind: 'success', message: 'Copied to clipboard' });
     });
   }
+
+  const mineVocabulary = trpc.language.vocabulary.mine.useMutation({
+    onSuccess: (data) => {
+      toast.push({
+        kind: 'success',
+        message: `Mined ${data.items.length} term${data.items.length === 1 ? '' : 's'} into your vocabulary.`,
+      });
+    },
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Mining failed: ${err.message}` }),
+  });
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -681,74 +698,83 @@ export function ChatPanel({ workspaceId }: Props) {
                               </p>
                             )}
                             {!streaming && (
-                              <div className="mt-2 flex items-center gap-3 border-t border-zinc-800 pt-1.5 text-[11px] text-zinc-500">
-                                <button
-                                  onClick={() => copyMessage(message)}
-                                  className="hover:text-zinc-300"
-                                >
-                                  Copy
-                                </button>
-                                {message.error && (
+                              <div className="mt-2 border-t border-zinc-800 pt-1.5 text-[11px] text-zinc-500">
+                                <div className="flex items-center gap-3">
                                   <button
-                                    onClick={regenerate}
+                                    onClick={() => copyMessage(message)}
                                     className="hover:text-zinc-300"
                                   >
-                                    Retry
+                                    Copy
                                   </button>
-                                )}
-                                {!message.error &&
-                                  activeConversationId !== null &&
-                                  index === messages.length - 1 && (
+                                  {message.error && (
                                     <button
                                       onClick={regenerate}
                                       className="hover:text-zinc-300"
                                     >
-                                      Regenerate
+                                      Retry
                                     </button>
                                   )}
-                                {message.retrieval && (
-                                  <button
-                                    onClick={() =>
-                                      setInspector(message.retrieval ?? null)
-                                    }
-                                    className="hover:text-zinc-300"
-                                  >
-                                    Why?
-                                  </button>
-                                )}
-                                {!message.error &&
-                                  activeConversationId !== null && (
-                                    <span className="ml-auto flex items-center gap-2">
+                                  {!message.error &&
+                                    activeConversationId !== null &&
+                                    index === messages.length - 1 && (
                                       <button
-                                        onClick={() =>
-                                          setFeedback(message, 'up')
-                                        }
-                                        aria-label="Helpful answer"
-                                        title="Helpful"
-                                        className={
-                                          message.feedback === 'up'
-                                            ? 'text-emerald-400'
-                                            : 'hover:text-zinc-300'
-                                        }
+                                        onClick={regenerate}
+                                        className="hover:text-zinc-300"
                                       >
-                                        👍
+                                        Regenerate
                                       </button>
-                                      <button
-                                        onClick={() =>
-                                          setFeedback(message, 'down')
-                                        }
-                                        aria-label="Not helpful"
-                                        title="Not helpful"
-                                        className={
-                                          message.feedback === 'down'
-                                            ? 'text-red-400'
-                                            : 'hover:text-zinc-300'
-                                        }
-                                      >
-                                        👎
-                                      </button>
-                                    </span>
+                                    )}
+                                  {message.retrieval && (
+                                    <button
+                                      onClick={() =>
+                                        setInspector(message.retrieval ?? null)
+                                      }
+                                      className="hover:text-zinc-300"
+                                    >
+                                      Why?
+                                    </button>
                                   )}
+                                  {!message.error &&
+                                    activeConversationId !== null && (
+                                      <span className="ml-auto flex items-center gap-2">
+                                        <button
+                                          onClick={() =>
+                                            setFeedback(message, 'up')
+                                          }
+                                          aria-label="Helpful answer"
+                                          title="Helpful"
+                                          className={
+                                            message.feedback === 'up'
+                                              ? 'text-emerald-400'
+                                              : 'hover:text-zinc-300'
+                                          }
+                                        >
+                                          👍
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            setFeedback(message, 'down')
+                                          }
+                                          aria-label="Not helpful"
+                                          title="Not helpful"
+                                          className={
+                                            message.feedback === 'down'
+                                              ? 'text-red-400'
+                                              : 'hover:text-zinc-300'
+                                          }
+                                        >
+                                          👎
+                                        </button>
+                                      </span>
+                                    )}
+                                </div>
+                                {message.content && !message.error && (
+                                  <ReadAloudPlayer
+                                    text={message.content}
+                                    workspaceId={workspaceId}
+                                    config={voiceConfig.data}
+                                  />
+                                )}
                               </div>
                             )}
                           </>
@@ -857,6 +883,16 @@ export function ChatPanel({ workspaceId }: Props) {
                   placeholder={`Ask about the documents in "${workspaceName}"...`}
                   className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-zinc-600"
                 />
+                <MicButton
+                  workspaceId={workspaceId}
+                  config={voiceConfig.data}
+                  disabled={streaming}
+                  onTranscript={(text) => {
+                    setInput(text);
+                    composerRef.current?.focus();
+                    if (voiceConfig.data?.autoSend) handleSend(text);
+                  }}
+                />
                 {streaming ? (
                   <button
                     onClick={stopGeneration}
@@ -868,7 +904,7 @@ export function ChatPanel({ workspaceId }: Props) {
                   </button>
                 ) : (
                   <button
-                    onClick={handleSend}
+                    onClick={() => handleSend()}
                     disabled={!input.trim()}
                     aria-label="Send message"
                     title="Send"
@@ -892,6 +928,31 @@ export function ChatPanel({ workspaceId }: Props) {
           style={{ left: selection.x, top: Math.max(8, selection.y - 10) }}
           onMouseDown={(event) => event.preventDefault()}
         >
+          <button
+            onClick={() => {
+              setSpeakSelection(selection.text);
+              clearSelection();
+            }}
+            className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          >
+            Speak
+          </button>
+          <button
+            onClick={() => {
+              mineVocabulary.mutate({
+                workspaceId,
+                text: selection.text,
+                maxTerms: 5,
+                createCards: true,
+              });
+              clearSelection();
+            }}
+            disabled={mineVocabulary.isPending}
+            className="rounded px-2 py-1 text-xs text-emerald-300 hover:bg-zinc-800 disabled:opacity-40"
+            title="Mine vocabulary from this selection"
+          >
+            Mine
+          </button>
           <button
             onClick={askAboutSelection}
             className="rounded px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
@@ -930,6 +991,19 @@ export function ChatPanel({ workspaceId }: Props) {
           >
             Cards
           </button>
+        </div>
+      )}
+
+      {speakSelection && (
+        <div className="fixed bottom-24 right-6 z-30">
+          <ReadAloudPlayer
+            key={speakSelection}
+            text={speakSelection}
+            workspaceId={workspaceId}
+            config={voiceConfig.data}
+            defaultOpen
+            onClose={() => setSpeakSelection(null)}
+          />
         </div>
       )}
 
