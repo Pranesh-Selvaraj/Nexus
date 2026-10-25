@@ -209,6 +209,8 @@ git tag -a v0.4.6 -m "Nexus v0.4.6" && git push origin v0.4.6
 | `pnpm --filter @nexus/backend db:generate` | Generate a new Drizzle migration            |
 | `pnpm --filter @nexus/backend dev:api`     | Run only the API in watch mode              |
 | `pnpm --filter @nexus/backend dev:worker`  | Run only the embedding worker in watch mode |
+| `pnpm --filter @nexus/backend cli --help`  | Nexus CLI (search/ask/upload/due/note)      |
+| `pnpm --filter @nexus/backend mcp`         | Start the MCP server on stdio               |
 
 ## Environment variables
 
@@ -434,6 +436,21 @@ Instead of polling, register an endpoint in **Settings → Webhooks** and Nexus 
 
 Headers: `X-Nexus-Event`, `X-Nexus-Delivery`, and `X-Nexus-Signature: sha256=<hex HMAC-SHA256 of the raw body>` keyed with the secret shown once at creation. `document.failed` carries `data.error` instead of a chunk count. Deliveries time out after 5 seconds, do not follow redirects, retry five times with exponential backoff, and record the last status/error on the endpoint so a failing receiver is visible in Settings. The signing secret is encrypted at rest with `SETTINGS_SECRET`; without that key webhook creation is refused with an explanatory error. Targets are address-checked like ingestion (private/loopback/link-local refused) — `WEBHOOK_ALLOW_PRIVATE_HOSTS=true` is a local-testing override only.
 
+### MCP, CLI and the browser share target
+
+The same REST surface powers three first-class clients, all authenticated with a scoped key:
+
+- **MCP server** (`pnpm --filter @nexus/backend mcp`) speaks MCP over stdio and exposes `list_workspaces`, `list_documents`, `search`, `ask` and `create_note`, so clients like Claude Desktop or coding agents can use Nexus as a knowledge base. Point the client at the command with `NEXUS_BASE_URL` and `NEXUS_API_KEY` in its env; the server is a thin wrapper over the REST API, so scopes and ownership are enforced exactly as for any other integration.
+- **CLI** (`pnpm --filter @nexus/backend cli <command>`) covers `workspaces`, `documents`, `search`, `ask`, `upload`, `url`, `due`, `review` and `note`:
+
+  ```bash
+  export NEXUS_API_KEY=ndx_… NEXUS_BASE_URL=http://localhost:3000
+  pnpm --filter @nexus/backend cli ask "What does my thesis say about caching?" --workspace "$WS"
+  pnpm --filter @nexus/backend cli upload ./paper.pdf --workspace "$WS"
+  ```
+
+- **Browser share target** (`extensions/browser/`) is a Manifest V3 extension: set the Nexus URL, API key and workspace once, then click "Save current page" on any article or captioned YouTube video. It posts the URL to `POST /api/v1/urls`; extraction happens server-side, so the browser never handles the page content.
+
 ### Observability
 
 The API emits structured JSON logs (pino) with a request id, method, path, status and duration; secrets and auth headers are redacted. `GET /metrics` serves Prometheus metrics: `nexus_http_requests_total`, `nexus_http_request_duration_seconds`, `nexus_chat_ttft_seconds`, `nexus_chat_tokens_total`, `nexus_retrieval_duration_seconds{stage}`, `nexus_queue_jobs{queue,state}` (sampled at scrape) and the default process metrics. Set `METRICS_TOKEN` when the API is reachable from the internet:
@@ -450,6 +467,8 @@ apps/
   frontend/         React + Vite SPA (tRPC client, workspaces, upload, chat)
 packages/
   shared-types/     Shared DTO types between apps
+extensions/
+  browser/          Manifest V3 share target (save the current page)
 docs/
   decisions/        Architecture decision records (ingestion, vision, ...)
 .github/
