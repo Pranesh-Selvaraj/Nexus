@@ -1085,32 +1085,20 @@ export type AnalyzeImageResult = z.infer<typeof analyzeImageResultSchema>;
  * What a key is allowed to do. Scopes are additive and checked per route, so
  * a read-only integration can never upload or answer on the owner's behalf.
  */
-export const apiScopeSchema = z.enum([
-  'search',
-  'ask',
-  'documents:read',
-  'documents:write',
-  'reviews:read',
-  'reviews:write',
-]);
+export const apiScopeSchema = z.enum(['search', 'ask', 'documents:read']);
 export type ApiScope = z.infer<typeof apiScopeSchema>;
 
-export const API_SCOPES: ApiScope[] = [
-  'search',
-  'ask',
-  'documents:read',
-  'documents:write',
-  'reviews:read',
-  'reviews:write',
-];
+/**
+ * Only scopes that a route actually enforces are offered. Upload and review
+ * scopes land together with their endpoints so a key can never be granted a
+ * permission that does nothing.
+ */
+export const API_SCOPES: ApiScope[] = ['search', 'ask', 'documents:read'];
 
 export const API_SCOPE_LABELS: Record<ApiScope, string> = {
   search: 'Search the library',
   ask: 'Ask grounded questions',
   'documents:read': 'List documents and workspaces',
-  'documents:write': 'Upload documents',
-  'reviews:read': 'Read due cards',
-  'reviews:write': 'Submit reviews',
 };
 
 export const apiKeyDTOSchema = z.object({

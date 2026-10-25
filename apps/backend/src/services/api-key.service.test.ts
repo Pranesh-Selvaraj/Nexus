@@ -75,9 +75,9 @@ describe('hasScope', () => {
   });
 
   it('does not treat a name prefix as a grant', () => {
-    expect(hasScope({ scopes: [...identity.scopes] }, 'documents:write')).toBe(
-      false,
-    );
-    expect(hasScope({ scopes: [...identity.scopes] }, 'ask')).toBe(false);
+    // `documents:read` must not satisfy a different documents permission, and
+    // a granted search scope is not a granted ask scope.
+    expect(hasScope({ scopes: ['documents:read'] }, 'ask')).toBe(false);
+    expect(hasScope({ scopes: ['search'] }, 'ask')).toBe(false);
   });
 });
