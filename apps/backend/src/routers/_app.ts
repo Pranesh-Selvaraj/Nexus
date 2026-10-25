@@ -6,6 +6,7 @@ import { languageRouter } from './language.router.js';
 import { notesRouter } from './notes.router.js';
 import { quizRouter } from './quiz.router.js';
 import { settingsRouter } from './settings.router.js';
+import { storageRouter } from './storage.router.js';
 import { studyRouter } from './study.router.js';
 import { visionRouter } from './vision.router.js';
 import { voiceRouter } from './voice.router.js';
@@ -32,6 +33,7 @@ export const appRouter = t.router({
   }),
   apiKey: apiKeyRouter,
   webhook: webhookRouter,
+  storage: storageRouter,
   workspace: workspaceRouter,
   document: documentRouter,
   chat: chatRouter,

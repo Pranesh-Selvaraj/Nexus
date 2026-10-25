@@ -52,7 +52,8 @@ export const workspaceRouter = t.router({
       sql`
         SELECT w.id, w.name, w.description, w.created_at,
                (SELECT COUNT(*)::int FROM documents d
-                WHERE d.workspace_id = w.id) AS document_count
+                WHERE d.workspace_id = w.id
+                  AND d.status <> 'deleted') AS document_count
         FROM workspaces w
         WHERE w.user_id = ${ctx.user.id}
         ORDER BY w.created_at DESC

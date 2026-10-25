@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   customType,
   index,
@@ -51,6 +52,9 @@ export const documentStatusEnum = pgEnum('document_status', [
   'processing',
   'ready',
   'failed',
+  // Soft-deleted (trash): row + file kept until the purge window elapses,
+  // chunks removed so retrieval cannot see it.
+  'deleted',
 ]);
 
 export const messageRoleEnum = pgEnum('message_role', ['user', 'assistant']);
@@ -112,6 +116,12 @@ export const documents = pgTable(
     metadata: jsonb('metadata').$type<DocumentStructure | null>(),
     status: documentStatusEnum('status').notNull().default('processing'),
     chunkCount: integer('chunk_count').notNull().default(0),
+    // Bytes of the stored file, for storage accounting and quotas. Existing
+    // rows default to 0 until re-uploaded.
+    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull().default(0),
+    // Set when the document is moved to the trash; the maintenance job purges
+    // it (row + file) once storage.trashDays has elapsed.
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     // Populated when indexing fails: sanitized error + attempt count so the
     // UI can explain what happened instead of showing a bare 'failed' badge.
     errorMessage: text('error_message'),

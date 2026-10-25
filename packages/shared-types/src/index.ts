@@ -45,7 +45,12 @@ export const workspaceIdSchema = z.object({
 // Documents
 // ---------------------------------------------------------------------------
 
-export const documentStatusSchema = z.enum(['processing', 'ready', 'failed']);
+export const documentStatusSchema = z.enum([
+  'processing',
+  'ready',
+  'failed',
+  'deleted',
+]);
 export type DocumentStatus = z.infer<typeof documentStatusSchema>;
 
 /**
@@ -193,6 +198,10 @@ export const documentDTOSchema = z.object({
   /** sha256 of the uploaded bytes, used for duplicate detection. */
   contentHash: z.string().nullable().optional(),
   createdAt: z.string(),
+  /** Bytes of the stored file (0 for documents uploaded before accounting). */
+  sizeBytes: z.number().int().nonnegative().optional(),
+  /** Set while the document sits in the trash. */
+  deletedAt: z.string().nullable().optional(),
 });
 
 export const retrievalStatusSchema = z.object({

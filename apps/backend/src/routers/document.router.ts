@@ -1,6 +1,3 @@
-import { rm } from 'node:fs/promises';
-import path from 'node:path';
-
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 
@@ -16,7 +13,7 @@ import type {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
-import { documents, workspaces } from '../db/schema.js';
+import { chunks, documents, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
 import {
   cancelDocumentEmbedding,
@@ -27,8 +24,11 @@ import {
   getEffectiveEmbeddingModel,
   getEmbeddingDimensions,
 } from '../services/embedding.service.js';
-import { UPLOAD_DIR } from '../utils/paths.js';
 import { toDocumentDTO } from '../utils/dto.js';
+import {
+  purgeDocument,
+  purgeExpiredTrash,
+} from '../services/storage.service.js';
 
 /**
  * SQL predicate: the document has at least one chunk embedded with a
@@ -117,6 +117,7 @@ export const documentRouter = t.router({
                  ${needsReindexPredicate(model, dims, sql.raw('d.id'))} AS needs_reindex
           FROM documents d
           WHERE d.workspace_id = ${input.workspaceId}
+            AND d.status <> 'deleted'
           ORDER BY d.created_at DESC
         `,
       );
@@ -141,6 +142,7 @@ export const documentRouter = t.router({
             COUNT(*) FILTER (WHERE d.status = 'processing')::int AS reindexing
           FROM documents d
           WHERE d.workspace_id = ${input.workspaceId}
+            AND d.status <> 'deleted'
         `,
       );
       const row = (
@@ -174,6 +176,7 @@ export const documentRouter = t.router({
         sql`
           SELECT d.id FROM documents d
           WHERE d.workspace_id = ${input.workspaceId}
+            AND d.status <> 'deleted'
             AND ${needsReindexPredicate(model, dims, sql.raw('d.id'))}
         `,
       );
@@ -280,14 +283,102 @@ export const documentRouter = t.router({
           message: 'Document not found',
         });
       }
+      if (doc.status === 'deleted') return { deleted: true };
 
-      await db.delete(documents).where(eq(documents.id, doc.id));
-      // Drop any queued indexing job so a deleted document cannot burn
-      // provider tokens or race the delete with chunk inserts.
+      // Soft delete: keep the row and the stored file for the purge window so
+      // "Undo" can bring the document back, but drop the chunks immediately so
+      // retrieval can never cite a trashed document again.
+      await db.delete(chunks).where(eq(chunks.documentId, doc.id));
+      await db
+        .update(documents)
+        .set({
+          status: 'deleted',
+          deletedAt: new Date(),
+          chunkCount: 0,
+          errorMessage: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(documents.id, doc.id));
+      // Drop any queued indexing job so a trashed document cannot re-embed.
       await cancelDocumentEmbedding(doc.id);
-      await rm(path.resolve(UPLOAD_DIR, doc.filePath), { force: true }).catch(
-        () => undefined,
-      );
       return { deleted: true };
+    }),
+
+  /** Restore a trashed document and re-index it from the stored file. */
+  restore: protectedProcedure
+    .input(documentIdSchema)
+    .mutation(async ({ ctx, input }): Promise<{ restored: boolean }> => {
+      const [doc] = await db
+        .select({
+          ...getTableColumns(documents),
+          workspaceUserId: workspaces.userId,
+        })
+        .from(documents)
+        .innerJoin(workspaces, eq(workspaces.id, documents.workspaceId))
+        .where(eq(documents.id, input.documentId))
+        .limit(1);
+      if (
+        !doc ||
+        doc.workspaceUserId !== ctx.user.id ||
+        doc.status !== 'deleted'
+      ) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Trashed document not found',
+        });
+      }
+      await db
+        .update(documents)
+        .set({
+          status: 'processing',
+          deletedAt: null,
+          errorMessage: null,
+          attempts: 0,
+          updatedAt: new Date(),
+        })
+        .where(eq(documents.id, doc.id));
+      await enqueueDocumentEmbedding(doc.id);
+      return { restored: true };
+    }),
+
+  /** Documents currently in the trash, newest deletion first. */
+  listTrashed: protectedProcedure
+    .input(workspaceIdSchema)
+    .query(async ({ ctx, input }): Promise<DocumentDTO[]> => {
+      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+      const rows = await db
+        .select()
+        .from(documents)
+        .where(
+          and(
+            eq(documents.workspaceId, input.workspaceId),
+            eq(documents.status, 'deleted'),
+          ),
+        )
+        .orderBy(desc(documents.deletedAt));
+      return rows.map((row) => toDocumentDTO(row));
+    }),
+
+  /** Empty the trash immediately (rows + files), bypassing the purge window. */
+  emptyTrash: protectedProcedure
+    .input(workspaceIdSchema)
+    .mutation(async ({ ctx, input }): Promise<{ purged: number }> => {
+      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+      const rows = await db
+        .select({ id: documents.id })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.workspaceId, input.workspaceId),
+            eq(documents.status, 'deleted'),
+          ),
+        );
+      let purged = 0;
+      for (const row of rows) {
+        if (await purgeDocument(row.id)) purged++;
+      }
+      // Also sweep anything past its window in other workspaces, cheaply.
+      await purgeExpiredTrash().catch(() => 0);
+      return { purged };
     }),
 });

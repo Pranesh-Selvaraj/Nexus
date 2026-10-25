@@ -94,6 +94,7 @@ export function apiV1Router(): Router {
             documentCount: sql<number>`(
             SELECT count(*)::int FROM documents d
             WHERE d.workspace_id = "workspaces"."id"
+              AND d.status <> 'deleted'
           )`,
           })
           .from(workspaces)

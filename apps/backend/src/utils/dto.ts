@@ -20,5 +20,7 @@ export function toDocumentDTO(
     sourceUrl: doc.sourceUrl ?? null,
     contentHash: doc.contentHash ?? null,
     createdAt: new Date(doc.createdAt).toISOString(),
+    sizeBytes: doc.sizeBytes ?? 0,
+    deletedAt: doc.deletedAt ? new Date(doc.deletedAt).toISOString() : null,
   };
 }

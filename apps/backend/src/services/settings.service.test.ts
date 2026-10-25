@@ -33,6 +33,7 @@ describe('settings registry', () => {
         'openai',
         'retrieval',
         'server',
+        'storage',
         'auth',
         'ui',
         'voice',

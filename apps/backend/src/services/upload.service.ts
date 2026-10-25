@@ -14,6 +14,7 @@ import { toDocumentDTO } from '../utils/dto.js';
 import { ApiError } from '../utils/errors.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
 import { getSettingNumber } from './settings.service.js';
+import { assertStorageQuota } from './storage.service.js';
 import { UploadRejectedError, validateUpload } from './ingestion/validate.js';
 
 export interface UploadFileInput {
@@ -64,6 +65,10 @@ export async function ingestUpload(params: {
   if (!params.file) {
     throw new ApiError('No file provided', 400);
   }
+
+  // Quota is checked before the file is written: the whole upload is in
+  // memory, so its exact size is known.
+  await assertStorageQuota(params.userId, params.file.buffer.length);
 
   const maxImageMb = await getSettingNumber('vision.maxImageMb');
   let validated;
@@ -117,6 +122,7 @@ export async function ingestUpload(params: {
         filePath: relativePath,
         fileType: validated.detected.format,
         contentHash: validated.contentHash,
+        sizeBytes: params.file.buffer.length,
         status: 'processing',
       })
       .returning();

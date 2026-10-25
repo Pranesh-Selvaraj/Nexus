@@ -34,6 +34,7 @@ export interface SettingDef {
     | 'openai'
     | 'retrieval'
     | 'server'
+    | 'storage'
     | 'auth'
     | 'ui'
     | 'voice'
@@ -321,6 +322,30 @@ export const SETTING_DEFS: SettingDef[] = [
     min: 1,
     max: 100,
     group: 'server',
+  },
+  {
+    key: 'storage.quotaMb',
+    label: 'Storage quota (MB)',
+    description:
+      'Total stored bytes per user, including documents in the trash. 0 disables the limit. Uploads above the quota are refused.',
+    type: 'number',
+    env: 'STORAGE_QUOTA_MB',
+    default: 5120,
+    min: 0,
+    max: 1024000,
+    group: 'storage',
+  },
+  {
+    key: 'storage.trashDays',
+    label: 'Trash retention (days)',
+    description:
+      'Deleted documents stay in the trash (and still count toward the quota) for this many days before the maintenance job purges them. Restoring a document re-indexes it.',
+    type: 'number',
+    env: 'STORAGE_TRASH_DAYS',
+    default: 30,
+    min: 0,
+    max: 365,
+    group: 'storage',
   },
   {
     key: 'auth.sessionTtlDays',

@@ -12,6 +12,7 @@ import { enqueueDocumentEmbedding } from '../queues/index.js';
 import { toDocumentDTO } from '../utils/dto.js';
 import { ApiError } from '../utils/errors.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
+import { assertStorageQuota } from './storage.service.js';
 import {
   ingestUrlContent,
   type UrlIngestResult as UrlContent,
@@ -53,6 +54,9 @@ export async function ingestUrlForWorkspace(params: {
     if (err instanceof UnsafeUrlError) throw new ApiError(err.message, 400);
     throw err;
   }
+
+  const sizeBytes = Buffer.byteLength(content.markdown, 'utf8');
+  await assertStorageQuota(params.userId, sizeBytes);
 
   const contentHash = createHash('sha256')
     .update(content.markdown)
@@ -101,6 +105,7 @@ export async function ingestUrlForWorkspace(params: {
         contentHash,
         sourceUrl: content.sourceUrl,
         metadata: content.metadata,
+        sizeBytes,
         status: 'processing',
       })
       .returning();
