@@ -1736,6 +1736,7 @@ try {
           'documents:write',
           'reviews:read',
           'reviews:write',
+          'notes:write',
         ],
       }),
     });
@@ -1747,7 +1748,7 @@ try {
       typeof apiKey === 'string' &&
         apiKey.startsWith('ndx_') &&
         typeof createdData?.prefix === 'string' &&
-        createdData?.scopes?.length === 6,
+        createdData?.scopes?.length === 7,
       { prefix: createdData?.prefix },
     );
 
@@ -1778,9 +1779,14 @@ try {
       'api v1 lists the key owner workspaces',
       workspaces.status === 200 &&
         (workspaces.body?.workspaces ?? []).some(
-          (w: any) => w.id === apiWorkspaceId,
+          (w: any) => w.id === apiWorkspaceId && w.documentCount >= 1,
         ),
-      { count: workspaces.body?.workspaces?.length },
+      {
+        count: workspaces.body?.workspaces?.length,
+        mine: (workspaces.body?.workspaces ?? []).find(
+          (w: any) => w.id === apiWorkspaceId,
+        )?.documentCount,
+      },
     );
 
     const restDocs = await fetchJsonAuth(
@@ -2035,6 +2041,36 @@ try {
       indexedHit?.event === 'document.indexed' &&
         indexedHit?.title === 'webhook-event.txt',
       indexedHit,
+    );
+
+    const note = await fetchJsonAuth(BASE, '/api/v1/notes', {
+      method: 'POST',
+      headers: authHeader,
+      body: JSON.stringify({
+        workspaceId: apiWorkspaceId,
+        title: 'API note',
+        contentMd: 'Captured over REST.',
+      }),
+    });
+    print(
+      'api v1 creates a note with notes:write',
+      note.status === 201 && note.body?.note?.title === 'API note',
+      { status: note.status },
+    );
+
+    const blockedUrl = await fetchJsonAuth(BASE, '/api/v1/urls', {
+      method: 'POST',
+      headers: authHeader,
+      body: JSON.stringify({
+        workspaceId: apiWorkspaceId,
+        url: 'http://127.0.0.1:9/private',
+      }),
+    });
+    print(
+      'api v1 url import is SSRF-guarded',
+      blockedUrl.status === 400 &&
+        /private|link-local/i.test(String(blockedUrl.body?.error)),
+      { status: blockedUrl.status, error: blockedUrl.body?.error },
     );
 
     const notOwned = await fetchJsonAuth(
