@@ -4,23 +4,27 @@ import { z } from 'zod';
 
 import {
   askInputSchema,
+  createNoteInputSchema,
   dueCardsInputSchema,
+  ingestUrlInputSchema,
   reviewCardInputSchema,
   searchQuerySchema,
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
-import { documents, workspaces } from '../db/schema.js';
+import { documents, notes, workspaces } from '../db/schema.js';
 import { authenticateApiKey, requireApiKey } from '../middleware/api-auth.js';
 import {
   ApiError,
   answerQuestion,
+  assertWorkspaceOwner,
   searchWorkspace,
 } from '../services/api.service.js';
 import { toDocumentDTO } from '../utils/dto.js';
 import { upload } from '../utils/multer.config.js';
 import { ingestUpload } from '../services/upload.service.js';
 import { listDueCards, submitCardReview } from '../services/review.service.js';
+import { ingestUrlForWorkspace } from '../services/url-ingest.service.js';
 
 const workspaceQuerySchema = z.object({ workspaceId: z.string().uuid() });
 
@@ -84,8 +88,12 @@ export function apiV1Router(): Router {
             name: workspaces.name,
             description: workspaces.description,
             createdAt: workspaces.createdAt,
+            // Fully qualify the outer column: an interpolated `${workspaces.id}`
+            // renders as a bare `"id"` inside the subquery, which resolves to
+            // `documents.id` and always counts zero.
             documentCount: sql<number>`(
-            SELECT count(*)::int FROM documents d WHERE d.workspace_id = ${workspaces.id}
+            SELECT count(*)::int FROM documents d
+            WHERE d.workspace_id = "workspaces"."id"
           )`,
           })
           .from(workspaces)
@@ -170,6 +178,70 @@ export function apiV1Router(): Router {
       }
     },
   );
+
+  /**
+   * Import a web article or YouTube transcript (the "share target" for
+   * scripts/extensions). Same SSRF guard, dedupe and queue as the UI route.
+   */
+  router.post('/urls', requireApiKey('documents:write'), async (req, res) => {
+    try {
+      const parsed = ingestUrlInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res
+          .status(400)
+          .json({ error: 'workspaceId and an http(s) URL are required' });
+        return;
+      }
+      const result = await ingestUrlForWorkspace({
+        userId: identityOf(req).userId,
+        workspaceId: parsed.data.workspaceId,
+        url: parsed.data.url,
+      });
+      res.status(result.duplicate ? 200 : 201).json(result);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  /** Create a note, e.g. from an MCP client or a capture script. */
+  router.post('/notes', requireApiKey('notes:write'), async (req, res) => {
+    try {
+      const parsed = createNoteInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res
+          .status(400)
+          .json({ error: 'Invalid request', issues: parsed.error.issues });
+        return;
+      }
+      await assertWorkspaceOwner(
+        parsed.data.workspaceId,
+        identityOf(req).userId,
+      );
+      const [created] = await db
+        .insert(notes)
+        .values({
+          workspaceId: parsed.data.workspaceId,
+          title: parsed.data.title,
+          contentMd: parsed.data.contentMd,
+          tags: parsed.data.tags,
+        })
+        .returning();
+      if (!created) throw new ApiError('Could not create the note', 500);
+      res.status(201).json({
+        note: {
+          id: created.id,
+          workspaceId: created.workspaceId,
+          title: created.title,
+          contentMd: created.contentMd,
+          tags: created.tags,
+          createdAt: created.createdAt.toISOString(),
+          updatedAt: created.updatedAt.toISOString(),
+        },
+      });
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
 
   router.get(
     '/reviews/due',

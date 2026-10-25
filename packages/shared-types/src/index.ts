@@ -1092,6 +1092,7 @@ export const apiScopeSchema = z.enum([
   'documents:write',
   'reviews:read',
   'reviews:write',
+  'notes:write',
 ]);
 export type ApiScope = z.infer<typeof apiScopeSchema>;
 
@@ -1103,15 +1104,17 @@ export const API_SCOPES: ApiScope[] = [
   'documents:write',
   'reviews:read',
   'reviews:write',
+  'notes:write',
 ];
 
 export const API_SCOPE_LABELS: Record<ApiScope, string> = {
   search: 'Search the library',
   ask: 'Ask grounded questions',
   'documents:read': 'List documents and workspaces',
-  'documents:write': 'Upload documents',
+  'documents:write': 'Upload documents and import URLs',
   'reviews:read': 'Read due cards',
   'reviews:write': 'Submit reviews',
+  'notes:write': 'Create notes',
 };
 
 export const apiKeyDTOSchema = z.object({

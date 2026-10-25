@@ -1,8 +1,8 @@
 import './utils/env.js';
 
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -33,7 +33,7 @@ import {
   readSessionCookie,
   resolveUser,
 } from './middleware/auth.js';
-import { enqueueDocumentEmbedding, redisConnection } from './queues/index.js';
+import { redisConnection } from './queues/index.js';
 import { requestLogger } from './services/observability/logger.js';
 import {
   metricsHandler,
@@ -48,12 +48,10 @@ import {
   sanitizeForLog,
   upload,
 } from './utils/multer.config.js';
-import { toDocumentDTO } from './utils/dto.js';
 import { ApiError } from './utils/errors.js';
 import { getSettingNumber } from './services/settings.service.js';
 import { isImageFormat, mimeForFormat } from './services/ingestion/magic.js';
-import { ingestUrlContent } from './services/ingestion/url-ingest.js';
-import { UnsafeUrlError } from './services/ingestion/url-fetch.js';
+import { ingestUrlForWorkspace } from './services/url-ingest.service.js';
 import { ingestUpload } from './services/upload.service.js';
 import {
   audioFilePath,
@@ -365,8 +363,6 @@ async function main(): Promise<void> {
     message: { error: 'Too many URL imports, please retry in a minute' },
   });
   app.post('/api/ingest/url', ingestLimiter, async (req, res) => {
-    let storedPath: string | null = null;
-    let success = false;
     try {
       const currentUser = await resolveUser(readSessionCookie(req.headers));
       if (!currentUser) {
@@ -380,112 +376,22 @@ async function main(): Promise<void> {
         });
         return;
       }
-      const [workspace] = await db
-        .select({ id: workspaces.id })
-        .from(workspaces)
-        .where(
-          and(
-            eq(workspaces.id, parsed.data.workspaceId),
-            eq(workspaces.userId, currentUser.id),
-          ),
-        )
-        .limit(1);
-      if (!workspace) {
-        res.status(404).json({ error: 'Workspace not found' });
-        return;
-      }
-
-      let content;
-      try {
-        content = await ingestUrlContent(parsed.data.url);
-      } catch (err) {
-        if (err instanceof UnsafeUrlError) {
-          res.status(400).json({ error: err.message });
-          return;
-        }
-        throw err;
-      }
-
-      const contentHash = createHash('sha256')
-        .update(content.markdown)
-        .digest('hex');
-      const [existing] = await db
-        .select()
-        .from(documents)
-        .where(
-          and(
-            eq(documents.workspaceId, workspace.id),
-            eq(documents.contentHash, contentHash),
-            ne(documents.status, 'failed'),
-          ),
-        )
-        .limit(1);
-      if (existing) {
-        res.status(200).json({
-          document: toDocumentDTO(existing),
-          kind: content.kind,
-          sourceUrl: content.sourceUrl,
-          title: existing.title,
-          wordCount: content.wordCount,
-          duplicate: true,
-        });
-        return;
-      }
-
-      const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
-      await mkdir(workspaceDir, { recursive: true });
-      const finalPath = path.join(workspaceDir, randomUUID());
-      storedPath = finalPath;
-      await writeFile(finalPath, content.markdown, 'utf8');
-      const relativePath = path
-        .relative(UPLOAD_DIR, finalPath)
-        .split(path.sep)
-        .join('/');
-
-      const [created] = await db
-        .insert(documents)
-        .values({
-          workspaceId: workspace.id,
-          title: content.title.slice(0, 300),
-          filePath: relativePath,
-          // The extracted body is Markdown; provenance lives in metadata.
-          fileType: 'md',
-          contentHash,
-          sourceUrl: content.sourceUrl,
-          metadata: content.metadata,
-          status: 'processing',
-        })
-        .returning();
-      if (!created) throw new Error('Failed to create document record');
-
-      try {
-        await enqueueDocumentEmbedding(created.id);
-      } catch (enqueueError) {
-        await db
-          .delete(documents)
-          .where(eq(documents.id, created.id))
-          .catch(() => undefined);
-        throw enqueueError;
-      }
-
-      success = true;
-      res.status(201).json({
-        document: toDocumentDTO(created),
-        kind: content.kind,
-        sourceUrl: content.sourceUrl,
-        title: content.title,
-        wordCount: content.wordCount,
+      const result = await ingestUrlForWorkspace({
+        userId: currentUser.id,
+        workspaceId: parsed.data.workspaceId,
+        url: parsed.data.url,
       });
+      res.status(result.duplicate ? 200 : 201).json(result);
     } catch (err) {
+      if (err instanceof ApiError) {
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
       console.error('[ingest] url failed:', sanitizeForLog(err));
       if (!res.headersSent) {
         res.status(502).json({
           error: friendlyErrorMessage(err) || 'Could not import that URL',
         });
-      }
-    } finally {
-      if (!success && storedPath) {
-        await rm(storedPath, { force: true }).catch(() => undefined);
       }
     }
   });
