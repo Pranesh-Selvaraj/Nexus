@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { createHmac } from 'node:crypto';
+import JSZip from 'jszip';
 
 import '../src/utils/env.js';
 import {
@@ -2119,6 +2120,65 @@ try {
       blockedUrl.status === 400 &&
         /private|link-local/i.test(String(blockedUrl.body?.error)),
       { status: blockedUrl.status, error: blockedUrl.body?.error },
+    );
+
+    // --- zip export (B-5) -----------------------------------------------
+    const zipRes = await fetch(
+      `${BASE}/api/workspaces/${apiWorkspaceId}/export.zip`,
+    );
+    const zipBuffer = Buffer.from(await zipRes.arrayBuffer());
+    print(
+      'workspace export is a zip download',
+      zipRes.status === 200 &&
+        zipRes.headers.get('content-type') === 'application/zip' &&
+        zipBuffer.subarray(0, 2).toString() === 'PK',
+      { status: zipRes.status, bytes: zipBuffer.length },
+    );
+    const zip = await JSZip.loadAsync(zipBuffer);
+    const zipEntries = Object.keys(zip.files);
+    print(
+      'zip contains the manifest, readme and original files',
+      zipEntries.includes('workspace.json') &&
+        zipEntries.includes('README.txt') &&
+        zipEntries.some((entry) => entry.startsWith('documents/')),
+      { entries: zipEntries.slice(0, 6) },
+    );
+    const manifest = JSON.parse(
+      (await zip.file('workspace.json')?.async('string')) ?? '{}',
+    ) as { workspace?: { name?: string }; documents?: unknown[] };
+    print(
+      'zip manifest keeps workspace metadata and conversations',
+      manifest.workspace?.name === 'API Smoke Workspace' &&
+        Array.isArray(manifest.documents),
+    );
+
+    const foreignZip = await fetch(
+      `${BASE}/api/workspaces/00000000-0000-4000-8000-000000000000/export.zip`,
+    );
+    print(
+      'zip export hides workspaces the user does not own',
+      foreignZip.status === 404,
+    );
+
+    // --- admin queue view (P-3) -----------------------------------------
+    const queue = await fetchJson('/trpc/admin.queue', { method: 'GET' });
+    const queueData = queue.body?.result?.data;
+    print(
+      'admin.queue reports job counts',
+      typeof queueData?.counts?.waiting === 'number' &&
+        typeof queueData?.counts?.failed === 'number' &&
+        Array.isArray(queueData?.failed),
+      queueData?.counts,
+    );
+    const retryMissing = await fetchJson('/trpc/admin.retryJob', {
+      method: 'POST',
+      body: JSON.stringify({
+        documentId: '00000000-0000-4000-8000-000000000001',
+      }),
+    });
+    print(
+      'admin.retryJob on an unknown document is NOT_FOUND',
+      retryMissing.body?.error?.data?.code === 'NOT_FOUND',
     );
 
     const notOwned = await fetchJsonAuth(

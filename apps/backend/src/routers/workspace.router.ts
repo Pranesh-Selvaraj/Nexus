@@ -1,4 +1,4 @@
-import { readFile, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import { TRPCError } from '@trpc/server';
@@ -14,14 +14,13 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
-import {
-  conversations,
-  documents,
-  messages,
-  workspaces,
-} from '../db/schema.js';
+import { documents, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
-import { importWorkspaceArchive } from '../services/workspace-archive.service.js';
+import {
+  exportWorkspaceArchive,
+  importWorkspaceArchive,
+} from '../services/workspace-archive.service.js';
+import { ApiError } from '../utils/errors.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
 
 const importWorkspaceInputSchema = z.object({
@@ -172,77 +171,17 @@ export const workspaceRouter = t.router({
   export: protectedProcedure
     .input(workspaceIdSchema)
     .query(async ({ ctx, input }): Promise<WorkspaceArchive> => {
-      const [workspace] = await db
-        .select()
-        .from(workspaces)
-        .where(
-          and(
-            eq(workspaces.id, input.workspaceId),
-            eq(workspaces.userId, ctx.user.id),
-          ),
-        )
-        .limit(1);
-      if (!workspace) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: 'Workspace not found',
-        });
-      }
-
-      const docRows = await db
-        .select()
-        .from(documents)
-        .where(eq(documents.workspaceId, workspace.id));
-
-      const documentsArchive = await Promise.all(
-        docRows.map(async (doc) => {
-          let contentBase64 = '';
-          try {
-            contentBase64 = (
-              await readFile(path.join(UPLOAD_DIR, doc.filePath))
-            ).toString('base64');
-          } catch {
-            // file missing on disk - export metadata only
+      return exportWorkspaceArchive(ctx.user.id, input.workspaceId).catch(
+        (err: unknown) => {
+          if (err instanceof ApiError) {
+            throw new TRPCError({
+              code: err.status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST',
+              message: err.message,
+            });
           }
-          return { title: doc.title, fileType: doc.fileType, contentBase64 };
-        }),
-      );
-
-      const conversationRows = await db
-        .select()
-        .from(conversations)
-        .where(eq(conversations.workspaceId, workspace.id));
-
-      const conversationsArchive = await Promise.all(
-        conversationRows.map(async (conversation) => {
-          const messageRows = await db
-            .select()
-            .from(messages)
-            .where(eq(messages.conversationId, conversation.id))
-            .orderBy(messages.createdAt);
-          return {
-            title: conversation.title,
-            messages: messageRows.map((m) => ({
-              role: m.role,
-              content: m.content,
-              sources: m.sources,
-              usage: m.usage,
-              createdAt: new Date(m.createdAt).toISOString(),
-            })),
-          };
-        }),
-      );
-
-      return {
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        workspace: {
-          name: workspace.name,
-          description: workspace.description,
+          throw err;
         },
-        documents: documentsArchive,
-        conversations: conversationsArchive,
-      };
+      );
     }),
 
   /**

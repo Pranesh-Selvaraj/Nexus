@@ -20,10 +20,6 @@ export function WorkspacePanel({ workspaceId }: Props) {
   );
   const voiceConfig = trpc.voice.config.useQuery(undefined);
   const utils = trpc.useUtils();
-  const exportWorkspace = trpc.workspace.export.useQuery(
-    { workspaceId },
-    { enabled: false, retry: false },
-  );
 
   // Embedding provenance: documents whose chunks were embedded with another
   // model/dimensions/version are flagged so the user can re-index in bulk
@@ -49,24 +45,31 @@ export function WorkspacePanel({ workspaceId }: Props) {
 
   async function handleExport() {
     try {
-      const data = await exportWorkspace.refetch();
-      if (!data.data) return;
-      const blob = new Blob([JSON.stringify(data.data, null, 2)], {
-        type: 'application/json',
+      // Zip export (B-5): manifest + original files, streamed by the API.
+      const res = await fetch(`/api/workspaces/${workspaceId}/export.zip`, {
+        credentials: 'same-origin',
       });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(body?.error ?? `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition') ?? '';
+      const fileName =
+        /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'nexus-workspace.zip';
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const safeName = data.data.workspace.name
-        .replace(/[^a-z0-9-_]+/gi, '-')
-        .toLowerCase();
-      a.href = url;
-      a.download = `nexus-${safeName || 'workspace'}-${new Date()
-        .toISOString()
-        .slice(0, 10)}.json`;
-      a.click();
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
       URL.revokeObjectURL(url);
-    } catch {
-      toast.push({ kind: 'error', message: 'Export failed' });
+    } catch (err) {
+      toast.push({
+        kind: 'error',
+        message: `Export failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
     }
   }
 
@@ -136,19 +139,11 @@ export function WorkspacePanel({ workspaceId }: Props) {
           <div className="border-t border-zinc-800 p-3">
             <button
               onClick={() => void handleExport()}
-              disabled={exportWorkspace.isFetching}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-700 py-2 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-700 py-2 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800"
             >
               <DownloadIcon className="h-3.5 w-3.5" />
-              {exportWorkspace.isFetching
-                ? 'Exporting...'
-                : 'Export workspace (backup)'}
+              Export workspace (.zip)
             </button>
-            {exportWorkspace.isError && (
-              <p className="mt-2 text-center text-[11px] text-red-400">
-                Export failed
-              </p>
-            )}
           </div>
         </aside>
       </div>

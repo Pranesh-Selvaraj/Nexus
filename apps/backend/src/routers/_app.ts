@@ -1,3 +1,4 @@
+import { adminRouter } from './admin.router.js';
 import { apiKeyRouter } from './api-key.router.js';
 import { artifactsRouter } from './artifacts.router.js';
 import { chatRouter } from './chat.router.js';
@@ -31,6 +32,7 @@ export const appRouter = t.router({
       vision: await visionConfig(),
     })),
   }),
+  admin: adminRouter,
   apiKey: apiKeyRouter,
   webhook: webhookRouter,
   storage: storageRouter,

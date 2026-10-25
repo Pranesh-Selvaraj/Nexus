@@ -476,8 +476,10 @@ The same REST surface powers three first-class clients, all authenticated with a
 
 ### Storage, trash and backups
 
+- **Indexing queue admin.** Settings → Indexing queue shows waiting/active/delayed/failed/completed counts and every failed job with its document, error and attempt count, plus Retry and Drop. The counts refresh every five seconds; they are the same BullMQ queue the worker drains, so a stuck document can be requeued without restarting anything.
 - **Quota.** `storage.quotaMb` (default 5 GB, 0 disables it) caps the bytes a user can store. Uploads and URL imports are refused with a `413` before anything is written; trashed documents still count until they are purged. **Settings → Storage** shows the used/quota bar and the largest workspaces.
 - **Trash instead of delete.** Deleting a document removes its chunks immediately (so retrieval can never cite it) but keeps the row and file for `storage.trashDays` (default 30). The library toast offers **Undo**, and **Show trash** lists restorable documents plus **Empty trash permanently**. Restoring re-queues indexing from the stored file. The nightly maintenance job purges expired trash, including the file.
+- **Workspace export.** The library's **Export workspace (.zip)** button downloads a zip with `workspace.json` (metadata, document manifest, conversations), `README.txt` and the original stored files under `documents/`. It is owner-scoped and capped at 300 MB per archive; the JSON archive over `workspace.export` remains the round-trip format used by import.
 - **Backups.** `pnpm --filter @nexus/backend backup` writes a custom-format `pg_dump` to `BACKUP_DIR` (default `./backups`), prunes files past `BACKUP_RETENTION_DAYS` (default 7) and fails loudly when `pg_dump` is missing or the dump is empty. Set `BACKUP_ENABLED=true` to run the same backup from the nightly maintenance job. The backend image includes `postgresql-client`; from a source checkout install it (or point `PG_DUMP_BIN` at the binary).
 - **Restore drill** (run it before you need it):
 

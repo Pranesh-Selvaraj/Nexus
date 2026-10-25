@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { trpc } from '../../lib/trpc';
 import { ApiKeysCard } from './ApiKeysCard';
+import { JobsCard } from './JobsCard';
 import { StorageCard } from './StorageCard';
 import { WebhooksCard } from './WebhooksCard';
 
@@ -382,6 +383,7 @@ export function SettingsPanel() {
         <ApiKeysCard />
         <WebhooksCard />
         <StorageCard />
+        <JobsCard />
 
         {error && (
           <p className="mb-4 rounded-lg bg-red-950/40 px-4 py-2 text-sm text-red-400">

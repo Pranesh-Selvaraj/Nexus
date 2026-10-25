@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+
+import JSZip from 'jszip';
+import { and, eq } from 'drizzle-orm';
 
 import type { WorkspaceArchive, WorkspaceDTO } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { ApiError } from '../utils/errors.js';
 import {
   conversations,
   documents,
@@ -14,6 +18,147 @@ import {
 import { enqueueDocumentEmbedding } from '../queues/index.js';
 import { ALLOWED_EXTENSIONS } from '../utils/multer.config.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
+
+/**
+ * Build the JSON archive for a workspace the caller owns. Shared by the tRPC
+ * export (still used for programmatic round-trips) and the zip download.
+ */
+export async function exportWorkspaceArchive(
+  userId: string,
+  workspaceId: string,
+): Promise<WorkspaceArchive> {
+  const [workspace] = await db
+    .select()
+    .from(workspaces)
+    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
+    .limit(1);
+  if (!workspace) throw new ApiError('Workspace not found', 404);
+
+  const docRows = await db
+    .select()
+    .from(documents)
+    .where(eq(documents.workspaceId, workspace.id));
+  const documentsArchive = await Promise.all(
+    docRows.map(async (doc) => {
+      let contentBase64 = '';
+      try {
+        contentBase64 = (
+          await readFile(path.join(UPLOAD_DIR, doc.filePath))
+        ).toString('base64');
+      } catch {
+        // file missing on disk - export metadata only
+      }
+      return { title: doc.title, fileType: doc.fileType, contentBase64 };
+    }),
+  );
+
+  const conversationRows = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.workspaceId, workspace.id));
+  const conversationsArchive = await Promise.all(
+    conversationRows.map(async (conversation) => {
+      const messageRows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversation.id))
+        .orderBy(messages.createdAt);
+      return {
+        title: conversation.title,
+        messages: messageRows.map((message) => ({
+          role: message.role,
+          content: message.content,
+          sources: message.sources,
+          usage: message.usage,
+          createdAt: new Date(message.createdAt).toISOString(),
+        })),
+      };
+    }),
+  );
+
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    workspace: {
+      name: workspace.name,
+      description: workspace.description,
+    },
+    documents: documentsArchive,
+    conversations: conversationsArchive,
+  };
+}
+
+/** Upper bound for one zip export (decoded bytes), to keep memory sane. */
+const MAX_ZIP_BYTES = 300 * 1024 * 1024;
+
+function safeFileName(name: string, fallback: string): string {
+  const cleaned = name
+    .replace(/[^\p{L}\p{N}._-]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return cleaned || fallback;
+}
+
+/**
+ * Zip export (B-5): the manifest plus the original stored files, so a user can
+ * read their library without Nexus. The manifest omits the base64 payloads
+ * (the files are the payload); conversations and metadata stay in JSON.
+ */
+export async function buildWorkspaceZip(
+  userId: string,
+  workspaceId: string,
+): Promise<{ buffer: Buffer; fileName: string }> {
+  const archive = await exportWorkspaceArchive(userId, workspaceId);
+  const zip = new JSZip();
+
+  let totalBytes = 0;
+  const documents = archive.documents.map((document, index) => {
+    const content = Buffer.from(document.contentBase64, 'base64');
+    totalBytes += content.length;
+    if (totalBytes > MAX_ZIP_BYTES) {
+      throw new ApiError(
+        'This workspace is too large to export as one zip (300 MB limit). Export individual documents or use the JSON API.',
+        413,
+      );
+    }
+    const fileName = `${String(index + 1).padStart(4, '0')}-${safeFileName(
+      document.title,
+      'document',
+    )}`;
+    if (content.length > 0) zip.file(`documents/${fileName}`, content);
+    return {
+      ...document,
+      contentBase64: undefined,
+      file: `documents/${fileName}`,
+    };
+  });
+
+  zip.file(
+    'workspace.json',
+    JSON.stringify({ ...archive, documents }, null, 2),
+  );
+  zip.file(
+    'README.txt',
+    [
+      `Nexus workspace export: ${archive.workspace.name}`,
+      `Exported at: ${archive.exportedAt}`,
+      '',
+      'Contents:',
+      '- workspace.json  workspace metadata, documents manifest and conversations',
+      '- documents/      the original stored files (as ingested)',
+      '',
+      'The JSON export (GET /trpc/workspace.export) remains the round-trip',
+      'format used by the import endpoint; this zip is for reading and backup.',
+    ].join('\n'),
+  );
+
+  const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+  const fileName = `nexus-${safeFileName(
+    archive.workspace.name.toLowerCase(),
+    'workspace',
+  )}-${new Date().toISOString().slice(0, 10)}.zip`;
+  return { buffer, fileName };
+}
 
 /** Sanity limits for archives restored from untrusted JSON. */
 export interface ArchiveLimits {
