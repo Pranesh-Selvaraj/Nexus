@@ -22,5 +22,8 @@ Open an article (or a YouTube video with captions), click the Nexus icon and
 `document.indexed` webhook fires if one is configured.
 
 Security notes: the key is stored in `chrome.storage.local` on your machine and
-only sent to the Nexus URL you configure. Leave `WEBHOOK_ALLOW_PRIVATE_HOSTS`
-and `INGEST_ALLOW_PRIVATE_HOSTS` off in any internet-facing deployment.
+only sent to the Nexus URL you configure. Host access is **optional** and
+requested per origin on first use (the extension does not get access to every
+site you visit), and the page content never passes through the extension — only
+its URL. Leave `WEBHOOK_ALLOW_PRIVATE_HOSTS` and `INGEST_ALLOW_PRIVATE_HOSTS`
+off in any internet-facing deployment.

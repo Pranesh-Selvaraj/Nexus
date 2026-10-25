@@ -10,6 +10,22 @@ const els = {
 
 let currentUrl = '';
 
+/**
+ * Host access is optional and requested only for the Nexus origin the user
+ * configured, on a click. The extension never asks for access to every site.
+ */
+async function ensureHostPermission(base) {
+  let origin;
+  try {
+    origin = `${new URL(base).origin}/*`;
+  } catch {
+    setStatus('Enter a valid Nexus URL', 'error');
+    return false;
+  }
+  if (await chrome.permissions.contains({ origins: [origin] })) return true;
+  return chrome.permissions.request({ origins: [origin] });
+}
+
 function setStatus(message, kind = '') {
   els.status.textContent = message;
   els.status.className = kind;
@@ -34,6 +50,10 @@ async function loadWorkspaces(selected) {
   setStatus('Loading workspaces…');
   try {
     const base = els.baseUrl.value.replace(/\/$/, '');
+    if (!(await ensureHostPermission(base))) {
+      setStatus('Permission to reach that Nexus URL was declined', 'error');
+      return;
+    }
     const res = await fetch(`${base}/api/v1/workspaces`, {
       headers: { authorization: `Bearer ${els.apiKey.value}` },
     });
@@ -69,6 +89,10 @@ els.save.addEventListener('click', async () => {
   const workspaceId = els.workspaceId.value;
   if (!workspaceId) {
     setStatus('Pick a workspace first', 'error');
+    return;
+  }
+  if (!(await ensureHostPermission(base))) {
+    setStatus('Permission to reach that Nexus URL was declined', 'error');
     return;
   }
   await chrome.storage.local.set({ baseUrl: base, apiKey, workspaceId });
