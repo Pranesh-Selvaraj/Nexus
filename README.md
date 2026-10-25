@@ -29,7 +29,11 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 ## Features
 
 - 📁 **Workspaces** — organize documents into isolated workspaces.
-- 📤 **Document ingestion** — upload PDF, DOCX, TXT, Markdown, CSV, and JSON files (up to 25 MB each).
+- 📤 **Anything you already read** — PDF, EPUB (chapter/section structure), DOCX, PPTX, XLSX, ODT, RTF, HTML, Markdown, plain text, CSV/JSON, subtitles (SRT/VTT), ZIP archives (with zip-bomb limits) and audio/video files (transcribed with the same STT pipeline as dictation), up to 25 MB each by default.
+- 🌐 **Web articles and YouTube** — paste a URL in the library to import an article (Readability extraction) or a YouTube transcript. The fetch is SSRF-safe: hostnames are resolved and every resolved address is checked, loopback/private/link-local/cloud-metadata ranges are refused, the connection is pinned to the validated address, redirects are capped and the response body is size-capped.
+- 🖼️ **Images and scanned pages** — PNG/JPEG/WebP/GIF/TIFF/BMP images and PDFs without a text layer are OCR'd with the system `tesseract` binary (and `pdftoppm` for PDF pages) and, when a vision model is configured, described by it. The description plus the OCR text are what retrieval searches, so a photographed diagram or a scanned page is as citable as a text file.
+- 👁️ **Vision chat and art/diagram analysis** — attach up to four library images to a question; the answer cites the image like any other source. Dedicated **art critique**, **diagram** and **equation** modes change the instruction (composition/context, components/flows, or LaTeX transcription), and any image can be analysed on demand from its library card.
+- 🧬 **Duplicate detection and provenance** — the upload's bytes are hashed (sha256) and the file type is decided from magic bytes, not the extension; re-uploading the same file into a workspace returns the existing document instead of indexing it twice, and every document records its detected format, table of contents, word count, reading time and OCR/vision/transcript provenance.
 - 🔄 **Queue-based indexing** — documents are chunked and embedded by a background BullMQ worker, so the API stays responsive.
 - 🔍 **Hybrid search** — combines vector similarity (pgvector) with keyword search for robust retrieval, with a Redis query-embedding cache (24h TTL) so repeated questions skip the embedding round-trip.
 - 💬 **RAG chat** — streamed, context-grounded answers over WebSocket, with per-answer **token usage** and LLM-generated conversation titles.
@@ -40,6 +44,28 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 - 📚 **Language learning** — mine vocabulary from any passage into spaced-repetition cards with translations, score dictation and pronunciation per word, and track a CEFR estimate for reading, writing, listening and speaking.
 - 🔐 **Optional authentication** — set `AUTH_PASSWORD` for a login screen with httpOnly session cookies (expired sessions are purged daily); unset for single-user dev mode.
 - 🧱 **Monorepo** — pnpm workspaces + Turborepo for fast, cached builds.
+
+### Ingestion formats
+
+| Family        | Formats                                                   | How the text is obtained                                                          |
+| ------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Documents     | PDF, DOCX, PPTX, XLSX, ODT, RTF, HTML, TXT, MD, CSV, JSON | Format-specific parser with structure (pages, slides, sheets, headings, TOC)      |
+| Books         | EPUB                                                      | Spine order + chapter/section headings, kept as the document's table of contents  |
+| Containers    | EPUB, PPTX, XLSX, ODT, ZIP                                | Unzipped under entry/size/ratio/depth limits so a zip bomb cannot exhaust the box |
+| Subtitles     | SRT, VTT                                                  | Cue text with timestamps                                                          |
+| Audio / video | MP3, WAV, OGG, FLAC, M4A, AAC, WebM, MP4, MOV             | The existing STT pipeline (`whisper-1`, `gpt-4o-transcribe`, or a local sidecar)  |
+| Images        | PNG, JPEG, WebP, GIF, TIFF, BMP                           | OCR text + vision description (whichever is available)                            |
+| Scanned PDFs  | PDF                                                       | Automatic detection of a missing text layer, then OCR of the leading pages        |
+| Web           | `http(s)://` article URLs                                 | Readability extraction behind the SSRF-safe fetcher                               |
+| YouTube       | Watch/shorts/youtu.be URLs                                | Caption track (timed text), no API key                                            |
+
+OCR is optional. The backend uses the **system** `tesseract` binary (and `pdftoppm` from poppler for PDF pages) rather than a bundled WASM build, so no language data is downloaded at runtime and air-gapped installs keep working. The published backend image already includes both; for a source checkout or an unusual base image install them yourself:
+
+```bash
+apt-get install -y tesseract-ocr poppler-utils   # Debian/Ubuntu
+```
+
+When OCR is unavailable, ingestion still works: images fall back to the vision model, and a scanned PDF fails with an actionable message instead of creating an empty document. Vision itself is a provider capability — enable it in **Settings → Vision** and point it at any model that accepts images (the OpenAI multimodal models, or a local VLM served over an OpenAI-compatible endpoint).
 
 ## Architecture
 
@@ -187,37 +213,58 @@ git tag -a v0.4.6 -m "Nexus v0.4.6" && git push origin v0.4.6
 
 All variables live in `.env` (see `.env.example`). The backend auto-discovers `.env` at the repo root or package root.
 
-| Variable                    | Default                                       | Description                                                                                                                                           |
-| --------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`              | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string                                                                                                               |
-| `REDIS_URL`                 | `redis://localhost:6379`                      | Redis connection string (BullMQ)                                                                                                                      |
-| `OPENAI_API_KEY`            | —                                             | OpenAI API key (required only without a base URL)                                                                                                     |
-| `OPENAI_BASE_URL`           | _(unset)_                                     | OpenAI-compatible base URL for chat (Ollama, OpenCode Zen, LM Studio, OpenRouter, ...) - enables keyless local mode                                   |
-| `OPENAI_MODEL`              | `gpt-4o-mini`                                 | Chat model                                                                                                                                            |
-| `OPENAI_EMBEDDING_MODEL`    | `text-embedding-3-small`                      | Embedding model                                                                                                                                       |
-| `OPENAI_EMBEDDING_BASE_URL` | _(unset)_                                     | OpenAI-compatible base URL for a separate embedding provider (required for chat-only providers such as OpenCode Zen); falls back to `OPENAI_BASE_URL` |
-| `OPENAI_EMBEDDING_API_KEY`  | —                                             | API key for the embedding provider; falls back to `OPENAI_API_KEY`                                                                                    |
-| `OPENAI_STT_MODEL`          | `whisper-1`                                   | Server transcription model (`whisper-1`, `gpt-4o-transcribe`, ...)                                                                                    |
-| `OPENAI_STT_BASE_URL`       | _(unset)_                                     | Optional dedicated transcription endpoint; falls back to `OPENAI_BASE_URL`                                                                            |
-| `OPENAI_STT_API_KEY`        | —                                             | Optional transcription key; falls back to `OPENAI_API_KEY`                                                                                            |
-| `OPENAI_TTS_MODEL`          | `tts-1`                                       | Server speech-synthesis model                                                                                                                         |
-| `OPENAI_TTS_VOICE`          | `alloy`                                       | Default read-aloud voice (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`)                                                                        |
-| `OPENAI_TTS_BASE_URL`       | _(unset)_                                     | Optional dedicated speech-synthesis endpoint; falls back to `OPENAI_BASE_URL`                                                                         |
-| `OPENAI_TTS_API_KEY`        | —                                             | Optional speech key; falls back to `OPENAI_API_KEY`                                                                                                   |
-| `STT_LANGUAGE`              | `auto`                                        | Default dictation language (BCP-47 tag or `auto` to detect)                                                                                           |
-| `WHISPER_LOCAL_URL`         | _(unset)_                                     | Optional local faster-whisper (OpenAI-compatible) fallback used when the primary transcription provider fails                                         |
-| `AUDIO_RETENTION_DAYS`      | `7`                                           | Delete cached speech and retained recordings after this many days (`0` keeps them until the quota evicts)                                             |
-| `AUDIO_MAX_STORAGE_MB`      | `200`                                         | Per-user audio cache cap; the oldest assets are evicted first                                                                                         |
-| `MAX_AUDIO_MB`              | `25`                                          | Per-recording upload cap for dictation and pronunciation                                                                                              |
-| `LOCAL_USER_EMAIL`          | `local@nexus.dev`                             | Identity of the single local user                                                                                                                     |
-| `AUTH_PASSWORD`             | _(unset)_                                     | When set, login is required (httpOnly session cookie); unset = no-auth dev mode                                                                       |
-| `AUTH_COOKIE_SECURE`        | `false`                                       | `true` when serving over HTTPS (adds `Secure` to the session cookie)                                                                                  |
-| `SESSION_TTL_DAYS`          | `30`                                          | Session lifetime in days                                                                                                                              |
-| `PORT`                      | `3000`                                        | Backend HTTP/WS port                                                                                                                                  |
-| `UPLOAD_DIR`                | `./uploads`                                   | Directory for uploaded documents                                                                                                                      |
-| `MAX_UPLOAD_MB`             | `25`                                          | Per-file upload size limit                                                                                                                            |
-| `MAX_IMPORT_MB`             | `100`                                         | Workspace archive import size limit (multipart JSON upload)                                                                                           |
-| `FRONTEND_ORIGIN`           | `http://localhost:5173`                       | Allowed CORS origin                                                                                                                                   |
+| Variable                     | Default                                       | Description                                                                                                                                           |
+| ---------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`               | `postgres://nexus:nexus@localhost:5432/nexus` | PostgreSQL + pgvector connection string                                                                                                               |
+| `REDIS_URL`                  | `redis://localhost:6379`                      | Redis connection string (BullMQ)                                                                                                                      |
+| `OPENAI_API_KEY`             | —                                             | OpenAI API key (required only without a base URL)                                                                                                     |
+| `OPENAI_BASE_URL`            | _(unset)_                                     | OpenAI-compatible base URL for chat (Ollama, OpenCode Zen, LM Studio, OpenRouter, ...) - enables keyless local mode                                   |
+| `OPENAI_MODEL`               | `gpt-4o-mini`                                 | Chat model                                                                                                                                            |
+| `OPENAI_EMBEDDING_MODEL`     | `text-embedding-3-small`                      | Embedding model                                                                                                                                       |
+| `OPENAI_EMBEDDING_BASE_URL`  | _(unset)_                                     | OpenAI-compatible base URL for a separate embedding provider (required for chat-only providers such as OpenCode Zen); falls back to `OPENAI_BASE_URL` |
+| `OPENAI_EMBEDDING_API_KEY`   | —                                             | API key for the embedding provider; falls back to `OPENAI_API_KEY`                                                                                    |
+| `OPENAI_STT_MODEL`           | `whisper-1`                                   | Server transcription model (`whisper-1`, `gpt-4o-transcribe`, ...)                                                                                    |
+| `OPENAI_STT_BASE_URL`        | _(unset)_                                     | Optional dedicated transcription endpoint; falls back to `OPENAI_BASE_URL`                                                                            |
+| `OPENAI_STT_API_KEY`         | —                                             | Optional transcription key; falls back to `OPENAI_API_KEY`                                                                                            |
+| `OPENAI_TTS_MODEL`           | `tts-1`                                       | Server speech-synthesis model                                                                                                                         |
+| `OPENAI_TTS_VOICE`           | `alloy`                                       | Default read-aloud voice (`alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`)                                                                        |
+| `OPENAI_TTS_BASE_URL`        | _(unset)_                                     | Optional dedicated speech-synthesis endpoint; falls back to `OPENAI_BASE_URL`                                                                         |
+| `OPENAI_TTS_API_KEY`         | —                                             | Optional speech key; falls back to `OPENAI_API_KEY`                                                                                                   |
+| `STT_LANGUAGE`               | `auto`                                        | Default dictation language (BCP-47 tag or `auto` to detect)                                                                                           |
+| `OPENAI_VISION_MODEL`        | _(falls back to the chat model)_              | Model used for image requests (must accept images, e.g. `gpt-4o-mini`)                                                                                |
+| `OPENAI_VISION_BASE_URL`     | _(falls back to `OPENAI_BASE_URL`)_           | Optional dedicated vision endpoint (local VLM, separate provider)                                                                                     |
+| `OPENAI_VISION_API_KEY`      | —                                             | Optional vision key; falls back to `OPENAI_API_KEY`                                                                                                   |
+| `VISION_MAX_IMAGE_MB`        | `10`                                          | Largest image accepted for vision analysis (also caps the bytes sent per request)                                                                     |
+| `OCR_ENABLED`                | `true`                                        | Run OCR on images and PDFs without a text layer; needs `tesseract-ocr` (and `poppler-utils` for PDFs)                                                 |
+| `OCR_LANGUAGES`              | `eng`                                         | Tesseract language codes joined with `+` (`eng`, `deu`, `eng+spa`); extra languages need the matching traineddata                                     |
+| `OCR_MAX_PAGES`              | `30`                                          | Pages rasterized and OCR'd per scanned PDF                                                                                                            |
+| `OCR_TIMEOUT_MS`             | `60000`                                       | Wall-clock cap for one OCR invocation                                                                                                                 |
+| `TESSERACT_BIN`              | `tesseract`                                   | Path to the tesseract binary (useful for containers or unusual installs)                                                                              |
+| `PDF_RASTER_BIN`             | `pdftoppm`                                    | Path to poppler's `pdftoppm` used to rasterize scanned PDFs                                                                                           |
+| `INGEST_MAX_BYTES`           | `5`                                           | Cap in MB for a URL-ingestion response body                                                                                                           |
+| `INGEST_MAX_REDIRECTS`       | `3`                                           | Redirects followed during URL ingestion (each hop is re-validated)                                                                                    |
+| `INGEST_TIMEOUT_MS`          | `20000`                                       | Wall-clock budget for one URL ingestion hop                                                                                                           |
+| `INGEST_ALLOW_PRIVATE_HOSTS` | `false`                                       | **Test/self-host override**: allows URL ingestion from private addresses. Keep it off in any deployment that can reach the internet                   |
+| `MAX_ZIP_ENTRIES`            | `500`                                         | Entry cap for zip-style containers (EPUB/PPTX/XLSX/ODT/ZIP)                                                                                           |
+| `MAX_UNCOMPRESSED_MB`        | `200`                                         | Total uncompressed size cap across a container                                                                                                        |
+| `MAX_ZIP_ENTRY_MB`           | `50`                                          | Uncompressed cap for a single container entry                                                                                                         |
+| `MAX_ZIP_RATIO`              | `100`                                         | Uncompressed:compressed ratio above which a container is treated as a zip bomb                                                                        |
+| `MAX_ZIP_DEPTH`              | `1`                                           | Nested-container depth allowed while parsing                                                                                                          |
+| `PARSER_TIMEOUT_MS`          | `60000`                                       | Wall-clock cap for one document parser                                                                                                                |
+| `MAX_TEXT_CHARS`             | `4000000`                                     | Extracted text kept per document (protects embeddings and the database)                                                                               |
+| `WHISPER_LOCAL_URL`          | _(unset)_                                     | Optional local faster-whisper (OpenAI-compatible) fallback used when the primary transcription provider fails                                         |
+| `AUDIO_RETENTION_DAYS`       | `7`                                           | Delete cached speech and retained recordings after this many days (`0` keeps them until the quota evicts)                                             |
+| `AUDIO_MAX_STORAGE_MB`       | `200`                                         | Per-user audio cache cap; the oldest assets are evicted first                                                                                         |
+| `MAX_AUDIO_MB`               | `25`                                          | Per-recording upload cap for dictation and pronunciation                                                                                              |
+| `LOCAL_USER_EMAIL`           | `local@nexus.dev`                             | Identity of the single local user                                                                                                                     |
+| `AUTH_PASSWORD`              | _(unset)_                                     | When set, login is required (httpOnly session cookie); unset = no-auth dev mode                                                                       |
+| `AUTH_COOKIE_SECURE`         | `false`                                       | `true` when serving over HTTPS (adds `Secure` to the session cookie)                                                                                  |
+| `SESSION_TTL_DAYS`           | `30`                                          | Session lifetime in days                                                                                                                              |
+| `PORT`                       | `3000`                                        | Backend HTTP/WS port                                                                                                                                  |
+| `UPLOAD_DIR`                 | `./uploads`                                   | Directory for uploaded documents                                                                                                                      |
+| `MAX_UPLOAD_MB`              | `25`                                          | Per-file upload size limit                                                                                                                            |
+| `MAX_IMPORT_MB`              | `100`                                         | Workspace archive import size limit (multipart JSON upload)                                                                                           |
+| `FRONTEND_ORIGIN`            | `http://localhost:5173`                       | Allowed CORS origin                                                                                                                                   |
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
 
@@ -305,6 +352,7 @@ Most configuration can be managed from the **Settings** page in the UI (sidebar 
 | **Text model** | the provider that **answers questions**: endpoint presets (OpenAI, OpenCode Zen/Go, OpenRouter, Groq) or any custom OpenAI-compatible endpoint, API key, chat model (fetch the list from the endpoint), temperature                    |
 | **Embeddings** | the provider that **indexes documents and encodes questions**: endpoint presets (OpenAI, Ollama, Jina, Mistral) or a custom endpoint, API key, embedding model, **embedding dimensions** (any value, e.g. 2560 for qwen3-embedding:4b) |
 | Retrieval      | chunk size, chunk overlap, sources retrieved (top-K), vector/keyword weights, **search language** (28 PostgreSQL FTS configs)                                                                                                          |
+| Vision         | enable vision, vision model / base URL / API key, max image size, OCR on/off and OCR languages                                                                                                                                         |
 | Voice          | speech-to-text engine (browser/server) and language, dedicated transcription/speech endpoints and keys, default read-aloud voice and speed, send-after-dictation, correction policy, audio retention days and storage cap              |
 | Language       | target language, native language, starting CEFR level (the per-skill estimate is computed from practice)                                                                                                                               |
 | Server         | max upload size                                                                                                                                                                                                                        |
@@ -328,6 +376,8 @@ apps/
   frontend/         React + Vite SPA (tRPC client, workspaces, upload, chat)
 packages/
   shared-types/     Shared DTO types between apps
+docs/
+  decisions/        Architecture decision records (ingestion, vision, ...)
 .github/
   workflows/        CI, CodeQL, release
   dependabot.yml    Automated dependency update PRs
