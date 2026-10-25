@@ -64,11 +64,13 @@ test('image ingestion, vision analysis, vision chat and url import', async ({
   await page.goto('/');
 
   // --- workspace --------------------------------------------------------
-  await page.getByRole('button', { name: 'New workspace' }).click();
-  await page.getByPlaceholder('Workspace name').fill('E2E Ingestion');
+  await page.getByRole('button', { name: 'New topic' }).click();
+  await page
+    .getByPlaceholder('e.g. Spanish B1, Linear algebra, Art history')
+    .fill('E2E Ingestion');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: /E2E Ingestion/ }).first(),
+    page.getByRole('heading', { level: 1, name: 'E2E Ingestion' }).first(),
   ).toBeVisible();
 
   // --- image upload: format comes from the bytes ------------------------

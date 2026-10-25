@@ -6,6 +6,44 @@ Releases are listed newest first. Every release uses the same layout: a `## [X.Y
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-10-25
+
+Nexus is now a learning portal rather than a document chat tool. The app opens on a universal dashboard, topics replace workspaces as the primary object, and every topic is organised around four ways to learn: Learn, Practice, Voice and Language. The underlying features are the same ones from the previous phases — the rewrite is the navigation, the framing and the dashboard that makes them feel like a course, not a file manager.
+
+### ✨ Added
+
+- 🏠 **Universal learning dashboard.** Home aggregates everything the learner owns: topics, sources, cards due now, reviews completed today and words ingested, a "Continue learning" grid with due badges, a suggested next step (the topic with the most due cards), suggested activities (ask, make flashcards, take a quiz, practise a language) and the most recently added sources. Backed by one new `dashboard.overview` endpoint instead of N per-workspace calls.
+- 🗂️ **Topics as the primary object.** A `Topics` gallery lists every learning space with its source count and due work, searchable, with inline creation (name plus an optional learning goal) and backup import. The sidebar keeps a quick topic list, so switching subjects is one click from anywhere.
+- 🧭 **Topic page with four learning modes.** Each topic has **Learn** (grounded chat plus a Sources rail for uploads, URLs and the library), **Practice** (study dashboard, flashcards, quizzes, studio artifacts and notes), **Voice** (push-to-talk tutor) and **Language** (vocabulary, dictation, pronunciation, CEFR progress), with Share, Export, re-index and Delete in the topic header.
+- 📊 **A dashboard aggregate with real numbers.** `dashboard.overview` returns per-topic source/due/processing counts, total documents, due cards, reviews today, words ingested and the six most recent documents, so the portal can answer "what should I do now?" without a round-trip per topic.
+- 📱 **A responsive shell.** Sidebar navigation on desktop, an off-canvas drawer and compact header on mobile, and an accessible learning-modes navigation (`aria-label="Learning modes"`) on every topic.
+
+### 🔧 Changed
+
+- 🧱 **Workspaces are presented as topics throughout the shell** (the API and database keep the workspace name, so integrations and existing data are unaffected). Creating a topic opens it directly; the old "select or create a workspace" empty state is gone.
+- 💬 **Chat and sources no longer compete for the main column.** The Sources rail (upload, URL import, document cards, trash) lives on the Learn mode; Practice, Voice and Language get the full width.
+- ⏳ **Chat stays mounted across mode switches**, so a streamed answer or an in-flight request survives moving to Practice and back.
+- 🧪 **Test suites and the visual harness were retargeted** to the new navigation and wording (create topic, Learn/Practice/Voice/Language, dashboard first), rather than papering over the change with compatibility labels.
+- 📝 **Documentation** now leads with the portal model: a new "learning portal" section, a decision record (ADR 0004) for the shell, and refreshed feature copy.
+
+### 🔒 Security
+
+- 🔐 **The rewrite changes no authorization surface.** Every mode uses the same authenticated tRPC procedures as before; the only public route remains the capability share page, which is rendered outside the authenticated shell exactly as before.
+- 📉 **The dashboard aggregate is owner-scoped.** `dashboard.overview` filters workspaces, documents, decks and reviews by `workspaces.user_id`, so a multi-account deployment cannot see another learner's summary.
+
+### 🐛 Fixed
+
+- 🧭 **There was no cross-topic view of due work,** so learners had to open each workspace to discover what needed review; the dashboard and topic badges surface it directly.
+- 🗂️ **The old sidebar mixed conversation history, workspaces and settings in one column,** which scaled poorly and made source management fight the chat for space; the new shell separates navigation (topics), learning modes and the sources rail.
+- ♿ **The learning-mode navigation is labelled for assistive technology** (`Learning modes`), and the previous ambiguity where a "Mode" label collided with the persona selector was resolved with exact labelling.
+
+### 📝 Notes
+
+- 🧪 **Verification:** 266 unit tests, smoke **159/159** (including a `dashboard.overview` aggregate assertion: topics/documents/due/recent shape and the API workspace counted), **5/5** Playwright suites (updated to the new navigation: create topic → Learn → Practice → Voice/Language, offline review, sharing), and **55** visual captures against the new shell with 0 failed steps (dashboard, topics, topic modes, library rail, settings, queue, sharing, offline, mobile). `typecheck`, `lint`, `format:check`, `build` and `pnpm audit` are clean.
+- 🗄️ **No database migration.** The dashboard reads existing tables; "topic" is a presentation name for a workspace.
+- ⏳ **Deliberately deferred:** in-app URLs/deep links for topics and conversations (state-based navigation still), a dedicated library mode beyond the Sources rail, onboarding tours, theme switching, and the remaining collaboration work (memberships/roles, comments, audit log) and domain packs from the previous phase plan.
+- 🎨 **Visual language:** dark zinc surfaces with an indigo accent retained, but spacing, headings, cards and empty states were reworked for a calmer reading and study experience; all previously shipped screens (settings, API keys, webhooks, storage, queue, sharing, offline) are reachable and unchanged in behaviour.
+
 ## [0.4.10] - 2026-10-25
 
 Phase 7 starts the collaboration track with read-only sharing: any workspace can be published as a capability link that lets someone read the library and ask grounded questions without an account — and that cannot modify anything. Token-based sharing is deliberately the first step before memberships and roles, because it adds a new surface instead of rewriting every existing ownership query.

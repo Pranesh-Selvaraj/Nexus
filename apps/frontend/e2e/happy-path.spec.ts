@@ -12,15 +12,20 @@ test('workspace -> upload -> index -> streamed chat answer', async ({
 }) => {
   await page.goto('/');
 
-  // Empty state before any workspace exists.
-  await expect(page.getByText('Welcome to Nexus')).toBeVisible();
-
-  // --- create a workspace ------------------------------------------------
-  await page.getByRole('button', { name: 'New workspace' }).click();
-  await page.getByPlaceholder('Workspace name').fill('E2E Workspace');
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  // The portal opens on the dashboard, not an empty chat.
   await expect(
-    page.getByRole('button', { name: /E2E Workspace/ }).first(),
+    page.getByText('What do you want to learn today?'),
+  ).toBeVisible();
+
+  // --- create a topic ----------------------------------------------------
+  await page.getByRole('button', { name: 'New topic' }).click();
+  await page
+    .getByPlaceholder('e.g. Spanish B1, Linear algebra, Art history')
+    .fill('E2E Workspace');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  // Creating a topic opens it directly.
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'E2E Workspace' }).first(),
   ).toBeVisible();
 
   // --- upload a document ------------------------------------------------
@@ -57,11 +62,6 @@ test('workspace -> upload -> index -> streamed chat answer', async ({
   await expect(
     page.getByRole('button', { name: /Stub answer: Nexus/ }).first(),
   ).toBeVisible();
-
-  // The workspace sidebar count reflects the indexed document (B-21).
-  await expect(
-    page.getByRole('button', { name: /E2E Workspace/ }).first(),
-  ).toContainText('1 document');
 
   // The stub answer cites [1], so the first source is marked as cited.
   await expect(page.locator('summary').first()).toContainText('✓');
@@ -101,7 +101,7 @@ test('workspace -> upload -> index -> streamed chat answer', async ({
   ).toHaveClass(/text-emerald-400/);
 
   // --- study loop: generate cards, review one, save a highlight --------
-  await page.getByRole('button', { name: 'Study' }).click();
+  await page.getByRole('button', { name: 'Practice' }).click();
   await page.getByRole('button', { name: 'Decks' }).click();
   await page.getByLabel('Document', { exact: true }).selectOption({ index: 1 });
   await page.getByRole('button', { name: 'Generate' }).click();
@@ -123,7 +123,7 @@ test('workspace -> upload -> index -> streamed chat answer', async ({
   await page.getByRole('button', { name: /Good/ }).click();
 
   // The selection toolbar saves a highlight into the study notes.
-  await page.getByRole('button', { name: 'Chat' }).click();
+  await page.getByRole('button', { name: 'Learn' }).click();
   const answer = page
     .locator('p')
     .filter({ hasText: 'Stub answer: Nexus is a retrieval-augmented' })
@@ -135,10 +135,12 @@ test('workspace -> upload -> index -> streamed chat answer', async ({
   });
 
   // --- phase 2b: personas, quizzes and studio artifacts -----------------
-  await page.getByLabel('Mode').selectOption('socratic');
-  await expect(page.getByLabel('Mode')).toHaveValue('socratic');
+  await page.getByLabel('Mode', { exact: true }).selectOption('socratic');
+  await expect(page.getByLabel('Mode', { exact: true })).toHaveValue(
+    'socratic',
+  );
 
-  await page.getByRole('button', { name: 'Study' }).click();
+  await page.getByRole('button', { name: 'Practice' }).click();
   await page.getByRole('button', { name: 'Quizzes' }).click();
   await page
     .getByLabel('Quiz document', { exact: true })

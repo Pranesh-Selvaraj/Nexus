@@ -25,6 +25,7 @@ const Markdown = lazy(() =>
 
 interface Props {
   workspaceId: string;
+  initialTab?: Tab;
 }
 
 type Tab = 'dashboard' | 'review' | 'decks' | 'quizzes' | 'artifacts' | 'notes';
@@ -66,8 +67,8 @@ const RATING_BUTTONS: {
 ];
 
 /** Study loop: dashboard, flashcard review (FSRS), decks and notes. */
-export function StudyPanel({ workspaceId }: Props) {
-  const [tab, setTab] = useState<Tab>('dashboard');
+export function StudyPanel({ workspaceId, initialTab }: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'dashboard');
   const [reviewDeckId, setReviewDeckId] = useState<string | null>(null);
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
   const { online, pending } = useReviewSync(workspaceId);

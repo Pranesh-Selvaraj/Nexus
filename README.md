@@ -47,6 +47,15 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 - 🔐 **Optional authentication** — set `AUTH_PASSWORD` for a login screen with httpOnly session cookies (expired sessions are purged daily); unset for single-user dev mode.
 - 🧱 **Monorepo** — pnpm workspaces + Turborepo for fast, cached builds.
 
+### The learning portal
+
+Nexus opens as a learning portal rather than an empty chat:
+
+- **Home** is a universal dashboard: topics, sources, cards due now, reviews done today, a "Continue learning" row, a suggested next step and suggested activities, plus recently added sources.
+- **Topics** is the gallery of everything you are learning. Create a topic per subject (a language, a course, an exam, art history, a codebase...) with an optional goal; import a previous workspace backup from the same page. Each card shows source count and due work.
+- **A topic** has four modes: **Learn** (chat with your sources, with a Sources rail for uploads, URLs and the library), **Practice** (study dashboard, flashcards, quizzes, studio artifacts and notes), **Voice** (push-to-talk tutor), and **Language** (vocabulary, dictation, pronunciation, CEFR progress). The topic header keeps Share, Export, re-index and Delete in one place.
+- The shell keeps the sidebar for Home, Topics, a quick topic list, Settings and the signed-in user; mobile gets an off-canvas drawer and a compact header.
+
 ### Ingestion formats
 
 | Family        | Formats                                                   | How the text is obtained                                                          |

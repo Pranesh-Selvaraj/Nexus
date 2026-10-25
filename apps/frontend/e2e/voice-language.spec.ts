@@ -32,11 +32,13 @@ test('voice & language: read-aloud, mining, drills, CEFR and voice chat', async 
   await page.goto('/');
 
   // --- workspace ---------------------------------------------------------
-  await page.getByRole('button', { name: 'New workspace' }).click();
-  await page.getByPlaceholder('Workspace name').fill('Voice Language E2E');
+  await page.getByRole('button', { name: 'New topic' }).click();
+  await page
+    .getByPlaceholder('e.g. Spanish B1, Linear algebra, Art history')
+    .fill('Voice Language E2E');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: /Voice Language E2E/ }).first(),
+    page.getByRole('heading', { level: 1, name: 'Voice Language E2E' }).first(),
   ).toBeVisible();
 
   // --- ask a question so there is an answer to read aloud ----------------
@@ -63,7 +65,7 @@ test('voice & language: read-aloud, mining, drills, CEFR and voice chat', async 
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
 
   // --- language panel: mine vocabulary -> SRS cards ----------------------
-  await page.getByRole('button', { name: 'language', exact: true }).click();
+  await page.getByRole('button', { name: 'Language', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Vocabulary' })).toBeVisible();
   await page.getByRole('button', { name: 'Mine vocabulary' }).click();
   await expect(page.getByText(/Added \d+ terms?/)).toBeVisible({
@@ -111,7 +113,7 @@ test('voice & language: read-aloud, mining, drills, CEFR and voice chat', async 
   await expect(page.getByText('reading')).toBeVisible();
 
   // --- voice chat: push-to-talk -> transcribe -> answer -> transcript ----
-  await page.getByRole('button', { name: 'voice', exact: true }).click();
+  await page.getByRole('button', { name: 'Voice', exact: true }).click();
   await expect(page.getByText('Talk to your tutor')).toBeVisible();
   const chatMic = page.getByRole('button', {
     name: /Dictate|Stop dictation/,

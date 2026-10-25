@@ -38,11 +38,13 @@ test('pwa: installable shell and offline review that syncs', async ({
   // The database is reused between runs, so the name must be unique: looking
   // up by name would otherwise pick a workspace from a previous run.
   const workspaceName = `Offline Review E2E ${Date.now()}`;
-  await page.getByRole('button', { name: 'New workspace' }).click();
-  await page.getByPlaceholder('Workspace name').fill(workspaceName);
+  await page.getByRole('button', { name: 'New topic' }).click();
+  await page
+    .getByPlaceholder('e.g. Spanish B1, Linear algebra, Art history')
+    .fill(workspaceName);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: new RegExp(workspaceName) }).first(),
+    page.getByRole('heading', { level: 1, name: workspaceName }).first(),
   ).toBeVisible();
 
   const workspaces = (await (
@@ -82,7 +84,7 @@ test('pwa: installable shell and offline review that syncs', async ({
   expect(due.result.data.some((entry) => entry.id === cardId)).toBe(true);
 
   // --- review it with the network off ------------------------------------
-  await page.getByRole('button', { name: 'study', exact: true }).click();
+  await page.getByRole('button', { name: 'Practice', exact: true }).click();
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(page.getByText('Offline question')).toBeVisible({
     timeout: 20_000,

@@ -2,27 +2,31 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 
 import type { UserDTO } from '@nexus/shared-types';
 
+import { NexusLogo } from './components/NexusLogo';
 import { fetchMe } from './lib/auth';
 import { onUnauthorized } from './lib/session';
 import { trpc } from './lib/trpc';
-import { WorkspaceSidebar } from './features/workspaces/WorkspaceSidebar';
+import { PortalNav, type PortalPage } from './features/shell/PortalNav';
 
-// Route-level code splitting: each panel loads in its own chunk (Vite) and
-// only when first needed, keeping the initial bundle small. The sidebar is
-// part of the app shell and stays eager.
-const LoginScreen = lazy(() =>
-  import('./features/auth/LoginScreen').then((m) => ({
-    default: m.LoginScreen,
+const HomePage = lazy(() =>
+  import('./features/home/HomePage').then((m) => ({ default: m.HomePage })),
+);
+const TopicsPage = lazy(() =>
+  import('./features/topics/TopicsPage').then((m) => ({
+    default: m.TopicsPage,
   })),
+);
+const TopicPage = lazy(() =>
+  import('./features/topics/TopicPage').then((m) => ({ default: m.TopicPage })),
 );
 const SettingsPanel = lazy(() =>
   import('./features/settings/SettingsPanel').then((m) => ({
     default: m.SettingsPanel,
   })),
 );
-const WorkspacePanel = lazy(() =>
-  import('./features/workspaces/WorkspacePanel').then((m) => ({
-    default: m.WorkspacePanel,
+const LoginScreen = lazy(() =>
+  import('./features/auth/LoginScreen').then((m) => ({
+    default: m.LoginScreen,
   })),
 );
 const SharedWorkspacePage = lazy(() =>
@@ -31,6 +35,8 @@ const SharedWorkspacePage = lazy(() =>
   })),
 );
 
+export { NexusLogo };
+
 type GateState =
   | { status: 'checking' }
   | { status: 'anonymous' }
@@ -38,23 +44,21 @@ type GateState =
 
 export default function App() {
   const [gate, setGate] = useState<GateState>({ status: 'checking' });
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
-    null,
-  );
-  const [view, setView] = useState<'workspace' | 'settings'>('workspace');
-  // Mobile: the sidebar is an off-canvas drawer instead of a fixed column.
+  const [page, setPage] = useState<PortalPage>('home');
+  const [topicId, setTopicId] = useState<string | null>(null);
+  const [topicIntent, setTopicIntent] = useState<{
+    tab: 'learn' | 'practice' | 'voice' | 'language';
+    studyTab?: 'dashboard' | 'review';
+  }>({ tab: 'learn' });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [topicsAutoCreate, setTopicsAutoCreate] = useState(false);
 
-  // Public config is available before login (the protected settings list is
-  // not), so the shell renders correctly on the login screen too.
   const publicConfig = trpc.config.public.useQuery(undefined);
   const appName = publicConfig.data?.appName || 'Nexus';
   useEffect(() => {
-    document.title = `${appName} - AI RAG Workspace`;
+    document.title = `${appName} - Learning portal`;
   }, [appName]);
 
-  // Any UNAUTHORIZED error (expired/revoked session) drops back to login
-  // instead of leaving every panel in a failed state.
   useEffect(() => onUnauthorized(() => setGate({ status: 'anonymous' })), []);
 
   useEffect(() => {
@@ -70,42 +74,23 @@ export default function App() {
     };
   }, []);
 
-  // Public capability link: render the read-only page without touching the
-  // session gate. No cookies are read here beyond the normal same-origin fetch.
+  // Public capability link: the shared page renders outside the auth shell.
   const shareToken = /^\/share\/([^/]+)\/?$/.exec(
     window.location.pathname,
   )?.[1];
   if (shareToken) {
     return (
-      <Suspense
-        fallback={
-          <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-500">
-            <span className="animate-pulse text-sm">Loading...</span>
-          </div>
-        }
-      >
+      <Suspense fallback={<BootSplash />}>
         <SharedWorkspacePage token={decodeURIComponent(shareToken)} />
       </Suspense>
     );
   }
 
-  if (gate.status === 'checking') {
-    return (
-      <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-500">
-        <span className="animate-pulse text-sm">Loading...</span>
-      </div>
-    );
-  }
+  if (gate.status === 'checking') return <BootSplash />;
 
   if (gate.status === 'anonymous') {
     return (
-      <Suspense
-        fallback={
-          <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-500">
-            <span className="animate-pulse text-sm">Loading...</span>
-          </div>
-        }
-      >
+      <Suspense fallback={<BootSplash />}>
         <LoginScreen
           onAuthed={async () => {
             const user = await fetchMe();
@@ -120,34 +105,40 @@ export default function App() {
     );
   }
 
-  const sidebarProps = {
-    activeWorkspaceId,
-    onSelect: (id: string) => {
-      setActiveWorkspaceId(id);
-      setView('workspace');
-      setSidebarOpen(false);
+  function openTopic(
+    id: string,
+    intent: {
+      tab: 'learn' | 'practice' | 'voice' | 'language';
+      studyTab?: 'dashboard' | 'review';
+    } = {
+      tab: 'learn',
     },
-    user: gate.user,
-    onLoggedOut: () => setGate({ status: 'anonymous' }),
-    onWorkspaceDeleted: (workspaceId: string) => {
-      if (workspaceId === activeWorkspaceId) setActiveWorkspaceId(null);
-    },
-    onOpenSettings: () => {
-      setView('settings');
-      setSidebarOpen(false);
-    },
-    settingsActive: view === 'settings',
+  ) {
+    setTopicId(id);
+    setTopicIntent(intent);
+    setPage('topic');
+    setSidebarOpen(false);
+  }
+
+  const navProps = {
     appName,
+    user: gate.user,
+    page,
+    topicId,
+    onNavigate: (next: PortalPage) => {
+      setPage(next);
+      setSidebarOpen(false);
+    },
+    onOpenTopic: (id: string) => openTopic(id),
+    onLoggedOut: () => setGate({ status: 'anonymous' }),
   };
 
   return (
     <div className="flex h-full bg-zinc-950 text-zinc-100">
-      {/* Desktop sidebar */}
       <div className="hidden md:flex">
-        <WorkspaceSidebar {...sidebarProps} />
+        <PortalNav {...navProps} />
       </div>
 
-      {/* Mobile sidebar drawer */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex md:hidden">
           <div
@@ -156,24 +147,26 @@ export default function App() {
             aria-hidden
           />
           <div className="relative flex h-full">
-            <WorkspaceSidebar {...sidebarProps} />
+            <PortalNav {...navProps} onClose={() => setSidebarOpen(false)} />
           </div>
         </div>
       )}
 
       <main className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile top bar */}
-        <div className="flex items-center gap-3 border-b border-zinc-800 px-3 py-2 md:hidden">
+        <div className="flex items-center gap-2 border-b border-zinc-800/80 px-3 py-2 md:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
+            className="rounded-lg border border-zinc-800 px-2.5 py-1.5 text-sm text-zinc-300"
             aria-label="Open menu"
-            className="rounded-lg border border-zinc-700 p-2 text-zinc-300 hover:bg-zinc-800"
           >
-            <MenuIcon className="h-4 w-4" />
+            ☰
           </button>
-          <NexusLogo className="h-5 w-5 text-nexus-400" />
-          <span className="truncate text-sm font-semibold">{appName}</span>
+          <span className="flex items-center gap-1.5 text-sm font-semibold">
+            <NexusLogo className="h-4 w-4 text-nexus-400" />
+            {appName}
+          </span>
         </div>
+
         <Suspense
           fallback={
             <div className="flex flex-1 items-center justify-center text-zinc-500">
@@ -181,72 +174,53 @@ export default function App() {
             </div>
           }
         >
-          {view === 'settings' ? (
-            <SettingsPanel />
-          ) : activeWorkspaceId ? (
-            <WorkspacePanel
-              key={activeWorkspaceId}
-              workspaceId={activeWorkspaceId}
+          {page === 'home' && (
+            <HomePage
+              onOpenTopic={(id) => openTopic(id)}
+              onStartReview={(id) =>
+                openTopic(id, { tab: 'practice', studyTab: 'review' })
+              }
+              onOpenTopics={() => {
+                setTopicsAutoCreate(false);
+                setPage('topics');
+              }}
+              onCreateTopic={() => {
+                setTopicsAutoCreate(true);
+                setPage('topics');
+              }}
             />
-          ) : (
-            <EmptyState />
           )}
+          {page === 'topics' && (
+            <TopicsPage
+              autoCreate={topicsAutoCreate}
+              onOpenTopic={(id) => openTopic(id)}
+            />
+          )}
+          {page === 'topic' && topicId && (
+            <TopicPage
+              key={`${topicId}:${topicIntent.tab}:${topicIntent.studyTab ?? ''}`}
+              workspaceId={topicId}
+              initialTab={topicIntent.tab}
+              initialStudyTab={topicIntent.studyTab}
+              onBack={() => setPage('topics')}
+              onDeleted={() => {
+                setTopicId(null);
+                setPage('topics');
+              }}
+              onOpenSettings={() => setPage('settings')}
+            />
+          )}
+          {page === 'settings' && <SettingsPanel />}
         </Suspense>
       </main>
     </div>
   );
 }
 
-function EmptyState() {
+function BootSplash() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 text-zinc-500">
-      <NexusLogo className="h-16 w-16" />
-      <div className="text-center">
-        <h2 className="text-lg font-semibold text-zinc-300">
-          Welcome to Nexus
-        </h2>
-        <p className="mt-1 max-w-sm text-sm">
-          Select or create a workspace to upload documents and start chatting
-          with them.
-        </p>
-      </div>
+    <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-500">
+      <span className="animate-pulse text-sm">Loading...</span>
     </div>
-  );
-}
-
-function MenuIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M4 6h16M4 12h16M4 18h16" />
-    </svg>
-  );
-}
-
-export function NexusLogo({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <circle cx="6" cy="6" r="3" />
-      <circle cx="18" cy="18" r="3" />
-      <path d="M6 9v6a3 3 0 0 0 3 3h6" />
-      <circle cx="18" cy="6" r="3" />
-      <path d="M18 9v3" />
-    </svg>
   );
 }

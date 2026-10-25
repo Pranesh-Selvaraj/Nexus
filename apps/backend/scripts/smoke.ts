@@ -2240,6 +2240,29 @@ try {
     const unknownShare = await fetch(`${BASE}/api/share/nxs_${'a'.repeat(43)}`);
     print('an unknown share token is 404', unknownShare.status === 404);
 
+    // --- learning-portal dashboard --------------------------------------
+    const overview = await fetchJson('/trpc/dashboard.overview', {
+      method: 'GET',
+    });
+    const overviewData = overview.body?.result?.data;
+    print(
+      'dashboard.overview aggregates topics, sources and due cards',
+      typeof overviewData?.totals?.topics === 'number' &&
+        overviewData.totals.topics >= 1 &&
+        typeof overviewData?.totals?.documents === 'number' &&
+        Array.isArray(overviewData?.topics) &&
+        overviewData.topics.some(
+          (topic: any) =>
+            topic.id === apiWorkspaceId && topic.documentCount >= 1,
+        ) &&
+        Array.isArray(overviewData?.recentDocuments),
+      {
+        topics: overviewData?.totals?.topics,
+        documents: overviewData?.totals?.documents,
+        due: overviewData?.totals?.dueCards,
+      },
+    );
+
     // --- admin queue view (P-3) -----------------------------------------
     const queue = await fetchJson('/trpc/admin.queue', { method: 'GET' });
     const queueData = queue.body?.result?.data;
