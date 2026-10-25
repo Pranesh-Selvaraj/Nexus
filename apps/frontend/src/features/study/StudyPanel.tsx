@@ -9,7 +9,14 @@ import type {
 } from '@nexus/shared-types';
 
 import { useToast } from '../../components/Toast';
+import {
+  cacheDueCards,
+  cachedDueCards,
+  isNetworkError,
+  queueReview,
+} from '../../lib/offline';
 import { trpc } from '../../lib/trpc';
+import { useReviewSync } from '../../lib/use-review-sync';
 
 // KaTeX/highlight.js are heavy; load the renderer only when an artifact opens.
 const Markdown = lazy(() =>
@@ -63,9 +70,20 @@ export function StudyPanel({ workspaceId }: Props) {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [reviewDeckId, setReviewDeckId] = useState<string | null>(null);
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
+  const { online, pending } = useReviewSync(workspaceId);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {(!online || pending > 0) && (
+        <div
+          role="status"
+          className="border-b border-amber-900/50 bg-amber-950/25 px-4 py-2 text-center text-[11px] text-amber-300"
+        >
+          {!online
+            ? `Offline — reviews are saved on this device${pending > 0 ? ` (${pending} pending)` : ''} and sync when you reconnect.`
+            : `Syncing ${pending} offline review${pending === 1 ? '' : 's'}…`}
+        </div>
+      )}
       <div className="flex items-center gap-1 overflow-x-auto border-b border-zinc-800 px-3 py-2">
         {TABS.map((item) => (
           <button
@@ -97,6 +115,7 @@ export function StudyPanel({ workspaceId }: Props) {
             <ReviewSession
               workspaceId={workspaceId}
               deckId={reviewDeckId}
+              online={online}
               onDone={() => setTab('dashboard')}
             />
           )}
@@ -236,19 +255,29 @@ function Dashboard({
 function ReviewSession({
   workspaceId,
   deckId,
+  online,
   onDone,
 }: {
   workspaceId: string;
   deckId: string | null;
+  online: boolean;
   onDone: () => void;
 }) {
   const utils = trpc.useUtils();
   const toast = useToast();
-  const dueQuery = trpc.study.cards.due.useQuery({
-    workspaceId,
-    deckId: deckId ?? undefined,
-    limit: 30,
-  });
+  const dueQuery = trpc.study.cards.due.useQuery(
+    {
+      workspaceId,
+      deckId: deckId ?? undefined,
+      limit: 30,
+    },
+    {
+      // Open the session from the last cached list when the network is gone
+      // (or the cache is the only thing available on a cold offline start).
+      initialData: () =>
+        deckId ? undefined : (cachedDueCards(workspaceId) ?? undefined),
+    },
+  );
   const [queue, setQueue] = useState<DueCard[] | null>(null);
   const [seeded, setSeeded] = useState(false);
   const [revealed, setRevealed] = useState(false);
@@ -262,6 +291,10 @@ function ReviewSession({
     setQueue(dueQuery.data);
   }
 
+  useEffect(() => {
+    if (dueQuery.data) cacheDueCards(workspaceId, dueQuery.data);
+  }, [dueQuery.data, workspaceId]);
+
   const review = trpc.study.cards.review.useMutation({
     onSuccess: () => {
       setReviewedCount((count) => count + 1);
@@ -270,11 +303,46 @@ function ReviewSession({
       void utils.study.progress.invalidate({ workspaceId });
       void utils.study.decks.list.invalidate({ workspaceId });
     },
-    onError: (err) =>
-      toast.push({ kind: 'error', message: `Review failed: ${err.message}` }),
+    onError: (err, variables) => {
+      // Offline (or the connection dropped): keep the rating and advance, then
+      // sync it when the browser reports it is online again.
+      if (isNetworkError(err)) {
+        queueReview(workspaceId, variables.cardId, variables.rating);
+        setReviewedCount((count) => count + 1);
+        setRevealed(false);
+        setQueue((current) => (current ?? []).slice(1));
+        toast.push({
+          kind: 'info',
+          message: 'Saved offline — this review syncs when you reconnect.',
+        });
+        return;
+      }
+      toast.push({ kind: 'error', message: `Review failed: ${err.message}` });
+    },
   });
 
   const current = queue?.[0];
+
+  /**
+   * Submit one rating. When the browser already knows it is offline the queue
+   * is written directly: waiting for a fetch that will not resolve would leave
+   * the session stuck on a disabled card.
+   */
+  function submitRating(rating: ReviewRating) {
+    if (!current) return;
+    if (!navigator.onLine) {
+      queueReview(workspaceId, current.id, rating);
+      setReviewedCount((count) => count + 1);
+      setRevealed(false);
+      setQueue((items) => (items ?? []).slice(1));
+      toast.push({
+        kind: 'info',
+        message: 'Saved offline — this review syncs when you reconnect.',
+      });
+      return;
+    }
+    review.mutate({ cardId: current.id, rating });
+  }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -289,12 +357,13 @@ function ReviewSession({
         if (index >= 0) {
           event.preventDefault();
           const rating = RATING_BUTTONS[index]?.rating;
-          if (rating) review.mutate({ cardId: current.id, rating });
+          if (rating) submitRating(rating);
         }
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, revealed, review]);
 
   if (!current) {
@@ -320,6 +389,7 @@ function ReviewSession({
       <p className="text-xs text-zinc-500">
         {current.deckName} · card {reviewedCount + 1} ·{' '}
         {(queue?.length ?? 1) - 1} more due
+        {!online && ' · offline'}
       </p>
 
       <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8 text-center">
@@ -336,9 +406,7 @@ function ReviewSession({
           {RATING_BUTTONS.map((button, index) => (
             <button
               key={button.rating}
-              onClick={() =>
-                review.mutate({ cardId: current.id, rating: button.rating })
-              }
+              onClick={() => submitRating(button.rating)}
               disabled={review.isPending}
               className={`rounded-xl px-3 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${button.className}`}
             >

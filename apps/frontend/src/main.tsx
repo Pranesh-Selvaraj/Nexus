@@ -46,3 +46,11 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </React.StrictMode>,
 );
+
+// PWA: cache the shell and cached speech for offline review. Registration is
+// best-effort; the app works without a service worker.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  });
+}
