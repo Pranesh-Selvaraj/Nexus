@@ -49,14 +49,12 @@ import {
   upload,
 } from './utils/multer.config.js';
 import { toDocumentDTO } from './utils/dto.js';
+import { ApiError } from './utils/errors.js';
 import { getSettingNumber } from './services/settings.service.js';
 import { isImageFormat, mimeForFormat } from './services/ingestion/magic.js';
 import { ingestUrlContent } from './services/ingestion/url-ingest.js';
 import { UnsafeUrlError } from './services/ingestion/url-fetch.js';
-import {
-  UploadRejectedError,
-  validateUpload,
-} from './services/ingestion/validate.js';
+import { ingestUpload } from './services/upload.service.js';
 import {
   audioFilePath,
   getOwnedAudio,
@@ -326,141 +324,30 @@ async function main(): Promise<void> {
     enforceUploadLimit,
     upload.single('file'),
     async (req, res) => {
-      let storedPath: string | null = null;
-      let success = false;
       try {
-        // 1. Validate workspaceId as a UUID *before* touching the filesystem.
-        //    Raw input must never reach path construction (CWE-22).
-        const parsed = workspaceIdSchema.safeParse({
-          workspaceId: String(req.body?.workspaceId ?? ''),
-        });
-        if (!parsed.success) {
-          res
-            .status(400)
-            .json({ error: 'Invalid workspaceId: expected a UUID' });
-          return;
-        }
-        const workspaceId = parsed.data.workspaceId;
-
-        // 2. Resolve the session user (or the local user in no-auth mode)
-        //    and verify workspace ownership (matches the tRPC routers'
-        //    behavior instead of trusting an unauthenticated body).
+        // Identity comes from the session (or the local user in no-auth mode),
+        // never from the request body.
         const currentUser = await resolveUser(readSessionCookie(req.headers));
         if (!currentUser) {
           res.status(401).json({ error: 'Not authenticated' });
           return;
         }
-        const [workspace] = await db
-          .select({ id: workspaces.id })
-          .from(workspaces)
-          .where(
-            and(
-              eq(workspaces.id, workspaceId),
-              eq(workspaces.userId, currentUser.id),
-            ),
-          )
-          .limit(1);
-        if (!workspace) {
-          res.status(404).json({ error: 'Workspace not found' });
-          return;
-        }
-
-        if (!req.file) {
-          res.status(400).json({ error: 'No file provided' });
-          return;
-        }
-
-        // 3. Admission: magic bytes decide the format and the parser; zip
-        //    containers are checked against the decompression limits and
-        //    images against the vision size cap before anything is written.
-        const maxImageMb = await getSettingNumber('vision.maxImageMb');
-        let validated;
-        try {
-          validated = await validateUpload(
-            req.file.buffer,
-            req.file.originalname,
-            { maxImageMb },
-          );
-        } catch (err) {
-          if (err instanceof UploadRejectedError) {
-            res.status(400).json({ error: err.message });
-            return;
-          }
-          throw err;
-        }
-        const fileType = validated.detected.format;
-
-        // 4. Duplicate detection by content hash (same bytes, same workspace):
-        //    return the existing document instead of indexing it twice. A
-        //    previously failed document does not block a fresh attempt.
-        const [existing] = await db
-          .select()
-          .from(documents)
-          .where(
-            and(
-              eq(documents.workspaceId, workspace.id),
-              eq(documents.contentHash, validated.contentHash),
-              ne(documents.status, 'failed'),
-            ),
-          )
-          .limit(1);
-        if (existing) {
-          res.status(200).json({
-            document: toDocumentDTO(existing),
-            duplicate: true,
-          });
-          return;
-        }
-
-        // 5. Write the buffer under a path built from validated inputs only.
-        const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
-        await mkdir(workspaceDir, { recursive: true });
-        const finalPath = path.join(workspaceDir, randomUUID());
-        storedPath = finalPath;
-        await writeFile(finalPath, req.file.buffer);
-
-        const relativePath = path
-          .relative(UPLOAD_DIR, finalPath)
-          .split(path.sep)
-          .join('/');
-
-        const [created] = await db
-          .insert(documents)
-          .values({
-            workspaceId: workspace.id,
-            // Metadata only - never used to build a path.
-            title: path.basename(req.file.originalname).slice(0, 200),
-            filePath: relativePath,
-            fileType,
-            contentHash: validated.contentHash,
-            status: 'processing',
-          })
-          .returning();
-        if (!created) {
-          throw new Error('Failed to create document record');
-        }
-
-        try {
-          await enqueueDocumentEmbedding(created.id);
-        } catch (enqueueError) {
-          // No queue -> no processing -> roll back the DB row too.
-          await db
-            .delete(documents)
-            .where(eq(documents.id, created.id))
-            .catch(() => undefined);
-          throw enqueueError;
-        }
-
-        success = true;
-        res.status(201).json({ document: toDocumentDTO(created) });
+        const result = await ingestUpload({
+          workspaceId: req.body?.workspaceId,
+          userId: currentUser.id,
+          file: req.file
+            ? { buffer: req.file.buffer, originalname: req.file.originalname }
+            : undefined,
+        });
+        res.status(result.duplicate ? 200 : 201).json(result);
       } catch (err) {
+        if (err instanceof ApiError) {
+          res.status(err.status).json({ error: err.message });
+          return;
+        }
         console.error('[upload] failed:', sanitizeForLog(err));
         if (!res.headersSent) {
           res.status(500).json({ error: 'Upload failed' });
-        }
-      } finally {
-        if (!success && storedPath) {
-          await rm(storedPath, { force: true }).catch(() => undefined);
         }
       }
     },

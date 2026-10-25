@@ -2,7 +2,12 @@ import { Router, type Request, type Response } from 'express';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { askInputSchema, searchQuerySchema } from '@nexus/shared-types';
+import {
+  askInputSchema,
+  dueCardsInputSchema,
+  reviewCardInputSchema,
+  searchQuerySchema,
+} from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
 import { documents, workspaces } from '../db/schema.js';
@@ -13,6 +18,9 @@ import {
   searchWorkspace,
 } from '../services/api.service.js';
 import { toDocumentDTO } from '../utils/dto.js';
+import { upload } from '../utils/multer.config.js';
+import { ingestUpload } from '../services/upload.service.js';
+import { listDueCards, submitCardReview } from '../services/review.service.js';
 
 const workspaceQuerySchema = z.object({ workspaceId: z.string().uuid() });
 
@@ -134,6 +142,85 @@ export function apiV1Router(): Router {
       }
     },
   );
+
+  /**
+   * Multipart upload. The bytes go through exactly the same admission as the
+   * UI (`ingestUpload`): magic-byte format, zip/vision limits, duplicate hash,
+   * server-generated path, queue. A duplicate is a 200 with `duplicate: true`.
+   */
+  router.post(
+    '/documents',
+    requireApiKey('documents:write'),
+    upload.single('file'),
+    async (req, res) => {
+      try {
+        const workspaceId =
+          (req.body as { workspaceId?: unknown } | undefined)?.workspaceId ??
+          req.query.workspaceId;
+        const result = await ingestUpload({
+          workspaceId,
+          userId: identityOf(req).userId,
+          file: req.file
+            ? { buffer: req.file.buffer, originalname: req.file.originalname }
+            : undefined,
+        });
+        res.status(result.duplicate ? 200 : 201).json(result);
+      } catch (err) {
+        sendError(res, err);
+      }
+    },
+  );
+
+  router.get(
+    '/reviews/due',
+    requireApiKey('reviews:read'),
+    async (req, res) => {
+      try {
+        const parsed = dueCardsInputSchema.safeParse({
+          workspaceId: req.query.workspaceId,
+          deckId: req.query.deckId,
+          limit: req.query.limit ? Number(req.query.limit) : undefined,
+        });
+        if (!parsed.success) {
+          res.status(400).json({
+            error: 'workspaceId is required',
+            issues: parsed.error.issues,
+          });
+          return;
+        }
+        const cards = await listDueCards({
+          userId: identityOf(req).userId,
+          workspaceId: parsed.data.workspaceId,
+          deckId: parsed.data.deckId,
+          limit: parsed.data.limit,
+        });
+        res.json({ cards });
+      } catch (err) {
+        sendError(res, err);
+      }
+    },
+  );
+
+  router.post('/reviews', requireApiKey('reviews:write'), async (req, res) => {
+    try {
+      const parsed = reviewCardInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res
+          .status(400)
+          .json({ error: 'Invalid request', issues: parsed.error.issues });
+        return;
+      }
+      const result = await submitCardReview({
+        userId: identityOf(req).userId,
+        cardId: parsed.data.cardId,
+        rating: parsed.data.rating,
+        durationMs: parsed.data.durationMs,
+      });
+      res.json(result);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
 
   router.get('/search', requireApiKey('search'), async (req, res) => {
     try {

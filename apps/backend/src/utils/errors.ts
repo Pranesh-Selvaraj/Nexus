@@ -1,6 +1,21 @@
 const MAX_MESSAGE_LENGTH = 300;
 
 /**
+ * An error with an HTTP status attached. Services throw it; the REST routes
+ * map `status` onto the response and the tRPC layer maps it onto a TRPCError,
+ * so a rule enforced in a service is never re-implemented per transport.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/**
  * Provider error messages can embed whole HTML error pages (e.g. a 404
  * page when the base URL points at the wrong path). Strip markup and cap
  * the length so settings-panel and chat error messages stay readable.

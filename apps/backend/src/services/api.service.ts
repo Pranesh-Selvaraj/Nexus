@@ -5,6 +5,9 @@ import { and, eq } from 'drizzle-orm';
 import type { AskResult, SearchResult, Source } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { ApiError } from '../utils/errors.js';
+
+export { ApiError };
 import { workspaces } from '../db/schema.js';
 import { streamAnswer } from './llm.service.js';
 import {
@@ -13,17 +16,6 @@ import {
   retrievalDuration,
 } from './observability/metrics.js';
 import { retrieveForChat, validateCitations } from './retrieval.service.js';
-
-/** Thrown by the API-v1 service; the route maps `status` onto the response. */
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
 
 /** 404 rather than 403 so a key cannot probe other users' workspace ids. */
 export async function assertWorkspaceOwner(
