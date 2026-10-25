@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Save to Nexus</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <strong>Save to Nexus</strong>
+      <span id="status" role="status" aria-live="polite"></span>
+    </header>
+    <main>
+      <label>
+        Nexus URL
+        <input id="baseUrl" type="url" placeholder="http://localhost:3000" />
+      </label>
+      <label>
+        API key
+        <input
+          id="apiKey"
+          type="password"
+          placeholder="ndx_..."
+          autocomplete="off"
+        />
+      </label>
+      <label>
+        Workspace
+        <select id="workspaceId"></select>
+      </label>
+      <p id="pageUrl" class="muted"></p>
+      <div class="actions">
+        <button id="save" type="button">Save current page</button>
+        <button id="reload" type="button" class="secondary">
+          Refresh workspaces
+        </button>
+      </div>
+      <p class="muted small">
+        Uses <code>POST /api/v1/urls</code> with a
+        <code>documents:write</code> key. The page is fetched and extracted by
+        Nexus (SSRF-guarded), not by the browser.
+      </p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

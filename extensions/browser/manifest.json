@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Nexus share target",
+  "version": "0.1.0",
+  "description": "Save the current page into a Nexus workspace with one click.",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_title": "Save to Nexus",
+    "default_popup": "popup.html"
+  }
+}
