@@ -1,6 +1,12 @@
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 
 import '../src/utils/env.js';
+import {
+  buildEpub,
+  TINY_PNG,
+  zipBuffer,
+} from '../src/services/ingestion/fixtures.test-utils.js';
 
 const API_PORT = 3100;
 const BASE = `http://localhost:${API_PORT}`;
@@ -1250,6 +1256,392 @@ try {
       method: 'POST',
       body: JSON.stringify({ workspaceId: importWsId }),
     });
+  }
+
+  // -------------------------------------------------------------------
+  // Ingestion & vision (phase 4a): magic-byte admission, duplicate
+  // detection, container limits, image serving, vision analysis and the
+  // SSRF guard on URL ingestion.
+  // -------------------------------------------------------------------
+  const ingestWs = await fetchJson('/trpc/workspace.create', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Smoke Ingestion' }),
+  });
+  const ingestWsId = ingestWs.body?.result?.data?.id as string | undefined;
+  print('ingestion workspace', Boolean(ingestWsId));
+
+  const uploadTo = async (workspaceId: string, file: File) => {
+    const form = new FormData();
+    form.append('workspaceId', workspaceId);
+    form.append('file', file);
+    const res = await fetch(`${BASE}/api/upload`, {
+      method: 'POST',
+      body: form,
+    });
+    return {
+      status: res.status,
+      body: (await res.json().catch(() => null)) as any,
+    };
+  };
+
+  if (ingestWsId) {
+    // EPUB: the bytes decide the parser, and the parser keeps chapters.
+    const epub = await buildEpub(
+      [
+        { title: 'Retrieval', paragraphs: ['Hybrid search fuses two arms.'] },
+        { title: 'Study', paragraphs: ['Flashcards schedule reviews.'] },
+      ],
+      { title: 'Smoke Book', author: 'Smoke Author' },
+    );
+    const upEpub = await uploadTo(
+      ingestWsId,
+      new File([epub], 'smoke-book.epub', { type: 'application/epub+zip' }),
+    );
+    const epubDoc = upEpub.body?.document;
+    print(
+      'upload epub detected from magic bytes',
+      upEpub.status === 201 && epubDoc?.fileType === 'epub',
+      { status: upEpub.status, fileType: epubDoc?.fileType },
+    );
+
+    // Same bytes twice: the second upload returns the existing document.
+    const upEpubAgain = await uploadTo(
+      ingestWsId,
+      new File([epub], 'copied-book.epub', { type: 'application/epub+zip' }),
+    );
+    print(
+      'duplicate upload returns the existing document',
+      upEpubAgain.status === 200 &&
+        upEpubAgain.body?.duplicate === true &&
+        upEpubAgain.body?.document?.id === epubDoc?.id,
+      { status: upEpubAgain.status, duplicate: upEpubAgain.body?.duplicate },
+    );
+
+    // A PNG named like a DOCX is still a PNG: content decides, not the name.
+    const upRenamed = await uploadTo(
+      ingestWsId,
+      new File([TINY_PNG], 'notes.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+    );
+    print(
+      'magic bytes override a misleading extension',
+      upRenamed.status === 201 && upRenamed.body?.document?.fileType === 'png',
+      {
+        status: upRenamed.status,
+        fileType: upRenamed.body?.document?.fileType,
+      },
+    );
+    const imageDocId = upRenamed.body?.document?.id as string | undefined;
+
+    // Zip bomb: 2 MB of zeros compresses far past the ratio limit.
+    const bomb = await zipBuffer(
+      { 'bomb.txt': Buffer.alloc(2 * 1024 * 1024, 0) },
+      { deflate: true },
+    );
+    const upBomb = await uploadTo(
+      ingestWsId,
+      new File([bomb], 'bomb.zip', { type: 'application/zip' }),
+    );
+    print(
+      'zip bomb rejected before indexing',
+      upBomb.status === 400 &&
+        /compression|large|ratio|uncompressed/i.test(
+          String(upBomb.body?.error ?? ''),
+        ),
+      { status: upBomb.status, error: upBomb.body?.error },
+    );
+
+    // Unrecognised content is refused with an actionable message.
+    const junk = await uploadTo(
+      ingestWsId,
+      new File(['nothing usable here'], 'mystery.bin', {
+        type: 'application/octet-stream',
+      }),
+    );
+    print(
+      'unrecognised upload content rejected',
+      junk.status === 400 && typeof junk.body?.error === 'string',
+      { status: junk.status },
+    );
+
+    // Vision capability snapshot (keys never leave the server).
+    const visionCfg = await fetchJson('/trpc/vision.config', { method: 'GET' });
+    const visionData = visionCfg.body?.result?.data as
+      { enabled: boolean; available: boolean; model: string } | undefined;
+    print(
+      'vision.config reports the capability',
+      typeof visionData?.enabled === 'boolean' &&
+        typeof visionData?.available === 'boolean',
+      visionData,
+    );
+
+    // Image bytes are served with hardened headers (no sniffing, sandboxed).
+    if (imageDocId) {
+      const img = await fetch(`${BASE}/api/images/${imageDocId}`);
+      print(
+        'image bytes served with nosniff + CSP',
+        img.status === 200 &&
+          img.headers.get('content-type') === 'image/png' &&
+          img.headers.get('x-content-type-options') === 'nosniff' &&
+          (img.headers.get('content-security-policy') ?? '').includes(
+            "default-src 'none'",
+          ),
+        { status: img.status, type: img.headers.get('content-type') },
+      );
+      const missing = await fetch(
+        `${BASE}/api/images/00000000-0000-4000-8000-000000000000`,
+      );
+      print('unknown image id -> 404', missing.status === 404);
+    }
+
+    // Wait for the EPUB and the PNG to index, then check structure metadata.
+    const waitForDocs = async (): Promise<any[]> => {
+      for (let i = 0; i < 20; i++) {
+        await sleep(1500);
+        const res = await fetchJson(
+          `/trpc/document.listByWorkspace?input=${encodeURIComponent(JSON.stringify({ workspaceId: ingestWsId }))}`,
+          { method: 'GET' },
+        );
+        const list = (res.body?.result?.data ?? []) as any[];
+        if (list.length > 0 && list.every((d) => d.status !== 'processing')) {
+          return list;
+        }
+      }
+      return [];
+    };
+    const ingestDocs = await waitForDocs();
+    const epubRow = ingestDocs.find((d) => d.fileType === 'epub');
+    print(
+      'epub indexed with chapter structure',
+      epubRow?.status === 'ready' &&
+        Array.isArray(epubRow?.metadata?.chapters) &&
+        epubRow.metadata.chapters.length >= 2,
+      {
+        status: epubRow?.status,
+        chapters: epubRow?.metadata?.chapters?.length,
+        error: epubRow?.errorMessage,
+      },
+    );
+
+    // The image indexes through vision when a provider is configured (mock in
+    // CI). Without one, OCR may be absent too, so only assert the happy path.
+    const imageRow = ingestDocs.find((d) => d.fileType === 'png');
+    if (visionData?.available) {
+      print(
+        'image indexed through the vision provider',
+        imageRow?.status === 'ready' && imageRow?.metadata?.vision === true,
+        { status: imageRow?.status, error: imageRow?.errorMessage },
+      );
+      const images = await fetchJson(
+        `/trpc/document.images?input=${encodeURIComponent(JSON.stringify({ workspaceId: ingestWsId }))}`,
+        { method: 'GET' },
+      );
+      print(
+        'document.images lists the ready image',
+        (images.body?.result?.data ?? []).some((d: any) => d.id === imageDocId),
+      );
+
+      if (imageDocId) {
+        const analyse = await fetchJson('/trpc/vision.analyze', {
+          method: 'POST',
+          body: JSON.stringify({
+            workspaceId: ingestWsId,
+            documentId: imageDocId,
+            mode: 'diagram',
+          }),
+        });
+        const analysis = analyse.body?.result?.data;
+        print(
+          'vision.analyze returns a diagram analysis',
+          analyse.body?.result?.data?.mode === 'diagram' &&
+            typeof analysis?.analysis === 'string' &&
+            analysis.analysis.length > 20,
+          { mode: analysis?.mode, chars: analysis?.analysis?.length },
+        );
+        // A non-image document is refused rather than sent to the model.
+        const badAnalyse = await fetchJson('/trpc/vision.analyze', {
+          method: 'POST',
+          body: JSON.stringify({
+            workspaceId: ingestWsId,
+            documentId: epubRow?.id,
+            mode: 'general',
+          }),
+        });
+        print(
+          'vision.analyze refuses a non-image document',
+          badAnalyse.body?.error?.data?.code === 'BAD_REQUEST',
+        );
+      }
+    } else {
+      print('vision checks skipped (no vision-capable provider)', true);
+    }
+
+    // SSRF guard: the strict instance must refuse a private address.
+    const ssrf = await fetchJson('/api/ingest/url', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspaceId: ingestWsId,
+        url: 'http://127.0.0.1:9/private-article',
+      }),
+    });
+    print(
+      'url ingestion refuses a loopback address',
+      ssrf.status === 400 &&
+        /private|link-local|loopback/i.test(String(ssrf.body?.error ?? '')),
+      { status: ssrf.status, error: ssrf.body?.error },
+    );
+
+    const fileUrl = await fetchJson('/api/ingest/url', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspaceId: ingestWsId,
+        url: 'file:///etc/passwd',
+      }),
+    });
+    print('url ingestion refuses non-http protocols', fileUrl.status === 400, {
+      status: fileUrl.status,
+      error: fileUrl.body?.error,
+    });
+
+    const metadataUrl = await fetchJson('/api/ingest/url', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspaceId: ingestWsId,
+        url: 'http://169.254.169.254/latest/meta-data/',
+      }),
+    });
+    print(
+      'url ingestion refuses the cloud metadata endpoint',
+      metadataUrl.status === 400,
+      { status: metadataUrl.status },
+    );
+
+    await fetchJson('/trpc/workspace.delete', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId: ingestWsId }),
+    });
+  }
+
+  // -------------------------------------------------------------------
+  // URL ingestion happy path: a second instance with the documented
+  // private-host override plus a local article server, so the fetch ->
+  // Readability -> store -> index path is exercised end to end.
+  // -------------------------------------------------------------------
+  const ARTICLE_PORT = 3104;
+  const articleServer = createServer((req, res) => {
+    const paragraphs = Array.from(
+      { length: 12 },
+      (_unused, index) =>
+        `<p>Paragraph ${index + 1}: hybrid retrieval fuses vector similarity with keyword search, and flashcards close the study loop.</p>`,
+    ).join('\n');
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(`<!doctype html><html><head><title>Smoke Article</title></head>
+<body><nav><a href="/">Home</a></nav>
+<article><h1>Smoke Article</h1>${paragraphs}</article>
+<footer>footer</footer></body></html>`);
+  });
+  await new Promise<void>((resolve) =>
+    articleServer.listen(ARTICLE_PORT, () => resolve()),
+  );
+
+  const INGEST_PORT = 3103;
+  const INGEST_BASE = `http://localhost:${INGEST_PORT}`;
+  const ingestChild = spawn('pnpm', ['exec', 'tsx', 'src/index.ts'], {
+    cwd: new URL('..', import.meta.url).pathname,
+    env: {
+      ...process.env,
+      PORT: String(INGEST_PORT),
+      // Documented test/self-host override: the article server is local.
+      INGEST_ALLOW_PRIVATE_HOSTS: 'true',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  ingestChild.stderr.on('data', (d) => (stdout += d.toString()));
+
+  try {
+    let ingestHealthy = false;
+    for (let i = 0; i < 30; i++) {
+      try {
+        const res = await fetch(`${INGEST_BASE}/healthz`);
+        if (res.ok) {
+          ingestHealthy = true;
+          break;
+        }
+      } catch {
+        /* not up yet */
+      }
+      await sleep(500);
+    }
+    print('ingest api healthz', ingestHealthy);
+
+    const ingestWs = await fetchJsonAuth(
+      INGEST_BASE,
+      '/trpc/workspace.create',
+      {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Smoke URL Ingestion' }),
+      },
+    );
+    const urlWsId = ingestWs.body?.result?.data?.id as string | undefined;
+    print('url ingestion workspace', Boolean(urlWsId));
+
+    if (urlWsId) {
+      const articleUrl = `http://127.0.0.1:${ARTICLE_PORT}/smoke-article`;
+      const imported = await fetchJsonAuth(INGEST_BASE, '/api/ingest/url', {
+        method: 'POST',
+        body: JSON.stringify({ workspaceId: urlWsId, url: articleUrl }),
+      });
+      print(
+        'url ingestion extracts an article',
+        imported.status === 201 &&
+          imported.body?.kind === 'article' &&
+          imported.body?.wordCount > 50,
+        { status: imported.status, words: imported.body?.wordCount },
+      );
+
+      const again = await fetchJsonAuth(INGEST_BASE, '/api/ingest/url', {
+        method: 'POST',
+        body: JSON.stringify({ workspaceId: urlWsId, url: articleUrl }),
+      });
+      print(
+        're-importing the same url is deduplicated',
+        again.status === 200 && again.body?.duplicate === true,
+        { status: again.status },
+      );
+
+      let importedRow: any;
+      for (let i = 0; i < 20; i++) {
+        await sleep(1500);
+        const list = await fetchJsonAuth(
+          INGEST_BASE,
+          `/trpc/document.listByWorkspace?input=${encodeURIComponent(JSON.stringify({ workspaceId: urlWsId }))}`,
+          { method: 'GET' },
+        );
+        importedRow = (list.body?.result?.data ?? [])[0];
+        if (importedRow && importedRow.status !== 'processing') break;
+      }
+      print(
+        'imported article indexed with provenance',
+        importedRow?.status === 'ready' &&
+          importedRow?.metadata?.kind === 'web' &&
+          typeof importedRow?.sourceUrl === 'string',
+        {
+          status: importedRow?.status,
+          kind: importedRow?.metadata?.kind,
+          sourceUrl: importedRow?.sourceUrl,
+          error: importedRow?.errorMessage,
+        },
+      );
+
+      await fetchJsonAuth(INGEST_BASE, '/trpc/workspace.delete', {
+        method: 'POST',
+        body: JSON.stringify({ workspaceId: urlWsId }),
+      });
+    }
+  } finally {
+    ingestChild.kill();
+    articleServer.close();
   }
 
   // -------------------------------------------------------------------

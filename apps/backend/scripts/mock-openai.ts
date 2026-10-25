@@ -146,18 +146,115 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
       const body = await readBody(req);
       const model = String(body.model ?? 'stub-chat-model');
+
+      // Flatten text content parts so multimodal requests (image_url + text)
+      // are matched by their instruction just like plain text ones.
+      const contentText = (content: unknown): string => {
+        if (typeof content === 'string') return content;
+        if (!Array.isArray(content)) return '';
+        return content
+          .map((part) => {
+            if (part && typeof part === 'object' && 'text' in part) {
+              return String((part as { text?: unknown }).text ?? '');
+            }
+            return '';
+          })
+          .join('\n');
+      };
+      const hasImage = Array.isArray(body.messages)
+        ? body.messages.some(
+            (message: { content?: unknown }) =>
+              Array.isArray(message?.content) &&
+              message.content.some(
+                (part: { type?: string }) => part?.type === 'image_url',
+              ),
+          )
+        : false;
+      const promptText = Array.isArray(body.messages)
+        ? body.messages
+            .map((message: { content?: unknown }) =>
+              contentText(message?.content),
+            )
+            .join('\n')
+        : '';
+
+      // Deterministic vision answers: the backend's mode instructions are
+      // distinctive, so the stub can echo back which mode ran. Ingestion's
+      // description prompt (retrieval-friendly) gets its own text so an
+      // indexed image has stable, searchable content.
+      if (hasImage) {
+        const visionAnswer = /retrieval-friendly description/i.test(promptText)
+          ? 'Stub image description: a two-panel diagram of hybrid retrieval. The left panel shows vector similarity, the right panel shows keyword search, and a central arrow labelled fusion joins them into one ranked list.'
+          : /art critic/i.test(promptText)
+            ? 'Composition: an asymmetric still life with the focal point low-left and a strong diagonal of light. Palette: warm ochres against cool greys. Technique: visible impasto, likely oil. Context: influenced by post-impressionism. Observation, then interpretation: the tilted table reads as instability rather than error. [1]'
+            : /diagram or schematic/i.test(promptText)
+              ? 'Components: two input boxes (vectors, keywords), a fusion block, and one ranked output list. Labels read "embed", "BM25", "RRF". Arrows flow left to right and converge on the output. The diagram teaches that hybrid retrieval fuses two signals. [1]'
+              : /Transcribe every equation/i.test(promptText)
+                ? 'Equations: `RRF(d) = \\sum_{r \\in R} \\frac{1}{k + r(d)}` — R is the set of ranked lists, r(d) is the rank of document d in list r, k is the smoothing constant. [1]'
+                : 'Stub vision answer: the image shows a hand-drawn diagram of hybrid retrieval with the labels vectors, keywords and fused ranking. [1]';
+        if (body.stream) {
+          res.writeHead(200, {
+            'content-type': 'text/event-stream',
+            'cache-control': 'no-cache',
+            connection: 'keep-alive',
+          });
+          const delayMs = Number(process.env.MOCK_STREAM_DELAY_MS ?? 5);
+          for (const word of visionAnswer.split(' ')) {
+            res.write(
+              `data: ${JSON.stringify({
+                id: 'chatcmpl-stub-vision',
+                object: 'chat.completion.chunk',
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [
+                  {
+                    index: 0,
+                    delta: { content: `${word} ` },
+                    finish_reason: null,
+                  },
+                ],
+              })}\n\n`,
+            );
+            await new Promise((r) => setTimeout(r, delayMs));
+          }
+          res.write(
+            `data: ${JSON.stringify({
+              id: 'chatcmpl-stub-vision',
+              object: 'chat.completion.chunk',
+              created: Math.floor(Date.now() / 1000),
+              model,
+              choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+            })}\n\n`,
+          );
+          res.end('data: [DONE]\n\n');
+          return;
+        }
+        json(res, {
+          id: 'chatcmpl-stub-vision',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model,
+          choices: [
+            {
+              index: 0,
+              message: { role: 'assistant', content: visionAnswer },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: {
+            prompt_tokens: 80,
+            completion_tokens: 40,
+            total_tokens: 120,
+          },
+        });
+        return;
+      }
+
       const answer =
         'Stub answer: Nexus is a retrieval-augmented generation system. [1]';
 
       // Deterministic flashcards for the study-loop flows: the backend's
       // card-generation prompt asks for "study flashcards".
-      const promptText = Array.isArray(body.messages)
-        ? body.messages
-            .map((message: { content?: unknown }) =>
-              String(message?.content ?? ''),
-            )
-            .join('\n')
-        : '';
       // Deterministic vocabulary mining (backend prompt mentions "Mine
       // vocabulary").
       if (!body.stream && /mine vocabulary/i.test(promptText)) {

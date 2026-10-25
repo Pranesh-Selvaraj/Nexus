@@ -11,6 +11,10 @@ export OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://localhost:3310/v1}"
 # Force keyless mode even if a .env provides a key - the stub must be used.
 export OPENAI_API_KEY=""
 export UPLOAD_DIR="${UPLOAD_DIR:-/tmp/nexus-e2e-uploads}"
+# URL ingestion is tested against a local article server started by the spec,
+# so the documented private-host override is enabled for this stack only. The
+# SSRF guard itself is asserted on a strict instance by the smoke suite.
+export INGEST_ALLOW_PRIVATE_HOSTS="true"
 VITE_PORT="${VITE_PORT:-5173}"
 # Backend port for this stack; the Vite proxy reads the same variable.
 export API_PORT="${API_PORT:-3000}"
