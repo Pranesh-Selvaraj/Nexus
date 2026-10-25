@@ -260,6 +260,54 @@ try {
   });
   print('document.remove', del.body?.result?.data?.deleted === true);
 
+  // soft delete: the document moves to trash, disappears from the library and
+  // can be restored (which re-queues indexing)
+  const trashedList = await fetchJson(
+    `/trpc/document.listTrashed?input=${encodeURIComponent(JSON.stringify({ workspaceId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'document.remove moves the document to trash',
+    (trashedList.body?.result?.data ?? []).some((d: any) => d.id === docId),
+  );
+  const afterDelete = await fetchJson(
+    `/trpc/document.listByWorkspace?input=${encodeURIComponent(JSON.stringify({ workspaceId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'trashed documents are hidden from the library',
+    !(afterDelete.body?.result?.data ?? []).some((d: any) => d.id === docId),
+  );
+  const restored = await fetchJson('/trpc/document.restore', {
+    method: 'POST',
+    body: JSON.stringify({ documentId: docId }),
+  });
+  print(
+    'document.restore re-queues the document',
+    restored.body?.result?.data?.restored === true,
+  );
+  const restoredList = await fetchJson(
+    `/trpc/document.listByWorkspace?input=${encodeURIComponent(JSON.stringify({ workspaceId }))}`,
+    { method: 'GET' },
+  );
+  print(
+    'restored documents return to the library',
+    (restoredList.body?.result?.data ?? []).some((d: any) => d.id === docId),
+  );
+
+  // storage accounting (P-6)
+  const usage = await fetchJson('/trpc/storage.usage', { method: 'GET' });
+  print(
+    'storage.usage reports bytes, documents and quota',
+    typeof usage.body?.result?.data?.usedBytes === 'number' &&
+      typeof usage.body?.result?.data?.quotaBytes === 'number' &&
+      Array.isArray(usage.body?.result?.data?.byWorkspace),
+    {
+      used: usage.body?.result?.data?.usedBytes,
+      quota: usage.body?.result?.data?.quotaBytes,
+    },
+  );
+
   // missing document -> NOT_FOUND
   const delMissing = await fetchJson('/trpc/document.remove', {
     method: 'POST',
