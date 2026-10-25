@@ -152,6 +152,11 @@ export const chunks = pgTable(
     documentId: uuid('document_id')
       .notNull()
       .references(() => documents.id, { onDelete: 'cascade' }),
+    // Denormalised from the document: retrieval filters by workspace, and the
+    // ANN scan can only use the HNSW index when the predicate is on `chunks`.
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
     content: text('content').notNull(),
     embedding: vectorDim('embedding').notNull(),
     metadata: jsonb('metadata').$type<ChunkMetadata>().notNull(),
@@ -172,6 +177,7 @@ export const chunks = pgTable(
   },
   (table) => [
     index('chunks_document_id_idx').on(table.documentId),
+    index('chunks_workspace_id_idx').on(table.workspaceId),
     index('chunks_embedding_model_idx').on(table.embeddingModel),
     index('chunks_content_fts_idx').using('gin', table.contentFts),
   ],

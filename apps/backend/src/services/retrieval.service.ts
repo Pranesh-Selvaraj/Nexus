@@ -442,19 +442,29 @@ async function fetchVectorCandidates(
   // (pre-Phase-1) whose dimension matches the query vector. This keeps
   // existing corpora searchable without ever comparing different vector
   // spaces, which used to crash pgvector with a dimension error.
+  // Pin the dimension as a validated integer literal: the partial HNSW index
+  // predicate and the cast expression must match the query exactly for the
+  // planner to use the index (a bind parameter would hide the value).
+  // Pin the dimension as a validated integer literal: the partial HNSW index
+  // predicate and the cast expression must match the query exactly for the
+  // planner to use the index (a bind parameter would hide the value). HNSW on
+  // `vector` stops at 2000 dimensions, so larger models index/cast as halfvec.
+  const dimension = Math.trunc(dims);
+  const dimsLiteral = sql.raw(String(dimension));
+  const castType = sql.raw(
+    `${dimension > 2000 ? 'halfvec' : 'vector'}(${dimension})`,
+  );
   const result = await db.execute(
     sql`
       SELECT c.id, c.content, c.document_id, d.title, d.file_type, c.metadata,
              c.content_hash, c.token_count,
-             (1 - (c.embedding <=> ${vectorLiteral}::vector)) AS similarity
+             (1 - ((c.embedding::${castType}) <=> ${vectorLiteral}::${castType})) AS similarity
       FROM chunks c
       JOIN documents d ON d.id = c.document_id
-      WHERE d.workspace_id = ${workspaceId}
-        AND (
-          c.embedding_model = ${model}
-          OR (c.embedding_model IS NULL AND vector_dims(c.embedding) = ${dims})
-        )
-      ORDER BY c.embedding <=> ${vectorLiteral}::vector
+      WHERE c.workspace_id = ${workspaceId}
+        AND c.embedding_dims = ${dimsLiteral}
+        AND (c.embedding_model = ${model} OR c.embedding_model IS NULL)
+      ORDER BY (c.embedding::${castType}) <=> ${vectorLiteral}::${castType}
       LIMIT ${CANDIDATE_LIMIT}
     `,
   );
@@ -490,7 +500,7 @@ async function fetchKeywordCandidates(
              ts_rank(c.content_fts, websearch_to_tsquery(${language}::regconfig, ${query})) AS keyword_rank
       FROM chunks c
       JOIN documents d ON d.id = c.document_id
-      WHERE d.workspace_id = ${workspaceId}
+      WHERE c.workspace_id = ${workspaceId}
         AND c.content_fts IS NOT NULL
         AND c.content_fts @@ websearch_to_tsquery(${language}::regconfig, ${query})
       ORDER BY keyword_rank DESC
@@ -737,7 +747,7 @@ async function fetchAttachedChunks(
              c.content_hash, c.token_count
       FROM chunks c
       JOIN documents d ON d.id = c.document_id
-      WHERE d.workspace_id = ${workspaceId}
+      WHERE c.workspace_id = ${workspaceId}
         AND c.document_id IN (${idList})
       ORDER BY c.document_id, (c.metadata->>'chunkIndex')::int
     `,

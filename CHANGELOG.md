@@ -6,6 +6,43 @@ Releases are listed newest first. Every release uses the same layout: a `## [X.Y
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-10-25
+
+Phase 5 is about running Nexus at a size it was not designed for. Retrieval now plans against per-dimension HNSW indexes instead of scanning every vector, the workspace moved onto chunks so the ANN scan can filter without a join, and a load-test harness measures the result rather than guessing (100k chunks: 7ms p50 versus 152ms for the exact-scan path). Release images are built for amd64 and arm64, and an optional GPU profile runs local Whisper.
+
+### ✨ Added
+
+- ⚡ **Approximate retrieval with HNSW (R-17).** Migration 0017 backfills `chunks.embedding_dims` and creates one partial HNSW index per supported embedding dimension (384, 512, 768, 1024 and 1536 as `vector`; 2048 and 3072 as `halfvec`, because `vector` HNSW stops at 2000 dimensions). Retrieval pins the active dimension as a validated literal in the filter and the cast, so the planner can match the right partial index and fall back to an exact scan only when that is actually cheaper.
+- 🧱 **The workspace is denormalised onto chunks (R-17).** Migration 0018 adds `chunks.workspace_id` (backfilled from the document, cascade FK, indexed) and the worker writes it on every insert. Retrieval, keyword search and attached-image lookup now filter on the scanned table, so the ANN scan no longer needs a join before it can apply the workspace predicate. The migration is idempotent, and it sets `hnsw.iterative_scan = relaxed_order` per database (skipped on pgvector versions that do not support it) so a selective filter cannot starve the result set.
+- 🧪 **A load-test harness (R-17).** `pnpm --filter @nexus/backend load-test` seeds a synthetic workspace with N chunks of the configured dimension, prints the query plan, reports p50/p95/max for the vector arm and removes the workspace unless `--keep` is passed. `LOAD_TEST_CHUNKS`/`LOAD_TEST_DIMS`/`LOAD_TEST_QUERIES` make it reproducible through pnpm. The README envelope table now carries measured numbers instead of an estimate.
+- 🏗️ **Multi-arch release images (P-9).** The release workflow sets up QEMU and publishes both the backend and frontend images for `linux/amd64` and `linux/arm64`, so Apple Silicon, ARM servers and Raspberry-Pi-class hosts pull a native image instead of emulating one. Both images still update `latest` on a stable tag.
+- 🎙️ **An optional GPU transcription profile (P-9).** `docker-compose.gpu.yml` adds a `faster-whisper` sidecar with an NVIDIA device reservation and points the API and worker at it through `WHISPER_LOCAL_URL`; `WHISPER_MODEL` selects the model. CPU-only deployments are unaffected, and the local sidecar is still only used as the fallback when the configured provider transcription fails.
+
+### 🔧 Changed
+
+- 🔍 **The vector arm's SQL is dimension-pinned.** The query orders by a cast to the active dimension and compares against the same cast type, so the partial index and the similarity expression agree; the similarity column uses the identical expression to keep the distance consistent with the ordering.
+- 🗂️ **Storage/workspace counts are explicit.** Library and sidebar counts exclude trashed documents; storage usage and quotas include them (unchanged behaviour, now documented alongside the retrieval changes).
+- 📦 **Migration snapshots are back in sync.** The two custom migrations carry real generated snapshots, so the next `db:generate` sees the actual schema (including `chunks.workspace_id`) instead of trying to add it again.
+
+### 🔒 Security
+
+- 🧮 **Approximate retrieval changes recall, not access.** The workspace filter remains in every retrieval query (now on `chunks` as well as through the document join in the surrounding code), and the API's ownership checks are unchanged; ANN only changes which chunks are candidates, never which workspaces are visible.
+- 🧱 **The denormalised column is protected by the database.** `chunks.workspace_id` is `NOT NULL` with a `workspaces` FK using `ON DELETE cascade`, so deleting a workspace still removes its chunks and a chunk cannot be orphaned from a workspace.
+- 🗄️ **Index builds are migration work.** The HNSW indexes are created inside the migration transaction; on a very large existing corpus expect the upgrade to take longer and plan the maintenance window accordingly. The load-test harness creates and removes its own synthetic workspace and is not part of the product runtime.
+
+### 🐛 Fixed
+
+- 🧷 **A legacy-corpus query path could silently drop chunks.** Retrieval used to match legacy rows with `vector_dims(embedding)`; the dimension backfill makes `embedding_dims` authoritative, so those rows are now indexed like any other instead of depending on a runtime function in the filter.
+- 🧪 **Two smoke seeds broke after the denormalisation.** The direct chunk inserts in the smoke suite now set `workspace_id` (and the legacy-reindex fixture keeps its NULL dims deliberately), which keeps the reindex and hybrid-retrieval checks honest.
+
+### 📝 Notes
+
+- 📊 **Measured envelope** (this machine, synthetic vectors, vector arm only): 20k chunks @1536 dims → exact scan chosen by the planner, p50 152ms / p95 179ms; 100k chunks @768 dims → partial HNSW index used, p50 7ms / p95 10ms. Numbers and the harness command are in the README.
+- 🗄️ **Migrations 0017–0018** backfill `chunks.embedding_dims` and `chunks.workspace_id`, add the seven partial HNSW indexes, the workspace FK/index and the pgvector iterative-scan setting. No table is rewritten beyond the two backfills.
+- 🧠 **Decision record:** `docs/decisions/0002-approximate-retrieval-at-scale.md` explains why the per-dimension partial indexes, the chunk-level workspace and iterative scans were chosen over halfvec-everywhere, per-dimension columns, partitioning or a separate vector store.
+- ⏳ **Still deferred from the platform phase:** the S3/MinIO storage driver, zip workspace export, multi-user sharing and roles (L-13), domain packs (L-14), i18n (U-7), the queue split with a dead-letter admin view (P-3), cursor pagination across the UI, and OTel/Sentry reporting. ARM images and the GPU profile ship here; a Helm chart does not.
+- 🔬 **The load test measures the vector arm, not a full chat turn.** Query rewriting, reranking (off by default), embedding the query and the model call are outside its numbers; the README says so next to the table.
+
 ## [0.4.7] - 2026-10-25
 
 Phase 4b opens Nexus up and makes it operable. A scoped REST API, signed webhooks, an MCP server, a CLI and a browser share target let other tools use the same workspace; request ids, structured logs and Prometheus metrics make a chat turn observable; storage quotas, a restorable trash and tested `pg_dump` backups make the data safe to keep; and an installable PWA lets you review cards offline and sync when you reconnect. This is the release where Nexus stops being only a browser tab and becomes a platform you can run, integrate with and trust with your library.

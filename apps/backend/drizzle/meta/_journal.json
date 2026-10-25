@@ -120,6 +120,20 @@
       "when": 1792934542959,
       "tag": "0016_phase4b_trash_and_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792938467107,
+      "tag": "0017_phase5_hnsw_and_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792940358004,
+      "tag": "0018_phase5_chunks_workspace",
+      "breakpoints": true
     }
   ]
 }

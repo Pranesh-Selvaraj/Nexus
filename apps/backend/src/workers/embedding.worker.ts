@@ -102,6 +102,7 @@ async function processDocument(documentId: string): Promise<void> {
 
   const rows = textChunks.map((chunk, i) => ({
     documentId: doc.id,
+    workspaceId: doc.workspaceId,
     content: chunk.content,
     embedding: embeddings[i] ?? [],
     metadata: {

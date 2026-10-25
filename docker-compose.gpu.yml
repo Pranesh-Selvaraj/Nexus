@@ -1,0 +1,44 @@
+# Optional GPU/whisper profile for local transcription (P-9).
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.gpu.yml up -d
+#
+# Requires an NVIDIA GPU with the container toolkit installed. The API and
+# worker then use the local faster-whisper server as the STT fallback via
+# WHISPER_LOCAL_URL; set it in .env (http://whisper:8000/v1). Nothing here is
+# required for CPU-only deployments.
+services:
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cuda
+    restart: unless-stopped
+    environment:
+      WHISPER__MODEL: ${WHISPER_MODEL:-Systran/faster-whisper-small}
+    ports:
+      - '8000:8000'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  backend:
+    environment:
+      WHISPER_LOCAL_URL: http://whisper:8000/v1
+    depends_on:
+      whisper:
+        condition: service_healthy
+
+  worker:
+    environment:
+      WHISPER_LOCAL_URL: http://whisper:8000/v1

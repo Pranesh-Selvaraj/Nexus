@@ -183,6 +183,18 @@ docker compose -f docker-compose.prod.yml up -d --build                # rebuild
 
 Set `AUTH_PASSWORD` in `.env` **before** the first boot — the login screen appears automatically when auth is enabled. Behind TLS, also set `AUTH_COOKIE_SECURE=true`. See [SECURITY.md](SECURITY.md) for the full threat model.
 
+### Multi-arch images and GPU transcription
+
+Release images are published for **linux/amd64 and linux/arm64** (Apple Silicon, Raspberry Pi-class hosts, ARM servers), so the documented compose files work without a local build on either architecture. Building from source on an ARM host works too; the backend image installs `tesseract-ocr`, `poppler-utils` and `postgresql-client` for that architecture.
+
+For local transcription on an NVIDIA GPU, add the opt-in profile:
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.gpu.yml up -d
+```
+
+It runs a `faster-whisper` server (model configurable with `WHISPER_MODEL`) and points the API and worker at it via `WHISPER_LOCAL_URL`. CPU-only deployments need nothing; if the provider transcription fails, Nexus falls back to the local sidecar only when that URL is configured.
+
 ### Keeping it private
 
 See [SECURITY.md](SECURITY.md) — without `AUTH_PASSWORD` the app runs in single-user no-auth mode and should sit behind a reverse proxy.
@@ -280,13 +292,22 @@ All variables live in `.env` (see `.env.example`). The backend auto-discovers `.
 
 Nexus targets single-user, self-hosted personal corpora. The honest envelope:
 
-| Dimension   | Limit                     | Notes                                                                                                                                                                                                                 |
-| ----------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Uploads     | 25 MB/file (configurable) | Parsed server-side, chunked, embedded asynchronously                                                                                                                                                                  |
-| Retrieval   | exact vector scans        | No ANN index - `ORDER BY embedding <=> $q LIMIT k` scans the workspace's chunks. Sub-second up to roughly **100k chunks per workspace** (≈ 2–4k documents at default chunk size); beyond that, expect linear slowdown |
-| History     | unbounded queries         | Conversation lists and message histories load fully; fine at personal scale                                                                                                                                           |
-| Query cache | Redis, 24h TTL            | Query embeddings are cached keyed by model + text hash; switching embedding models invalidates automatically                                                                                                          |
-| Maintenance | daily 03:00               | Expired sessions are purged by a BullMQ repeat job                                                                                                                                                                    |
+| Dimension   | Limit                     | Notes                                                                                                                                                                                                                                                             |
+| ----------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Uploads     | 25 MB/file (configurable) | Parsed server-side, chunked, embedded asynchronously                                                                                                                                                                                                              |
+| Retrieval   | HNSW ANN index            | One partial HNSW index per supported embedding dimension (384/512/768/1024/1536 as `vector`, 2048/3072 as `halfvec`), so a query plans against the index for its active dimension; the planner still chooses an exact scan on small corpora because it is cheaper |
+| History     | unbounded queries         | Conversation lists and message histories load fully; fine at personal scale                                                                                                                                                                                       |
+| Query cache | Redis, 24h TTL            | Query embeddings are cached keyed by model + text hash; switching embedding models invalidates automatically                                                                                                                                                      |
+| Maintenance | daily 03:00               | Expired sessions, cached speech and trashed documents past the retention window are purged by a BullMQ repeat job                                                                                                                                                 |
+
+**Measured envelope** (this machine, `pnpm --filter @nexus/backend load-test`, synthetic vectors, vector arm only):
+
+| Corpus                | Plan       | p50   | p95   |
+| --------------------- | ---------- | ----- | ----- |
+| 20k chunks @1536 dims | exact scan | 152ms | 179ms |
+| 100k chunks @768 dims | HNSW       | 7ms   | 10ms  |
+
+The 20k case is the planner deliberately preferring an exact scan (all chunks in one document, 1536 dims); the 100k case uses the partial HNSW index. Run the harness with `LOAD_TEST_CHUNKS=100000 LOAD_TEST_DIMS=768 pnpm --filter @nexus/backend load-test` (it seeds a synthetic workspace, prints the plan and percentiles, and removes the workspace unless `--keep` is passed). Indexes cover the dimensions Nexus ships presets for; adding a new embedding dimension needs a matching partial index (migration) or retrieval falls back to an exact scan.
 
 **Tuning knobs** (Settings → Retrieval): smaller `chunk size` → more chunks but finer granularity; lower `top-K` → faster retrieval; adjust vector/keyword weights per corpus. For corpora beyond the envelope, the pragmatic path is partitioning workspaces (retrieval is scoped per workspace) rather than one giant workspace.
 

@@ -2434,11 +2434,11 @@ async function seedChunksAndQuery() {
     const chunk = (content: string) =>
       `to_tsvector('english', '${content.replace(/'/g, "''")}')`;
     await client.query(
-      `INSERT INTO chunks (document_id, content, embedding, metadata, embedding_model, embedding_dims, embedding_version, token_count, language, content_fts) VALUES
-       ($1, 'Hybrid retrieval in Nexus combines postgres full text search with a vector similarity search', $2::vector, '{"page":1,"chunkIndex":0}', $5, 1536, 1, 20, 'english', ${chunk('Hybrid retrieval in Nexus combines postgres full text search with a vector similarity search')}),
-       ($1, 'The capital of Mars is a city called Olympus Mons Research Station', $3::vector, '{"page":1,"chunkIndex":1}', $5, 1536, 1, 15, 'english', ${chunk('The capital of Mars is a city called Olympus Mons Research Station')}),
-       ($1, 'Embeddings and vectors are generated asynchronously by a BullMQ worker queue', $4::vector, '{"page":1,"chunkIndex":2}', $5, 1536, 1, 15, 'english', ${chunk('Embeddings and vectors are generated asynchronously by a BullMQ worker queue')})`,
-      [docId, mk(0.1), mk(0.9), mk(0.2), model],
+      `INSERT INTO chunks (document_id, workspace_id, content, embedding, metadata, embedding_model, embedding_dims, embedding_version, token_count, language, content_fts) VALUES
+       ($1, $6, 'Hybrid retrieval in Nexus combines postgres full text search with a vector similarity search', $2::vector, '{"page":1,"chunkIndex":0}', $5, 1536, 1, 20, 'english', ${chunk('Hybrid retrieval in Nexus combines postgres full text search with a vector similarity search')}),
+       ($1, $6, 'The capital of Mars is a city called Olympus Mons Research Station', $3::vector, '{"page":1,"chunkIndex":1}', $5, 1536, 1, 15, 'english', ${chunk('The capital of Mars is a city called Olympus Mons Research Station')}),
+       ($1, $6, 'Embeddings and vectors are generated asynchronously by a BullMQ worker queue', $4::vector, '{"page":1,"chunkIndex":2}', $5, 1536, 1, 15, 'english', ${chunk('Embeddings and vectors are generated asynchronously by a BullMQ worker queue')})`,
+      [docId, mk(0.1), mk(0.9), mk(0.2), model, seedWorkspaceId],
     );
 
     const { retrieveForChat } =
@@ -2509,10 +2509,10 @@ async function seedReindexScenario() {
     const model =
       process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small';
     await client.query(
-      `INSERT INTO chunks (document_id, content, embedding, metadata, embedding_model, embedding_dims, embedding_version, token_count, language, content_fts) VALUES
-       ($1, 'current chunk', $2::vector, '{"page":1,"chunkIndex":0}', $4, 1536, 1, 3, 'english', to_tsvector('english', 'current chunk')),
-       ($1, 'legacy chunk', $3::vector, '{"page":1,"chunkIndex":1}', NULL, NULL, NULL, 3, 'english', to_tsvector('english', 'legacy chunk'))`,
-      [docId, mk(0.1), mk(0.2), model],
+      `INSERT INTO chunks (document_id, workspace_id, content, embedding, metadata, embedding_model, embedding_dims, embedding_version, token_count, language, content_fts) VALUES
+       ($1, $5, 'current chunk', $2::vector, '{"page":1,"chunkIndex":0}', $4, 1536, 1, 3, 'english', to_tsvector('english', 'current chunk')),
+       ($1, $5, 'legacy chunk', $3::vector, '{"page":1,"chunkIndex":1}', NULL, NULL, NULL, 3, 'english', to_tsvector('english', 'legacy chunk'))`,
+      [docId, mk(0.1), mk(0.2), model, workspaceId],
     );
     return { workspaceId };
   } finally {
