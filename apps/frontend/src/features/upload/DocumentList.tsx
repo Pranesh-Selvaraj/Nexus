@@ -1,7 +1,18 @@
+import { useState } from 'react';
+
 import type { DocumentDTO } from '@nexus/shared-types';
 
 import { useToast } from '../../components/Toast';
 import { trpc } from '../../lib/trpc';
+import {
+  documentChips,
+  documentImageUrl,
+  documentSourceUrl,
+  formatLabel,
+  isImageDocument,
+  structureSummary,
+} from '../../lib/document-format';
+import { ImageAnalysisPanel } from '../vision/ImageAnalysisPanel';
 
 interface Props {
   workspaceId: string;
@@ -20,9 +31,14 @@ export function DocumentList({ workspaceId }: Props) {
           : false,
     },
   );
+  // Vision is a capability: when no vision provider is configured the
+  // "Analyse" affordance is hidden instead of failing after the click.
+  const vision = trpc.vision.config.useQuery(undefined);
+  const [analysing, setAnalysing] = useState<DocumentDTO | null>(null);
 
   const invalidateDocuments = () => {
     void utils.document.listByWorkspace.invalidate({ workspaceId });
+    void utils.document.images.invalidate({ workspaceId });
     // The sidebar count comes from workspace.list; keep it in sync.
     void utils.workspace.list.invalidate();
   };
@@ -65,7 +81,8 @@ export function DocumentList({ workspaceId }: Props) {
 
         {!query.isLoading && documents.length === 0 && (
           <p className="px-1 py-2 text-xs text-zinc-600">
-            No documents uploaded yet.
+            No documents uploaded yet. Drop a book, a web link, an image or a
+            recording above.
           </p>
         )}
 
@@ -74,6 +91,10 @@ export function DocumentList({ workspaceId }: Props) {
             <DocumentRow
               key={doc.id}
               doc={doc}
+              visionAvailable={Boolean(
+                vision.data?.enabled && vision.data?.available,
+              )}
+              onAnalyse={() => setAnalysing(doc)}
               onDelete={() => removeDocument.mutate({ documentId: doc.id })}
               onRetry={() => retryDocument.mutate({ documentId: doc.id })}
               onMakeCards={() =>
@@ -88,12 +109,22 @@ export function DocumentList({ workspaceId }: Props) {
           ))}
         </ul>
       </div>
+
+      {analysing && (
+        <ImageAnalysisPanel
+          workspaceId={workspaceId}
+          doc={analysing}
+          onClose={() => setAnalysing(null)}
+        />
+      )}
     </div>
   );
 }
 
 interface RowProps {
   doc: DocumentDTO;
+  visionAvailable: boolean;
+  onAnalyse: () => void;
   onDelete: () => void;
   onRetry: () => void;
   onMakeCards: () => void;
@@ -102,17 +133,35 @@ interface RowProps {
 
 function DocumentRow({
   doc,
+  visionAvailable,
+  onAnalyse,
   onDelete,
   onRetry,
   onMakeCards,
   isDeleting,
 }: RowProps) {
   const status = doc.status;
+  const image = isImageDocument(doc);
+  const chips = documentChips(doc.metadata);
+  const summary = structureSummary(doc.metadata);
+  const sourceUrl = documentSourceUrl(doc);
+  const chapters = doc.metadata?.chapters ?? [];
+  const canAnalyse = image && status === 'ready' && visionAvailable;
+
   return (
     <li className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-2">
-          <FileIcon className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+          {image && status !== 'failed' ? (
+            <img
+              src={documentImageUrl(doc.id)}
+              alt=""
+              loading="lazy"
+              className="h-10 w-10 shrink-0 rounded border border-zinc-800 object-cover"
+            />
+          ) : (
+            <FileIcon className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+          )}
           <div className="min-w-0">
             <p
               className="truncate text-sm font-medium text-zinc-200"
@@ -120,13 +169,62 @@ function DocumentRow({
             >
               {doc.title}
             </p>
+            {(formatLabel(doc.fileType) || summary.length > 0) &&
+              status !== 'failed' && (
+                <p className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-zinc-500">
+                  {formatLabel(doc.fileType) && (
+                    <span className="shrink-0 rounded bg-zinc-800 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-zinc-400">
+                      {formatLabel(doc.fileType)}
+                    </span>
+                  )}
+                  <span
+                    className="min-w-0 truncate"
+                    title={summary.join(' · ')}
+                  >
+                    {summary.join(' · ')}
+                  </span>
+                </p>
+              )}
             <p className="mt-0.5 text-xs text-zinc-500">
               {status === 'ready'
                 ? `${doc.chunkCount} chunk${doc.chunkCount === 1 ? '' : 's'} indexed`
                 : status === 'failed'
                   ? `Failed after ${doc.attempts} attempt${doc.attempts === 1 ? '' : 's'}`
-                  : new Date(doc.createdAt).toLocaleString()}
+                  : new Date(doc.createdAt).toLocaleString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
             </p>
+            {chips.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {chips.map((chip) => (
+                  <span
+                    key={chip.label}
+                    title={chip.title}
+                    className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+                      chip.tone === 'warn'
+                        ? 'bg-amber-950/50 text-amber-400'
+                        : 'bg-nexus-600/20 text-nexus-300'
+                    }`}
+                  >
+                    {chip.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {sourceUrl && status !== 'failed' && (
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="mt-1 block truncate text-[11px] text-nexus-300 underline-offset-2 hover:underline"
+                title={sourceUrl}
+              >
+                {sourceUrl.replace(/^https?:\/\//, '')}
+              </a>
+            )}
             {status === 'failed' && doc.errorMessage && (
               <p
                 className="mt-1 line-clamp-3 text-xs text-red-400"
@@ -134,6 +232,28 @@ function DocumentRow({
               >
                 {doc.errorMessage}
               </p>
+            )}
+            {chapters.length > 0 && status === 'ready' && (
+              <details className="mt-1">
+                <summary className="cursor-pointer text-[10px] uppercase tracking-wide text-zinc-600 hover:text-zinc-400">
+                  Contents ({chapters.length})
+                </summary>
+                <ol className="mt-1 max-h-32 space-y-0.5 overflow-y-auto pr-1">
+                  {chapters.slice(0, 60).map((chapter, index) => (
+                    <li
+                      key={`${chapter.page}-${index}`}
+                      className="flex items-baseline gap-1.5 text-[11px] text-zinc-500"
+                    >
+                      <span className="shrink-0 font-mono text-[9px] text-zinc-600">
+                        {chapter.page}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {chapter.title}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
             )}
           </div>
         </div>
@@ -147,6 +267,16 @@ function DocumentRow({
             </span>
           )}
           <StatusBadge status={status} />
+          {canAnalyse && (
+            <button
+              title="Analyse this image with the vision model"
+              aria-label="Analyse image"
+              onClick={onAnalyse}
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-nexus-300"
+            >
+              <EyeIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
           {status === 'ready' && (
             <button
               title="Generate flashcards from this document"
@@ -211,6 +341,21 @@ function FileIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <path d="M14 2v6h6M9 13h6M9 17h6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function EyeIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className={className}
+    >
+      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z" />
+      <circle cx="12" cy="12" r="2.5" />
     </svg>
   );
 }
