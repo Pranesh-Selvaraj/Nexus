@@ -52,7 +52,8 @@ COPY --from=build /app/node_modules /app/node_modules
 # instead of downloading language data at runtime, so the image ships them.
 # Set OCR_ENABLED=false to skip OCR entirely at runtime.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
+  && apt-get install -y --no-install-recommends \
+    tesseract-ocr poppler-utils postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 # Uploads dir must be writable by the node user (uid 1000). When an empty

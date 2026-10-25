@@ -21,7 +21,8 @@
     "mock:openai": "tsx scripts/mock-openai.ts",
     "test": "vitest run",
     "cli": "tsx scripts/nexus-cli.ts",
-    "mcp": "tsx scripts/mcp-server.ts"
+    "mcp": "tsx scripts/mcp-server.ts",
+    "backup": "tsx scripts/backup.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.3.0",

@@ -26,6 +26,8 @@ import {
 } from '../services/embedding.service.js';
 import { safeFtsLanguage } from '../services/retrieval-language.js';
 import { purgeExpiredAudio } from '../services/audio.service.js';
+import { purgeExpiredTrash } from '../services/storage.service.js';
+import { runBackup } from '../services/backup.service.js';
 import {
   deliverWebhook,
   emitWebhookEvent,
@@ -157,10 +159,32 @@ const worker = new Worker<EmbeddingJobData>(
     if (job.name === MAINTENANCE_JOB) {
       const purged = await purgeExpiredSessions();
       const audioPurged = await purgeExpiredAudio();
+      const trashPurged = await purgeExpiredTrash();
+      // Nightly logical backup, opt-in: a failure is logged and retried on the
+      // next maintenance run; it never fails the maintenance job.
+      let backup: string | null = null;
+      if (process.env.BACKUP_ENABLED === 'true') {
+        backup = await runBackup()
+          .then((result) => result.file)
+          .catch((err: unknown) => {
+            console.error(
+              '[worker] scheduled backup failed:',
+              sanitizeForLog(err),
+            );
+            return null;
+          });
+      }
       console.log(
-        `[worker] maintenance: purged ${purged} expired session(s), ${audioPurged} audio asset(s)`,
+        `[worker] maintenance: purged ${purged} expired session(s), ${audioPurged} audio asset(s), ${trashPurged} trashed document(s)` +
+          (backup ? `, backup ${backup}` : ''),
       );
-      return { maintenance: 'sessions-purged', purged, audioPurged };
+      return {
+        maintenance: 'sessions-purged',
+        purged,
+        audioPurged,
+        trashPurged,
+        backup,
+      };
     }
     const documentId = job.data.documentId;
     await processDocument(documentId);
