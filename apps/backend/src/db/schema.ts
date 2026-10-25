@@ -15,6 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import type {
+  ApiScope,
   DocumentStructure,
   RetrievalDebug,
   Source,
@@ -504,6 +505,41 @@ export const sessions = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Public API access (P-5): scoped API keys for the REST v1 surface
+// ---------------------------------------------------------------------------
+
+export const apiKeys = pgTable(
+  'api_keys',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    // Displayable head of the key: lets the UI list keys without ever storing
+    // the secret. Also the lookup key when authenticating.
+    prefix: text('prefix').notNull(),
+    // sha256 hex of the full key. The raw key is shown exactly once.
+    keyHash: text('key_hash').notNull().unique(),
+    // Additive permission set checked per REST route.
+    scopes: text('scopes').array().notNull().$type<ApiScope[]>(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // Updated at most once per minute so authentication stays cheap.
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    // Soft revocation: the row and its audit trail stay.
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('api_keys_user_id_idx').on(table.userId),
+    uniqueIndex('api_keys_prefix_idx').on(table.prefix),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Voice & language: audio assets (cache + retention), vocabulary, CEFR,
 // pronunciation attempts
 // ---------------------------------------------------------------------------
@@ -674,3 +710,4 @@ export type AudioAsset = typeof audioAssets.$inferSelect;
 export type VocabularyItem = typeof vocabularyItems.$inferSelect;
 export type CefrEstimate = typeof cefrEstimates.$inferSelect;
 export type PronunciationAttempt = typeof pronunciationAttempts.$inferSelect;
+export type ApiKey = typeof apiKeys.$inferSelect;

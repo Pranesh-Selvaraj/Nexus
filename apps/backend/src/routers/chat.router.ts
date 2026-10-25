@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { performance } from 'node:perf_hooks';
 import path from 'node:path';
 
 import { TRPCError } from '@trpc/server';
@@ -37,6 +38,7 @@ import {
   retrieveForChat,
   validateCitations,
 } from '../services/retrieval.service.js';
+import { chatTtft, chatTokens } from '../services/observability/metrics.js';
 import { getSetting, getSettingNumber } from '../services/settings.service.js';
 import {
   assertAnalyzableImage,
@@ -535,10 +537,17 @@ export const chatRouter = t.router({
               completionTokens: number;
               totalTokens: number;
             } | null = null;
+            // P-1: time to first token and reported token usage, per answer.
+            const answerStartedAt = performance.now();
+            let firstTokenAt: number | null = null;
             for await (const chunk of stream) {
               if (cancelled) return;
               const token = chunk.choices[0]?.delta?.content;
               if (token) {
+                if (firstTokenAt === null) {
+                  firstTokenAt = performance.now();
+                  chatTtft.observe((firstTokenAt - answerStartedAt) / 1000);
+                }
                 answer += token;
                 emit.next({ type: 'token', token });
               }
@@ -548,6 +557,11 @@ export const chatRouter = t.router({
                   completionTokens: chunk.usage.completion_tokens,
                   totalTokens: chunk.usage.total_tokens,
                 };
+                chatTokens.inc({ kind: 'prompt' }, chunk.usage.prompt_tokens);
+                chatTokens.inc(
+                  { kind: 'completion' },
+                  chunk.usage.completion_tokens,
+                );
               }
             }
             if (cancelled) return;

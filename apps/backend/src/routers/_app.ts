@@ -1,3 +1,4 @@
+import { apiKeyRouter } from './api-key.router.js';
 import { artifactsRouter } from './artifacts.router.js';
 import { chatRouter } from './chat.router.js';
 import { documentRouter } from './document.router.js';
@@ -28,6 +29,7 @@ export const appRouter = t.router({
       vision: await visionConfig(),
     })),
   }),
+  apiKey: apiKeyRouter,
   workspace: workspaceRouter,
   document: documentRouter,
   chat: chatRouter,

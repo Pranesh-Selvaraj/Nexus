@@ -16,6 +16,7 @@ import {
   getEmbeddingDimensions,
 } from './embedding.service.js';
 import { getOpenAIClient, sessionHeaders } from './openai-client.js';
+import { retrievalDuration } from './observability/metrics.js';
 import { safeFtsLanguage } from './retrieval-language.js';
 import {
   getSetting,
@@ -534,6 +535,23 @@ async function fetchKeywordCandidates(
  * vector and keyword arms, fuse, threshold, rerank (optional), diversify and
  * budget. Returns the sources plus the inspector payload.
  */
+/**
+ * Time one retrieval stage into the Prometheus histogram. Failures are
+ * recorded as well (the duration covers the failed attempt), and the error is
+ * re-thrown untouched.
+ */
+async function timedStage<T>(stage: string, run: () => Promise<T>): Promise<T> {
+  const startedAt = performance.now();
+  try {
+    return await run();
+  } finally {
+    retrievalDuration.observe(
+      { stage },
+      (performance.now() - startedAt) / 1000,
+    );
+  }
+}
+
 export async function retrieveForChat(params: {
   workspaceId: string;
   query: string;
@@ -583,15 +601,20 @@ export async function retrieveForChat(params: {
     keywordWeight,
   });
 
+  const requestStartedAt = performance.now();
   const searchQuery = config.queryRewrite
-    ? await rewriteQuery(params.history, params.query, params.sessionId)
+    ? await timedStage('rewrite', () =>
+        rewriteQuery(params.history, params.query, params.sessionId),
+      )
     : params.query;
 
   const embedding = await embedTextCached(searchQuery);
-  const [vectorHits, keywordHits] = await Promise.all([
-    fetchVectorCandidates(params.workspaceId, embedding, model, dims),
-    fetchKeywordCandidates(params.workspaceId, searchQuery, language),
-  ]);
+  const [vectorHits, keywordHits] = await timedStage('candidates', () =>
+    Promise.all([
+      fetchVectorCandidates(params.workspaceId, embedding, model, dims),
+      fetchKeywordCandidates(params.workspaceId, searchQuery, language),
+    ]),
+  );
 
   const fused = applyMinScore(
     fuseRrf(vectorHits, keywordHits, config.vectorWeight, config.keywordWeight),
@@ -599,7 +622,9 @@ export async function retrieveForChat(params: {
   );
 
   const ordered = config.rerank
-    ? await rerankHits(searchQuery, fused, config.topK, params.sessionId)
+    ? await timedStage('rerank', () =>
+        rerankHits(searchQuery, fused, config.topK, params.sessionId),
+      )
     : fused;
 
   const selected = applyDiversity(ordered, config.topK);
@@ -639,6 +664,11 @@ export async function retrieveForChat(params: {
       selected: selectedIds.has(hit.id),
       contentPreview: hit.content.replace(/\s+/g, ' ').slice(0, 200),
     }));
+
+  retrievalDuration.observe(
+    { stage: 'total' },
+    (performance.now() - requestStartedAt) / 1000,
+  );
 
   return {
     sources: budgeted.map(toSourceHit),

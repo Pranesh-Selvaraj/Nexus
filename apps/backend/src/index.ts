@@ -34,6 +34,12 @@ import {
   resolveUser,
 } from './middleware/auth.js';
 import { enqueueDocumentEmbedding, redisConnection } from './queues/index.js';
+import { requestLogger } from './services/observability/logger.js';
+import {
+  metricsHandler,
+  metricsMiddleware,
+} from './services/observability/metrics.js';
+import { apiV1Router } from './routes/api-v1.js';
 import { appRouter } from './routers/_app.js';
 import { UPLOAD_DIR } from './utils/paths.js';
 import {
@@ -192,6 +198,10 @@ async function main(): Promise<void> {
 
   const app = express();
   app.disable('x-powered-by');
+  // Structured request logs with an id echoed as X-Request-Id (P-1).
+  app.use(requestLogger);
+  // Route/status/duration metrics; scraped from GET /metrics.
+  app.use(metricsMiddleware);
   // Behind the nginx reverse proxy (docker-compose.prod.yml) - lets
   // express-rate-limit read X-Forwarded-For from loopback proxies only.
   app.set('trust proxy', 'loopback');
@@ -950,6 +960,17 @@ async function main(): Promise<void> {
       res.status(400).json({ error: err.message });
     },
   );
+
+  // --- Public REST API (P-5) -------------------------------------------
+  // API-key authenticated only: session cookies are not read here, so an
+  // integration request cannot be triggered by a cross-site form post.
+  app.use('/api/v1', apiV1Router());
+
+  // --- Prometheus metrics (P-1) ----------------------------------------
+  // Optionally protected by METRICS_TOKEN when the API is publicly reachable.
+  app.get('/metrics', (req, res) => {
+    void metricsHandler(req, res);
+  });
 
   // --- tRPC ------------------------------------------------------------
   app.use(
