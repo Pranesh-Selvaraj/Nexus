@@ -7,7 +7,7 @@ import { eq, lt, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { chunks, documents, sessions, workspaces } from '../db/schema.js';
-import type { EmbeddingJobData } from '../queues/index.js';
+import type { EmbeddingJobData, WebhookJobData } from '../queues/index.js';
 import {
   MAINTENANCE_JOB,
   redisConnection,
@@ -26,6 +26,10 @@ import {
 } from '../services/embedding.service.js';
 import { safeFtsLanguage } from '../services/retrieval-language.js';
 import { purgeExpiredAudio } from '../services/audio.service.js';
+import {
+  deliverWebhook,
+  emitWebhookEvent,
+} from '../services/webhook.service.js';
 import { sanitizeForLog } from '../utils/sanitize.js';
 import { UPLOAD_DIR } from '../utils/paths.js';
 
@@ -169,12 +173,48 @@ worker.on('completed', async (job) => {
   // Maintenance jobs carry no document id.
   if (job.name === MAINTENANCE_JOB || !job.data.documentId) return;
   const [doc] = await db
-    .select({ title: documents.title, chunkCount: documents.chunkCount })
+    .select({
+      title: documents.title,
+      chunkCount: documents.chunkCount,
+      workspaceId: documents.workspaceId,
+      ownerId: workspaces.userId,
+    })
     .from(documents)
+    .innerJoin(workspaces, eq(workspaces.id, documents.workspaceId))
     .where(eq(documents.id, job.data.documentId))
     .limit(1);
   console.log(
     `[worker] embedded "${doc?.title ?? job.data.documentId}" (${doc?.chunkCount ?? 0} chunks)`,
+  );
+  if (doc) {
+    await emitWebhookEvent({
+      userId: doc.ownerId,
+      workspaceId: doc.workspaceId,
+      event: 'document.indexed',
+      data: {
+        documentId: job.data.documentId,
+        workspaceId: doc.workspaceId,
+        title: doc.title,
+        chunkCount: doc.chunkCount,
+      },
+    });
+  }
+});
+
+// Webhook deliveries share this process so a deployment needs no extra
+// service; concurrency stays low because each delivery is a short HTTP POST.
+const webhookWorker = new Worker<WebhookJobData>(
+  'webhook',
+  async (job) => {
+    await deliverWebhook(job.data);
+  },
+  { connection: redisConnection, concurrency: 5 },
+);
+
+webhookWorker.on('failed', (job, err) => {
+  console.error(
+    `[worker] webhook delivery ${job?.data.payload.deliveryId ?? ''} failed:`,
+    sanitizeForLog(err),
   );
 });
 
@@ -208,6 +248,30 @@ worker.on('failed', async (job, err) => {
   // then record the latest error and attempt count while it stays processing.
   const maxAttempts = job.opts.attempts ?? 1;
   const terminal = job.attemptsMade >= maxAttempts;
+
+  if (terminal) {
+    const [owner] = await db
+      .select({
+        workspaceId: documents.workspaceId,
+        ownerId: workspaces.userId,
+      })
+      .from(documents)
+      .innerJoin(workspaces, eq(workspaces.id, documents.workspaceId))
+      .where(eq(documents.id, job.data.documentId))
+      .limit(1);
+    if (owner) {
+      await emitWebhookEvent({
+        userId: owner.ownerId,
+        workspaceId: owner.workspaceId,
+        event: 'document.failed',
+        data: {
+          documentId: job.data.documentId,
+          workspaceId: owner.workspaceId,
+          error: sanitizeForLog(err.message),
+        },
+      });
+    }
+  }
 
   await db
     .update(documents)

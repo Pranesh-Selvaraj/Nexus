@@ -15,6 +15,9 @@ export UPLOAD_DIR="${UPLOAD_DIR:-/tmp/nexus-e2e-uploads}"
 # so the documented private-host override is enabled for this stack only. The
 # SSRF guard itself is asserted on a strict instance by the smoke suite.
 export INGEST_ALLOW_PRIVATE_HOSTS="true"
+# Deterministic settings key so the settings panel and webhook signing work in
+# the e2e/visual stack (never used by a deployment).
+export SETTINGS_SECRET="${SETTINGS_SECRET:-nexus-e2e-settings-secret}"
 VITE_PORT="${VITE_PORT:-5173}"
 # Backend port for this stack; the Vite proxy reads the same variable.
 export API_PORT="${API_PORT:-3000}"

@@ -1,8 +1,15 @@
 import { Redis } from 'ioredis';
 import { Queue } from 'bullmq';
 
+import type { WebhookPayload } from '@nexus/shared-types';
+
 export interface EmbeddingJobData {
   documentId: string;
+}
+
+export interface WebhookJobData {
+  webhookId: string;
+  payload: WebhookPayload;
 }
 
 /** Repeatable maintenance job names (same queue, branched in the worker). */
@@ -68,5 +75,25 @@ export async function scheduleMaintenance(): Promise<void> {
     jobId: MAINTENANCE_JOB,
     removeOnComplete: true,
     removeOnFail: true,
+  });
+}
+
+export const webhookQueue = new Queue<WebhookJobData>('webhook', {
+  connection: redisConnection,
+});
+
+/**
+ * Queue one signed webhook delivery. Retried with exponential backoff (5
+ * attempts) so a briefly down receiver still gets the event; the endpoint row
+ * records the last status/error for the settings list.
+ */
+export async function enqueueWebhookDelivery(
+  data: WebhookJobData,
+): Promise<void> {
+  await webhookQueue.add('deliver', data, {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 5_000 },
+    removeOnComplete: 500,
+    removeOnFail: 500,
   });
 }

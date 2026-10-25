@@ -17,6 +17,7 @@ import {
 import type {
   ApiScope,
   DocumentStructure,
+  WebhookEvent,
   RetrievalDebug,
   Source,
 } from '@nexus/shared-types';
@@ -540,6 +541,40 @@ export const apiKeys = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Webhooks (P-5): user-configured endpoints notified when indexing finishes
+// ---------------------------------------------------------------------------
+
+export const webhooks = pgTable(
+  'webhooks',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // Null = every workspace the user owns.
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, {
+      onDelete: 'cascade',
+    }),
+    url: text('url').notNull(),
+    // AES-256-GCM ciphertext of the HMAC secret (SETTINGS_SECRET). Returned
+    // once at creation; deliveries sign with the decrypted value.
+    secret: text('secret').notNull(),
+    events: text('events').array().notNull().$type<WebhookEvent[]>(),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // Last delivery attempt, for the settings list ("failing" is visible).
+    lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+    lastStatus: integer('last_status'),
+    lastError: text('last_error'),
+  },
+  (table) => [index('webhooks_user_id_idx').on(table.userId)],
+);
+
+// ---------------------------------------------------------------------------
 // Voice & language: audio assets (cache + retention), vocabulary, CEFR,
 // pronunciation attempts
 // ---------------------------------------------------------------------------
@@ -711,3 +746,4 @@ export type VocabularyItem = typeof vocabularyItems.$inferSelect;
 export type CefrEstimate = typeof cefrEstimates.$inferSelect;
 export type PronunciationAttempt = typeof pronunciationAttempts.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
+export type Webhook = typeof webhooks.$inferSelect;

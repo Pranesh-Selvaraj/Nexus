@@ -9,6 +9,7 @@ import { settingsRouter } from './settings.router.js';
 import { studyRouter } from './study.router.js';
 import { visionRouter } from './vision.router.js';
 import { voiceRouter } from './voice.router.js';
+import { webhookRouter } from './webhook.router.js';
 import { workspaceRouter } from './workspace.router.js';
 import { t } from '../middleware/auth.js';
 import { visionConfig } from '../services/ingestion/vision.service.js';
@@ -30,6 +31,7 @@ export const appRouter = t.router({
     })),
   }),
   apiKey: apiKeyRouter,
+  webhook: webhookRouter,
   workspace: workspaceRouter,
   document: documentRouter,
   chat: chatRouter,

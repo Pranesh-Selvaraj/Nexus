@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { trpc } from '../../lib/trpc';
 import { ApiKeysCard } from './ApiKeysCard';
+import { WebhooksCard } from './WebhooksCard';
 
 const GROUPS: { id: string; label: string }[] = [
   // Provider settings (chat + embeddings) render in the dedicated cards above.
@@ -377,6 +378,7 @@ export function SettingsPanel() {
         })}
 
         <ApiKeysCard />
+        <WebhooksCard />
 
         {error && (
           <p className="mb-4 rounded-lg bg-red-950/40 px-4 py-2 text-sm text-red-400">
