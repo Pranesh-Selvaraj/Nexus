@@ -211,6 +211,7 @@ git tag -a v0.4.6 -m "Nexus v0.4.6" && git push origin v0.4.6
 | `pnpm --filter @nexus/backend dev:worker`  | Run only the embedding worker in watch mode |
 | `pnpm --filter @nexus/backend cli --help`  | Nexus CLI (search/ask/upload/due/note)      |
 | `pnpm --filter @nexus/backend mcp`         | Start the MCP server on stdio               |
+| `pnpm --filter @nexus/backend backup`      | Write a `pg_dump` backup (see Backups)      |
 
 ## Environment variables
 
@@ -450,6 +451,22 @@ The same REST surface powers three first-class clients, all authenticated with a
   ```
 
 - **Browser share target** (`extensions/browser/`) is a Manifest V3 extension: set the Nexus URL, API key and workspace once, then click "Save current page" on any article or captioned YouTube video. It posts the URL to `POST /api/v1/urls`; extraction happens server-side, so the browser never handles the page content.
+
+### Storage, trash and backups
+
+- **Quota.** `storage.quotaMb` (default 5 GB, 0 disables it) caps the bytes a user can store. Uploads and URL imports are refused with a `413` before anything is written; trashed documents still count until they are purged. **Settings → Storage** shows the used/quota bar and the largest workspaces.
+- **Trash instead of delete.** Deleting a document removes its chunks immediately (so retrieval can never cite it) but keeps the row and file for `storage.trashDays` (default 30). The library toast offers **Undo**, and **Show trash** lists restorable documents plus **Empty trash permanently**. Restoring re-queues indexing from the stored file. The nightly maintenance job purges expired trash, including the file.
+- **Backups.** `pnpm --filter @nexus/backend backup` writes a custom-format `pg_dump` to `BACKUP_DIR` (default `./backups`), prunes files past `BACKUP_RETENTION_DAYS` (default 7) and fails loudly when `pg_dump` is missing or the dump is empty. Set `BACKUP_ENABLED=true` to run the same backup from the nightly maintenance job. The backend image includes `postgresql-client`; from a source checkout install it (or point `PG_DUMP_BIN` at the binary).
+- **Restore drill** (run it before you need it):
+
+  ```bash
+  createdb nexus_restore_drill
+  pg_restore --no-owner --no-privileges -d nexus_restore_drill backups/nexus-<stamp>.dump
+  # sanity: row counts match the source for documents/workspaces/api_keys/webhooks
+  dropdb nexus_restore_drill
+  ```
+
+  The digest is taken with the connection string split into `PG*` variables, so the password never appears in the process list or a log line.
 
 ### Observability
 
