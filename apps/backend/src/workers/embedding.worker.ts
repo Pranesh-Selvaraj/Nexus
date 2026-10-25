@@ -6,7 +6,7 @@ import { Worker } from 'bullmq';
 import { eq, lt, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import { chunks, documents, sessions } from '../db/schema.js';
+import { chunks, documents, sessions, workspaces } from '../db/schema.js';
 import type { EmbeddingJobData } from '../queues/index.js';
 import {
   MAINTENANCE_JOB,
@@ -15,9 +15,9 @@ import {
 } from '../queues/index.js';
 import {
   buildEmbeddingText,
-  extractPages,
   splitIntoChunks,
 } from '../services/chunking.service.js';
+import { parseStoredFile } from '../services/ingestion/registry.js';
 import {
   EMBEDDING_VERSION,
   embedTexts,
@@ -44,8 +44,29 @@ async function processDocument(documentId: string): Promise<void> {
 
   const filePath = path.resolve(UPLOAD_DIR, doc.filePath);
 
-  // 1. Parse file -> pages
-  const pages = await extractPages(filePath, doc.fileType ?? 'txt');
+  // 1. Parse file -> pages through the format registry (magic-byte format is
+  //    stored on the row at upload time). Media transcription needs the
+  //    workspace owner for the STT pipeline's accounting.
+  const [owner] = await db
+    .select({ userId: workspaces.userId })
+    .from(workspaces)
+    .where(eq(workspaces.id, doc.workspaceId))
+    .limit(1);
+  if (!owner) {
+    throw new Error('The workspace for this document no longer exists');
+  }
+  const parsed = await parseStoredFile({
+    filePath,
+    format: doc.fileType ?? 'txt',
+    fileName: doc.title,
+    userId: owner.userId,
+    workspaceId: doc.workspaceId,
+    documentId: doc.id,
+  });
+  const pages = parsed.pages;
+  // Precomputed metadata (URL/YouTube ingestion) wins over what the Markdown
+  // parser can infer; parser fields fill the gaps.
+  const documentMetadata = { ...parsed.metadata, ...(doc.metadata ?? {}) };
 
   // 2. Split into chunks (heading-aware; heading context is prepended for
   //    embedding so section meaning is searchable, while the stored content
@@ -109,6 +130,8 @@ async function processDocument(documentId: string): Promise<void> {
         status: 'ready',
         chunkCount: rows.length,
         errorMessage: null,
+        metadata: documentMetadata,
+        title: (parsed.title?.trim() || doc.title).slice(0, 300),
         updatedAt: new Date(),
       })
       .where(eq(documents.id, doc.id));
@@ -156,11 +179,29 @@ worker.on('completed', async (job) => {
 });
 
 worker.on('failed', async (job, err) => {
+  if (!job?.data.documentId) return;
+
+  // A workspace (and its documents) can be deleted while its job is still in
+  // flight: the delete cascades to the chunks insert, BullMQ keeps the job and
+  // retries it. That race is not an indexing failure, and there is no row left
+  // to mark, so report it as a dropped job instead of an error.
+  const [doc] = await db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(eq(documents.id, job.data.documentId))
+    .limit(1)
+    .catch(() => [] as Array<{ id: string }>);
+  if (!doc) {
+    console.log(
+      `[worker] dropped job for deleted document ${job.data.documentId}`,
+    );
+    return;
+  }
+
   console.error(
-    `[worker] embedding failed for document ${job?.data.documentId} (attempt ${job?.attemptsMade}):`,
+    `[worker] embedding failed for document ${job.data.documentId} (attempt ${job.attemptsMade}):`,
     err.message,
   );
-  if (!job?.data.documentId) return;
 
   // BullMQ emits 'failed' after every attempt, including ones that will be
   // retried. Only mark the document failed once retries are exhausted; until
