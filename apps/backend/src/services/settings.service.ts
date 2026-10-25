@@ -31,7 +31,14 @@ export interface SettingDef {
   env: string | null;
   default: string | number;
   group:
-    'openai' | 'retrieval' | 'server' | 'auth' | 'ui' | 'voice' | 'language';
+    | 'openai'
+    | 'retrieval'
+    | 'server'
+    | 'auth'
+    | 'ui'
+    | 'voice'
+    | 'vision'
+    | 'language';
   min?: number;
   max?: number;
   step?: number;
@@ -523,6 +530,84 @@ export const SETTING_DEFS: SettingDef[] = [
     max: 5000,
     group: 'voice',
   },
+  // --- Vision (image ingestion, image chat, art/diagram analysis) -------
+  {
+    key: 'vision.enabled',
+    label: 'Enable vision',
+    description:
+      'Describe uploaded images with a vision model and let chat discuss them. When off, images are still indexed through OCR text only.',
+    type: 'boolean',
+    env: null,
+    default: 'true',
+    group: 'vision',
+  },
+  {
+    key: 'vision.model',
+    label: 'Vision model',
+    description:
+      'Model used for image requests (must accept images), e.g. a multimodal chat model. Empty uses the chat model.',
+    type: 'text',
+    env: 'OPENAI_VISION_MODEL',
+    default: '',
+    group: 'vision',
+    placeholder: 'e.g. gpt-4o-mini, qwen2.5-vl',
+  },
+  {
+    key: 'vision.baseUrl',
+    label: 'Vision base URL',
+    description:
+      'Optional OpenAI-compatible endpoint dedicated to image requests. Empty uses the main chat provider.',
+    type: 'text',
+    env: 'OPENAI_VISION_BASE_URL',
+    default: '',
+    group: 'vision',
+    placeholder: 'e.g. https://api.openai.com/v1',
+  },
+  {
+    key: 'vision.apiKey',
+    label: 'Vision API key',
+    description:
+      'Optional key for the vision provider. Stored encrypted; empty uses the main API key.',
+    type: 'secret',
+    env: 'OPENAI_VISION_API_KEY',
+    default: '',
+    group: 'vision',
+  },
+  {
+    key: 'vision.maxImageMb',
+    label: 'Max image size (MB)',
+    description:
+      'Largest image accepted for vision analysis. Also caps the bytes sent to the provider per request.',
+    type: 'number',
+    env: 'VISION_MAX_IMAGE_MB',
+    default: 10,
+    min: 1,
+    max: 50,
+    group: 'vision',
+  },
+  {
+    key: 'vision.ocrEnabled',
+    label: 'OCR for scanned files',
+    description:
+      'Run tesseract on images and PDFs without a text layer. Requires tesseract-ocr (and poppler-utils for PDFs) in the backend image.',
+    type: 'boolean',
+    env: 'OCR_ENABLED',
+    default: 'true',
+    group: 'vision',
+  },
+  {
+    key: 'vision.ocrLanguages',
+    label: 'OCR languages',
+    description:
+      'Tesseract language codes separated by + (e.g. eng, deu, spa, or eng+deu). Extra languages need the matching traineddata installed.',
+    type: 'text',
+    env: 'OCR_LANGUAGES',
+    default: 'eng',
+    max: 80,
+    group: 'vision',
+    placeholder: 'eng',
+  },
+
   // --- Language learning -----------------------------------------------
   {
     key: 'language.target',
@@ -806,7 +891,8 @@ function normalizeSettingValue(def: SettingDef, value: string): string {
     def.key === 'openai.baseUrl' ||
     def.key === 'openai.embeddingBaseUrl' ||
     def.key === 'voice.sttBaseUrl' ||
-    def.key === 'voice.ttsBaseUrl'
+    def.key === 'voice.ttsBaseUrl' ||
+    def.key === 'vision.baseUrl'
   ) {
     // A base URL that already contains an endpoint path can never work:
     // Nexus (like the OpenAI SDK) appends /chat/completions, /models, ...

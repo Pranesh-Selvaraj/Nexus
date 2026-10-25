@@ -36,6 +36,7 @@ describe('settings registry', () => {
         'auth',
         'ui',
         'voice',
+        'vision',
         'language',
       ]),
     );

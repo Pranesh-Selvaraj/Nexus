@@ -1,15 +1,19 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 
-import type {
-  ChatHistoryMessage,
-  MessageDTO,
-  RetrievalDebug,
-  Source,
-  Usage,
+import {
+  isImageFileType,
+  VISION_MODES,
+  type ChatHistoryMessage,
+  type MessageDTO,
+  type RetrievalDebug,
+  type Source,
+  type Usage,
+  type VisionMode,
 } from '@nexus/shared-types';
 
 import { useToast } from '../../components/Toast';
+import { documentImageUrl } from '../../lib/document-format';
 import { trpc } from '../../lib/trpc';
 import { ReadAloudPlayer } from '../voice/ReadAloudPlayer';
 import { MicButton } from '../voice/MicButton';
@@ -30,6 +34,8 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[];
+  /** Image documents attached to a user turn (vision chat). */
+  attachments?: { imageDocumentIds: string[] } | null;
   usage?: Usage | null;
   feedback?: 'up' | 'down' | null;
   retrieval?: RetrievalDebug | null;
@@ -48,6 +54,8 @@ interface PendingQuestion {
   history: ChatHistoryMessage[];
   regenerate?: boolean;
   persona?: string;
+  imageDocumentIds?: string[];
+  visionMode?: VisionMode;
 }
 
 /** Tokens are flushed to state at most this often while streaming. */
@@ -104,6 +112,34 @@ export function ChatPanel({ workspaceId }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
+
+  // Vision: images attached to the next turn, plus the analysis mode used
+  // when images are present. The picker only lists ready images from this
+  // workspace (the server re-checks ownership and readiness per turn).
+  const visionConfig = trpc.vision.config.useQuery(undefined);
+  const [attachedImages, setAttachedImages] = useState<
+    { id: string; title: string }[]
+  >([]);
+  const [visionMode, setVisionMode] = useState<VisionMode>('general');
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const imagesQuery = trpc.document.images.useQuery(
+    { workspaceId },
+    { enabled: imagePickerOpen },
+  );
+  const visionReady = Boolean(
+    visionConfig.data?.enabled && visionConfig.data?.available,
+  );
+
+  function toggleAttachment(image: { id: string; title: string }): void {
+    setAttachedImages((current) => {
+      if (current.some((item) => item.id === image.id)) {
+        return current.filter((item) => item.id !== image.id);
+      }
+      // Four images is the server-side cap; keep the UI in step with it.
+      if (current.length >= 4) return current;
+      return [...current, image];
+    });
+  }
 
   const workspace = trpc.workspace.list.useQuery(undefined);
   const workspaceName =
@@ -356,8 +392,19 @@ export function ChatPanel({ workspaceId }: Props) {
   function handleSend(override?: string) {
     const message = (override ?? input).trim();
     if (!message || pending) return;
+    // Attaching images needs a vision-capable provider; the server rejects
+    // the turn anyway, so block it before streaming starts.
+    if (attachedImages.length > 0 && !visionReady) {
+      toast.push({
+        kind: 'error',
+        message:
+          'Vision is not configured. Enable vision and set a vision-capable model in Settings.',
+      });
+      return;
+    }
 
     const id = crypto.randomUUID();
+    const imageDocumentIds = attachedImages.map((image) => image.id);
     streamMessageId.current = id;
     streamText.current = '';
     streamSources.current = [];
@@ -373,11 +420,22 @@ export function ChatPanel({ workspaceId }: Props) {
       // for wire compatibility only.
       history: [],
       persona: persona ?? undefined,
+      imageDocumentIds:
+        imageDocumentIds.length > 0 ? imageDocumentIds : undefined,
+      visionMode: imageDocumentIds.length > 0 ? visionMode : undefined,
     });
     setInput('');
+    setAttachedImages([]);
+    setImagePickerOpen(false);
     setMessages((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), role: 'user', content: message },
+      {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: message,
+        attachments:
+          imageDocumentIds.length > 0 ? { imageDocumentIds } : undefined,
+      },
       { id, role: 'assistant', content: '' },
     ]);
   }
@@ -779,9 +837,32 @@ export function ChatPanel({ workspaceId }: Props) {
                             )}
                           </>
                         ) : (
-                          <p className="whitespace-pre-wrap">
-                            {message.content}
-                          </p>
+                          <>
+                            {message.attachments?.imageDocumentIds.length ? (
+                              <div className="mb-2 flex flex-wrap gap-1.5">
+                                {message.attachments.imageDocumentIds.map(
+                                  (imageId) => (
+                                    <a
+                                      key={imageId}
+                                      href={documentImageUrl(imageId)}
+                                      target="_blank"
+                                      rel="noreferrer noopener"
+                                      className="block"
+                                    >
+                                      <img
+                                        src={documentImageUrl(imageId)}
+                                        alt="Attached image"
+                                        className="max-h-40 rounded-lg border border-white/20 object-contain"
+                                      />
+                                    </a>
+                                  ),
+                                )}
+                              </div>
+                            ) : null}
+                            <p className="whitespace-pre-wrap">
+                              {message.content}
+                            </p>
+                          </>
                         )}
                       </div>
                     </div>
@@ -872,6 +953,128 @@ export function ChatPanel({ workspaceId }: Props) {
                   </span>
                 </div>
               )}
+
+              {/* Vision attachments: chips for the images on this turn plus
+                  the analysis mode the answer should use. */}
+              {attachedImages.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                  {attachedImages.map((image) => (
+                    <span
+                      key={image.id}
+                      className="relative flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 py-0.5 pl-0.5 pr-1.5"
+                    >
+                      <img
+                        src={documentImageUrl(image.id)}
+                        alt=""
+                        className="h-8 w-8 rounded object-cover"
+                      />
+                      <span
+                        className="max-w-28 truncate text-[11px] text-zinc-300"
+                        title={image.title}
+                      >
+                        {image.title}
+                      </span>
+                      <button
+                        onClick={() =>
+                          setAttachedImages((current) =>
+                            current.filter((item) => item.id !== image.id),
+                          )
+                        }
+                        aria-label={`Remove ${image.title}`}
+                        className="rounded px-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  <label
+                    htmlFor="vision-mode"
+                    className="ml-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500"
+                  >
+                    Vision
+                  </label>
+                  <select
+                    id="vision-mode"
+                    value={visionMode}
+                    disabled={streaming}
+                    onChange={(event) =>
+                      setVisionMode(event.target.value as VisionMode)
+                    }
+                    className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[11px] text-zinc-300 outline-none focus:border-nexus-500 disabled:opacity-50"
+                  >
+                    {VISION_MODES.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="truncate text-[10px] text-zinc-600">
+                    {VISION_MODES.find((item) => item.id === visionMode)?.hint}
+                  </span>
+                </div>
+              )}
+
+              {imagePickerOpen && (
+                <div className="mb-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                      Attach an image from this workspace
+                    </p>
+                    <button
+                      onClick={() => setImagePickerOpen(false)}
+                      className="text-[10px] text-zinc-500 hover:text-zinc-300"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {imagesQuery.isLoading && (
+                    <p className="px-1 py-2 text-[11px] text-zinc-600">
+                      Loading images...
+                    </p>
+                  )}
+                  {!imagesQuery.isLoading &&
+                    (imagesQuery.data?.length ?? 0) === 0 && (
+                      <p className="px-1 py-2 text-[11px] text-zinc-600">
+                        No images yet. Upload a photo, a diagram or a painting
+                        above and it will appear here once it is indexed.
+                      </p>
+                    )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {imagesQuery.data?.slice(0, 12).map((image) => {
+                      const selected = attachedImages.some(
+                        (item) => item.id === image.id,
+                      );
+                      return (
+                        <button
+                          key={image.id}
+                          onClick={() =>
+                            toggleAttachment({
+                              id: image.id,
+                              title: image.title,
+                            })
+                          }
+                          aria-pressed={selected}
+                          title={image.title}
+                          className={`overflow-hidden rounded-lg border text-left transition-colors ${
+                            selected
+                              ? 'border-nexus-500 ring-1 ring-nexus-500/60'
+                              : 'border-zinc-700 hover:border-zinc-500'
+                          }`}
+                        >
+                          <img
+                            src={documentImageUrl(image.id)}
+                            alt={image.title}
+                            className="h-16 w-24 object-cover"
+                          />
+                          <span className="block max-w-24 truncate px-1 py-0.5 text-[10px] text-zinc-400">
+                            {image.title}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="flex items-end gap-2 rounded-xl border border-zinc-700 bg-zinc-900 p-2 focus-within:border-nexus-500">
                 <textarea
                   ref={composerRef}
@@ -883,6 +1086,22 @@ export function ChatPanel({ workspaceId }: Props) {
                   placeholder={`Ask about the documents in "${workspaceName}"...`}
                   className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-zinc-600"
                 />
+                {visionReady && (
+                  <button
+                    onClick={() => setImagePickerOpen((open) => !open)}
+                    disabled={streaming}
+                    aria-label="Attach an image"
+                    aria-expanded={imagePickerOpen}
+                    title="Attach an image from this workspace"
+                    className={`rounded-lg border p-2 transition-colors disabled:opacity-40 ${
+                      attachedImages.length > 0
+                        ? 'border-nexus-500 bg-nexus-600/20 text-nexus-200'
+                        : 'border-zinc-600 text-zinc-300 hover:bg-zinc-800'
+                    }`}
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                  </button>
+                )}
                 <MicButton
                   workspaceId={workspaceId}
                   config={voiceConfig.data}
@@ -1023,6 +1242,7 @@ function toLocalMessage(message: MessageDTO): Message {
     role: message.role,
     content: message.content,
     sources: message.sources ?? undefined,
+    attachments: message.attachments ?? undefined,
     usage: message.usage,
     feedback: message.feedback ?? null,
     retrieval: message.retrievalDebug ?? null,
@@ -1105,6 +1325,20 @@ function SourcesPanel({
               <p className="mt-1 text-[10px] uppercase tracking-wide text-zinc-600">
                 {source.headingPath.join(' › ')}
               </p>
+            )}
+            {isImageFileType(source.fileType) && (
+              <div className="mt-1.5 flex items-start gap-2">
+                <img
+                  src={documentImageUrl(source.documentId)}
+                  alt=""
+                  className="h-16 w-16 shrink-0 rounded border border-zinc-800 object-cover"
+                />
+                <p className="text-[10px] text-zinc-600">
+                  {source.attached
+                    ? `Attached image - its indexed description is source ${i + 1}`
+                    : `Image source ${i + 1}`}
+                </p>
+              </div>
             )}
             <p className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-zinc-500 group-open:line-clamp-none line-clamp-4">
               {source.content}
@@ -1304,6 +1538,25 @@ function SendIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <path d="M22 2 11 13" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ImageIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m4 17 5-5 4 4 3-3 4 4" />
     </svg>
   );
 }

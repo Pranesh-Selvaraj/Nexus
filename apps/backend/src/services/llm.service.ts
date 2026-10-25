@@ -1,6 +1,9 @@
 import type OpenAI from 'openai';
 
+import type { VisionMode } from '@nexus/shared-types';
+
 import { assertChatConfigured } from './embedding.service.js';
+import { VISION_INSTRUCTIONS } from './ingestion/vision.service.js';
 import { getOpenAIClient, sessionHeaders } from './openai-client.js';
 import { getPersona } from './personas.js';
 import { getSetting, getSettingNumber } from './settings.service.js';
@@ -20,6 +23,10 @@ export interface AnswerRequest {
   sources: SourceHit[];
   /** Tutor persona id; layers its instruction over the system prompt. */
   persona?: string;
+  /** Images attached to this turn, already size-checked and encoded. */
+  images?: Array<{ dataUrl: string; title?: string }>;
+  /** Analysis preset applied when images are attached. */
+  visionMode?: VisionMode;
 }
 
 export const DEFAULT_SYSTEM_PROMPT = [
@@ -61,6 +68,20 @@ export function formatSource(source: SourceHit, index: number): string {
   return `<source id="${index + 1}" title="${escapeAttribute(source.title)}"${section}${page}>\n${source.content}\n</source>`;
 }
 
+/** Extra instruction appended to a turn that carries images. */
+export function visionInstruction(
+  images: Array<{ title?: string }>,
+  mode: VisionMode | undefined,
+): string {
+  const names = images
+    .map((image, index) => image.title ?? `image ${index + 1}`)
+    .join(', ');
+  return [
+    VISION_INSTRUCTIONS[mode ?? 'general'],
+    `The user attached ${images.length === 1 ? 'an image' : `${images.length} images`} (${names}); each is also present in the source list as its indexed description. Cite the image source number like any other source, and state clearly when something in the image is unreadable or ambiguous.`,
+  ].join(' ');
+}
+
 export function buildMessages(
   req: AnswerRequest,
   systemPrompt: string = DEFAULT_SYSTEM_PROMPT,
@@ -71,13 +92,32 @@ export function buildMessages(
 
   const systemContent = systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
+  const text = `The following excerpts were retrieved from the user's documents:\n\n${context}\n\nQuestion: ${req.query}`;
+  const images = req.images ?? [];
+  const userContent: OpenAI.Chat.ChatCompletionMessageParam =
+    images.length === 0
+      ? { role: 'user', content: text }
+      : {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `${text}\n\n${visionInstruction(images, req.visionMode)}`,
+            },
+            ...images.map(
+              (image) =>
+                ({
+                  type: 'image_url',
+                  image_url: { url: image.dataUrl },
+                }) as const,
+            ),
+          ],
+        };
+
   return [
     { role: 'system', content: systemContent },
     ...req.history.slice(-10),
-    {
-      role: 'user',
-      content: `The following excerpts were retrieved from the user's documents:\n\n${context}\n\nQuestion: ${req.query}`,
-    },
+    userContent,
   ];
 }
 

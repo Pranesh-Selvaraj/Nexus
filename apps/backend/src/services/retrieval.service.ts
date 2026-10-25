@@ -37,6 +37,8 @@ export interface SourceHit {
   id: string;
   documentId: string;
   title: string;
+  /** Detected document format, so the UI can thumbnail image sources. */
+  fileType?: string | null;
   content: string;
   page: number | null;
   pageEnd: number | null;
@@ -48,6 +50,8 @@ export interface SourceHit {
   fusedScore: number;
   tokenCount: number;
   cited?: boolean;
+  /** True when the source came from an image attached to the question. */
+  attached?: boolean;
 }
 
 export interface RetrievalProfileConfig {
@@ -71,6 +75,7 @@ export interface RawCandidate {
   id: string;
   documentId: string;
   title: string;
+  fileType?: string | null;
   content: string;
   contentHash: string;
   page: number | null;
@@ -80,12 +85,14 @@ export interface RawCandidate {
   vectorScore: number;
   keywordScore: number;
   fusedScore: number;
+  attached?: boolean;
 }
 
 interface CandidateRow {
   id: string;
   document_id: string;
   title: string;
+  file_type: string | null;
   content: string;
   content_hash: string | null;
   token_count: number | null;
@@ -436,7 +443,7 @@ async function fetchVectorCandidates(
   // spaces, which used to crash pgvector with a dimension error.
   const result = await db.execute(
     sql`
-      SELECT c.id, c.content, c.document_id, d.title, c.metadata,
+      SELECT c.id, c.content, c.document_id, d.title, d.file_type, c.metadata,
              c.content_hash, c.token_count,
              (1 - (c.embedding <=> ${vectorLiteral}::vector)) AS similarity
       FROM chunks c
@@ -456,6 +463,7 @@ async function fetchVectorCandidates(
     id: row.id,
     documentId: row.document_id,
     title: row.title,
+    fileType: row.file_type ?? null,
     content: row.content,
     contentHash: row.content_hash ?? hashContent(row.content),
     page: row.metadata?.page ?? null,
@@ -500,6 +508,7 @@ async function fetchKeywordCandidates(
     id: row.id,
     documentId: row.document_id,
     title: row.title,
+    fileType: row.file_type ?? null,
     content: row.content,
     contentHash: row.content_hash ?? hashContent(row.content),
     page: row.metadata?.page ?? null,
@@ -530,6 +539,12 @@ export async function retrieveForChat(params: {
   query: string;
   history: ChatHistoryItem[];
   sessionId?: string;
+  /**
+   * Documents whose chunks are force-included as sources (images attached to
+   * the question). Their chunks are already the vision description + OCR
+   * text, so the answer can cite the image like any other source.
+   */
+  attachedDocumentIds?: string[];
 }): Promise<RetrievalResult> {
   const [
     profileSetting,
@@ -588,13 +603,26 @@ export async function retrieveForChat(params: {
     : fused;
 
   const selected = applyDiversity(ordered, config.topK);
-  const { hits: budgeted, usedTokens } = trimToBudget(
+  const { hits: trimmed, usedTokens } = trimToBudget(
     selected,
     config.tokenBudget,
   );
+  const attached = await fetchAttachedChunks(
+    params.workspaceId,
+    params.attachedDocumentIds ?? [],
+    trimmed.map((hit) => hit.id),
+  );
+  // Mark every hit that came from an attached image, including chunks that
+  // retrieval would have surfaced anyway, so citations can say "attached".
+  const attachedDocuments = new Set(params.attachedDocumentIds ?? []);
+  const budgeted = [...attached, ...trimmed].map((hit) =>
+    attachedDocuments.has(hit.documentId) ? { ...hit, attached: true } : hit,
+  );
+  const totalTokens =
+    usedTokens + attached.reduce((sum, hit) => sum + hit.tokenCount, 0);
 
   const fusedRank = new Map(fused.map((hit, index) => [hit.id, index + 1]));
-  const selectedIds = new Set(budgeted.map((hit) => hit.id));
+  const selectedIds = new Set(trimmed.map((hit) => hit.id));
   const candidates: RetrievalCandidate[] = ordered
     .slice(0, RERANK_LIMIT)
     .map((hit, index) => ({
@@ -625,7 +653,7 @@ export async function retrieveForChat(params: {
       keywordCandidates: keywordHits.length,
       minScore: config.minScore,
       tokenBudget: config.tokenBudget,
-      usedTokens,
+      usedTokens: totalTokens,
       candidates,
     },
   };
@@ -640,6 +668,7 @@ function toSourceHit(hit: RawCandidate): SourceHit {
     id: hit.id,
     documentId: hit.documentId,
     title: hit.title,
+    fileType: hit.fileType,
     content: hit.content,
     page: hit.page,
     pageEnd: hit.pageEnd,
@@ -649,7 +678,68 @@ function toSourceHit(hit: RawCandidate): SourceHit {
     keywordScore: hit.keywordScore,
     fusedScore: hit.fusedScore,
     tokenCount: hit.tokenCount,
+    attached: hit.attached,
   };
+}
+
+/**
+ * Chunks of the images attached to this turn, in document order. They are
+ * placed before retrieved hits so the image is source [1] and the model sees
+ * it next to the question; at most two chunks per image keeps the context
+ * budget honest.
+ */
+async function fetchAttachedChunks(
+  workspaceId: string,
+  documentIds: string[],
+  excludeIds: string[],
+): Promise<RawCandidate[]> {
+  if (documentIds.length === 0) return [];
+  const unique = [...new Set(documentIds)].slice(0, 4);
+  // Bound placeholders, never string interpolation: these ids come from the
+  // request payload (already UUID-validated, but the query must not rely on it).
+  const idList = sql.join(
+    unique.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  );
+  const result = await db.execute(
+    sql`
+      SELECT c.id, c.content, c.document_id, d.title, d.file_type, c.metadata,
+             c.content_hash, c.token_count
+      FROM chunks c
+      JOIN documents d ON d.id = c.document_id
+      WHERE d.workspace_id = ${workspaceId}
+        AND c.document_id IN (${idList})
+      ORDER BY c.document_id, (c.metadata->>'chunkIndex')::int
+    `,
+  );
+  const rows = (result as unknown as { rows: CandidateRow[] }).rows;
+  const excluded = new Set(excludeIds);
+  const perDocument = new Map<string, number>();
+  const hits: RawCandidate[] = [];
+  for (const row of rows) {
+    if (excluded.has(row.id)) continue;
+    const count = perDocument.get(row.document_id) ?? 0;
+    if (count >= 2) continue;
+    perDocument.set(row.document_id, count + 1);
+    hits.push({
+      id: row.id,
+      documentId: row.document_id,
+      title: row.title,
+      fileType: row.file_type ?? null,
+      content: row.content,
+      contentHash: row.content_hash ?? hashContent(row.content),
+      page: row.metadata?.page ?? null,
+      pageEnd: row.metadata?.pageEnd ?? null,
+      headingPath: row.metadata?.headingPath ?? [],
+      tokenCount:
+        row.token_count ?? Math.max(1, Math.ceil(row.content.length / 4)),
+      vectorScore: 1,
+      keywordScore: 1,
+      fusedScore: 1,
+      attached: true,
+    });
+  }
+  return hits;
 }
 
 function hashContent(content: string): string {

@@ -4,6 +4,7 @@ import {
   buildMessages,
   generateConversationTitle,
   personaSystemPrompt,
+  visionInstruction,
 } from './llm.service.js';
 import type { SourceHit } from './llm.service.js';
 
@@ -121,6 +122,52 @@ describe('buildMessages', () => {
     });
     expect(messages).toHaveLength(2);
     expect(String(messages[1]?.content)).toContain('Question: q');
+  });
+
+  it('keeps a plain string turn when no image is attached', () => {
+    const messages = buildMessages({ query: 'q', history: [], sources: [] });
+    expect(typeof messages[messages.length - 1]?.content).toBe('string');
+  });
+
+  it('sends image parts plus the mode instruction for a vision turn', () => {
+    const messages = buildMessages({
+      query: 'What does this diagram show?',
+      history: [],
+      sources: [source({ fileType: 'png', attached: true })],
+      images: [{ dataUrl: 'data:image/png;base64,AAAA', title: 'diagram.png' }],
+      visionMode: 'diagram',
+    });
+    const last = messages[messages.length - 1]!;
+    expect(Array.isArray(last.content)).toBe(true);
+    const parts = last.content as unknown as Array<Record<string, unknown>>;
+    // Exactly one text part and one image part per attached image.
+    expect(parts.filter((part) => part.type === 'text')).toHaveLength(1);
+    const imageParts = parts.filter((part) => part.type === 'image_url');
+    expect(imageParts).toHaveLength(1);
+    expect(imageParts[0]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'data:image/png;base64,AAAA' },
+    });
+    const text = String(parts[0]?.text);
+    expect(text).toContain('What does this diagram show?');
+    // The diagram instruction replaces the generic description prompt.
+    expect(text).toContain('diagram or schematic');
+    expect(text).toContain('diagram.png');
+  });
+
+  it('uses the art-critique instruction for art mode', () => {
+    expect(visionInstruction([{ title: 'painting.jpg' }], 'art')).toContain(
+      'art critic',
+    );
+    // One image is described as singular, several as plural.
+    expect(visionInstruction([{ title: 'a.png' }], 'general')).toContain(
+      'attached an image',
+    );
+    expect(
+      visionInstruction([{ title: 'a.png' }, { title: 'b.png' }], 'general'),
+    ).toContain('attached 2 images');
+    // An unnamed image still gets a stable label.
+    expect(visionInstruction([{}], 'equation')).toContain('image 1');
   });
 });
 

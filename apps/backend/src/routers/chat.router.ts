@@ -1,12 +1,16 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
 import { TRPCError } from '@trpc/server';
 import { observable } from '@trpc/server/observable';
-import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 
-import type {
-  ChatEvent,
-  PersonaDTO,
-  RetrievalDebug,
-  Source,
+import {
+  isImageFileType,
+  type ChatEvent,
+  type PersonaDTO,
+  type RetrievalDebug,
+  type Source,
 } from '@nexus/shared-types';
 import {
   chatFeedbackInputSchema,
@@ -16,7 +20,12 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
-import { conversations, messages, workspaces } from '../db/schema.js';
+import {
+  conversations,
+  documents,
+  messages,
+  workspaces,
+} from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
 import {
   generateConversationTitle,
@@ -28,7 +37,14 @@ import {
   retrieveForChat,
   validateCitations,
 } from '../services/retrieval.service.js';
-import { getSetting } from '../services/settings.service.js';
+import { getSetting, getSettingNumber } from '../services/settings.service.js';
+import {
+  assertAnalyzableImage,
+  toDataUrl,
+  visionAvailable,
+} from '../services/ingestion/vision.service.js';
+import { mimeForFormat } from '../services/ingestion/magic.js';
+import { UPLOAD_DIR } from '../utils/paths.js';
 import { friendlyErrorMessage } from '../utils/errors.js';
 
 function toConversationDTO(row: {
@@ -73,6 +89,90 @@ async function assertConversationOwnership(
       message: 'Conversation not found',
     });
   }
+}
+
+interface AttachedImage {
+  documentId: string;
+  title: string;
+  dataUrl: string;
+}
+
+/**
+ * Load the image documents attached to a turn: ownership (through the
+ * workspace), readiness, image format, size cap and MIME allowlist are all
+ * enforced here, then each image is encoded as a data URL for the provider.
+ * The bytes never touch the client.
+ */
+async function loadAttachedImages(
+  workspaceId: string,
+  ids: string[],
+): Promise<AttachedImage[]> {
+  const unique = [...new Set(ids)].filter(Boolean).slice(0, 4);
+  if (unique.length === 0) return [];
+  if (!(await visionAvailable())) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message:
+        'Vision is not configured. Enable vision and set a vision-capable model in Settings before attaching images.',
+    });
+  }
+
+  const rows = await db
+    .select({
+      id: documents.id,
+      title: documents.title,
+      filePath: documents.filePath,
+      fileType: documents.fileType,
+      status: documents.status,
+    })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.workspaceId, workspaceId),
+        inArray(documents.id, unique),
+      ),
+    );
+  if (rows.length !== unique.length) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Attached image not found in this workspace',
+    });
+  }
+
+  const maxImageMb = await getSettingNumber('vision.maxImageMb');
+  const images: AttachedImage[] = [];
+  for (const row of rows) {
+    if (!isImageFileType(row.fileType) || row.status !== 'ready') {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `"${row.title}" is not a ready image`,
+      });
+    }
+    const mime = mimeForFormat(row.fileType);
+    const buffer = await readFile(path.resolve(UPLOAD_DIR, row.filePath)).catch(
+      () => null,
+    );
+    if (!buffer) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: `The stored file for "${row.title}" is missing`,
+      });
+    }
+    try {
+      assertAnalyzableImage(buffer, mime, maxImageMb);
+    } catch (error) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: error instanceof Error ? error.message : 'Invalid image',
+      });
+    }
+    images.push({
+      documentId: row.id,
+      title: row.title,
+      dataUrl: toDataUrl(buffer, mime),
+    });
+  }
+  return images;
 }
 
 export const chatRouter = t.router({
@@ -143,6 +243,7 @@ export const chatRouter = t.router({
         kind: m.kind,
         content: m.content,
         sources: m.sources,
+        attachments: m.attachments ?? null,
         usage: m.usage,
         feedback: m.feedback ?? null,
         retrievalDebug: m.retrievalDebug ?? null,
@@ -238,6 +339,16 @@ export const chatRouter = t.router({
               });
             }
 
+            // Images attached to this turn are resolved up front: a bad
+            // attachment fails before any message is persisted.
+            const attachedImages = await loadAttachedImages(
+              input.workspaceId,
+              input.imageDocumentIds ?? [],
+            );
+            const attachedImageIds = attachedImages.map(
+              (image) => image.documentId,
+            );
+
             // A reused conversation must belong to the workspace the caller
             // owns; otherwise any conversation id could be written to.
             if (conversation) {
@@ -286,9 +397,14 @@ export const chatRouter = t.router({
             // stored as a user turn.
             let query = input.message;
             let currentUserMessageId: string | undefined;
+            let regenerateImageIds: string[] = [];
             if (input.regenerate && !isNewConversation) {
               const [lastUser] = await db
-                .select({ id: messages.id, content: messages.content })
+                .select({
+                  id: messages.id,
+                  content: messages.content,
+                  attachments: messages.attachments,
+                })
                 .from(messages)
                 .where(
                   and(
@@ -306,6 +422,7 @@ export const chatRouter = t.router({
               }
               query = lastUser.content;
               currentUserMessageId = lastUser.id;
+              regenerateImageIds = lastUser.attachments?.imageDocumentIds ?? [];
               // Replace the most recent assistant/error row so the
               // conversation does not accumulate discarded answers.
               const [trailing] = await db
@@ -329,6 +446,10 @@ export const chatRouter = t.router({
                   conversationId: conversation,
                   role: 'user',
                   content: input.message,
+                  attachments:
+                    attachedImageIds.length > 0
+                      ? { imageDocumentIds: attachedImageIds }
+                      : null,
                 })
                 .returning({ id: messages.id });
               currentUserMessageId = inserted?.id;
@@ -366,11 +487,21 @@ export const chatRouter = t.router({
               currentUserMessageId,
             );
 
+            // A regenerate request carries no image ids; reuse the ones the
+            // original turn stored so the answer still sees the image.
+            const turnImages =
+              attachedImages.length > 0
+                ? attachedImages
+                : await loadAttachedImages(
+                    input.workspaceId,
+                    input.regenerate ? regenerateImageIds : [],
+                  );
             const retrieval = await retrieveForChat({
               workspaceId: input.workspaceId,
               query,
               history,
               sessionId: conversation,
+              attachedDocumentIds: turnImages.map((image) => image.documentId),
             });
             const sources = retrieval.sources;
             if (cancelled) return;
@@ -382,7 +513,17 @@ export const chatRouter = t.router({
             });
 
             const stream = await streamAnswer(
-              { query, history, sources, persona: input.persona },
+              {
+                query,
+                history,
+                sources,
+                persona: input.persona,
+                images: turnImages.map((image) => ({
+                  dataUrl: image.dataUrl,
+                  title: image.title,
+                })),
+                visionMode: input.visionMode,
+              },
               conversation,
             );
 
