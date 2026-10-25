@@ -48,9 +48,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        // Top-centre (below the mobile header) so a toast with an action never
-        // covers the library/trash controls or the composer.
-        className="pointer-events-none fixed left-1/2 top-16 z-50 flex w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2 md:top-4"
+        // Below the mode tabs on both layouts: a toast with an action must not
+        // cover the library/trash controls, the composer, or the tab bar.
+        className="pointer-events-none fixed left-1/2 top-32 z-50 flex w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-2 md:top-20"
         role="status"
         aria-live="polite"
       >
