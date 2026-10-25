@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { trpc } from '../../lib/trpc';
+import { ApiKeysCard } from './ApiKeysCard';
 
 const GROUPS: { id: string; label: string }[] = [
   // Provider settings (chat + embeddings) render in the dedicated cards above.
@@ -374,6 +375,8 @@ export function SettingsPanel() {
             </section>
           );
         })}
+
+        <ApiKeysCard />
 
         {error && (
           <p className="mb-4 rounded-lg bg-red-950/40 px-4 py-2 text-sm text-red-400">
