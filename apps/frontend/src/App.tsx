@@ -25,6 +25,11 @@ const WorkspacePanel = lazy(() =>
     default: m.WorkspacePanel,
   })),
 );
+const SharedWorkspacePage = lazy(() =>
+  import('./features/share/SharedWorkspacePage').then((m) => ({
+    default: m.SharedWorkspacePage,
+  })),
+);
 
 type GateState =
   | { status: 'checking' }
@@ -64,6 +69,25 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  // Public capability link: render the read-only page without touching the
+  // session gate. No cookies are read here beyond the normal same-origin fetch.
+  const shareToken = /^\/share\/([^/]+)\/?$/.exec(
+    window.location.pathname,
+  )?.[1];
+  if (shareToken) {
+    return (
+      <Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-500">
+            <span className="animate-pulse text-sm">Loading...</span>
+          </div>
+        }
+      >
+        <SharedWorkspacePage token={decodeURIComponent(shareToken)} />
+      </Suspense>
+    );
+  }
 
   if (gate.status === 'checking') {
     return (

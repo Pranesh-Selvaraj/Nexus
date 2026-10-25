@@ -6,6 +6,42 @@ Releases are listed newest first. Every release uses the same layout: a `## [X.Y
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-10-25
+
+Phase 7 starts the collaboration track with read-only sharing: any workspace can be published as a capability link that lets someone read the library and ask grounded questions without an account — and that cannot modify anything. Token-based sharing is deliberately the first step before memberships and roles, because it adds a new surface instead of rewriting every existing ownership query.
+
+### ✨ Added
+
+- 🔗 **Read-only share links (L-13).** **Share** in the workspace toolbar creates a capability URL (`<PUBLIC_BASE_URL>/share/nxs_…`) with an optional label and expiry (7/30/90 days or never). The token is 32 random bytes, returned exactly once and stored only as a sha256 hash, so the database cannot be replayed into a working link. Existing links are listed with creation date, expiry and status, and can be revoked; the list never re-displays the URL by design.
+- 🌐 **A public shared-workspace page.** `/share/<token>` renders without a session: workspace name and description, the visible document list with format/word counts, and a question box whose answers come from the normal retrieval pipeline and cite their sources. It is strictly read-only — there is no path from the shared surface to uploads, edits, deletions, exports, settings, chat history or API keys.
+- 🔌 **Two capability endpoints.** `GET /api/share/:token` returns the read-only workspace view and `POST /api/share/:token/ask` answers a question with `{ answer, sources, query }`. Both ignore cookies and API keys, are rate-limited per IP (30 requests/minute), send `Cache-Control: no-store`, and treat revoked, expired and unknown tokens identically (`404`).
+- 🧾 **Management API.** `share.list`, `share.create` and `share.revoke` are session-only, so an API key cannot mint a capability URL for a workspace; creation and listing resolve workspace ownership first.
+
+### 🔧 Changed
+
+- 🧭 **The workspace toolbar now has a Share action** next to the Chat/Study/Voice/Language tabs, opening a dialog that explains the read-only semantics before a link is created.
+- 🌍 **Link URLs use a configurable public host.** `PUBLIC_BASE_URL` sets the origin written into share URLs (falling back to the first `FRONTEND_ORIGIN`), so links created from a LAN or proxied deployment point at the address visitors can actually reach.
+- 📱 **The public page is a separate app entry**, not the authenticated shell: it renders even when logged out, has no sidebar or settings, and does not read a session.
+
+### 🔒 Security
+
+- 🔑 **Tokens are hashed at rest and shown once.** A share URL is a bearer capability; only its sha256 is stored, so a backup or database read does not reveal working links. Revocation takes effect immediately, expiry is checked on every request, and the management list cannot recover a lost token.
+- 🚧 **The shared surface is structurally read-only.** The public routes only call the read path of retrieval and the answer pipeline; they cannot reach upload, delete, settings, export, queue admin or key management, and they never return document contents, stored file bytes or conversation history.
+- 🧱 **Abuse controls are explicit.** Both endpoints share a 30/minute per-IP limiter, tokens must match the `nxs_` format before any database lookup, and responses are marked non-cacheable so a shared answer does not linger in intermediary caches.
+- 🧾 **Sharing is documented as a capability.** SECURITY.md states that possession of the URL is the only credential, so links should not be posted publicly and should be revoked when a sharing session ends; answers execute as the workspace owner for provider access but cannot write anything.
+- 🧪 **Verification includes the negative cases:** revoked/expired/unknown tokens return `404`, the management list never contains a token, and the public page cannot trigger a mutation.
+
+### 🐛 Fixed
+
+- 🛠️ **The workspace header had no place for workspace-level actions.** The tab bar now hosts Share without disturbing the mode switch, and the dialog closes on backdrop click while trapping its own interactions.
+
+### 📝 Notes
+
+- 🧪 **Verification:** 266 unit tests, **158/158** smoke checks (link creation returns the URL once, list hides tokens, public view and ask work without a session, revocation and unknown tokens are `404`, plus the existing suites), **5/5** Playwright suites including a share flow that opens the public page, asks a question and sees revocation, and 55 visual captures including the dialog, one-time URL and shared page. `typecheck`, `lint`, `format:check`, `build`, `pnpm audit` and `pnpm peers check` are clean.
+- 🗄️ **Migration 0019** adds `workspace_share_links` (workspace/user foreign keys with cascade, unique token hash, expiry, revocation). Links are per-workspace and unaffected by later document changes: the view always reflects the current library.
+- ⏳ **Deliberately deferred to the rest of L-13:** workspace memberships and roles (owner/editor/reader), invitations by email, per-conversation or per-artifact share links, comments and the audit log. Memberships require changing every ownership check in every router, so they will land as one migration with a security test per router rather than being mixed into this read-only surface.
+- 🧷 **Limits of capability sharing:** there is no per-link usage analytics, no password on a link, no domain restriction, and a link grants access to every visible document in the workspace (trashed documents are excluded). Rotating a link means revoking it and creating a new one.
+
 ## [0.4.9] - 2026-10-25
 
 Phase 6 makes Nexus operable: an admin view of the indexing queue with retry/drop, a zip workspace export that contains the original files, and a storage abstraction so documents can live in S3-compatible object storage instead of a single host's disk. Local disk stays the default; object storage is opt-in.

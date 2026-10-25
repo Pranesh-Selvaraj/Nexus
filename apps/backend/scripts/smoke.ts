@@ -2160,6 +2160,86 @@ try {
       foreignZip.status === 404,
     );
 
+    // --- read-only share links (L-13) -----------------------------------
+    const shareCreate = await fetchJson('/trpc/share.create', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspaceId: apiWorkspaceId,
+        label: 'smoke link',
+        expiresInDays: 7,
+      }),
+    });
+    const shareUrl = shareCreate.body?.result?.data?.url as string | undefined;
+    const shareToken = shareUrl?.split('/share/')[1];
+    print(
+      'share.create returns a one-time read-only URL',
+      typeof shareUrl === 'string' &&
+        /^nxs_/.test(shareToken ?? '') &&
+        shareCreate.body?.result?.data?.active === true,
+      { tokenPrefix: shareToken?.slice(0, 8) },
+    );
+
+    const shareList = await fetchJson(
+      `/trpc/share.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: apiWorkspaceId }))}`,
+      { method: 'GET' },
+    );
+    const shareRows = (shareList.body?.result?.data ?? []) as any[];
+    print(
+      'share.list never returns the token',
+      shareRows.some((row) => row.label === 'smoke link') &&
+        shareRows.every(
+          (row) => row.url === undefined && row.token === undefined,
+        ),
+    );
+
+    // No session and no API key: the capability token is the only credential.
+    const sharedView = await fetch(`${BASE}/api/share/${shareToken}`);
+    const sharedBody = (await sharedView.json()) as any;
+    print(
+      'share link serves the workspace read-only',
+      sharedView.status === 200 &&
+        sharedBody?.name === 'API Smoke Workspace' &&
+        Array.isArray(sharedBody?.documents) &&
+        sharedBody.documents.length > 0,
+      { status: sharedView.status, docs: sharedBody?.documents?.length },
+    );
+
+    const sharedAsk = await fetch(`${BASE}/api/share/${shareToken}/ask`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question: 'What is Nexus?' }),
+    });
+    const sharedAnswer = (await sharedAsk.json()) as any;
+    print(
+      'share link answers questions with cited sources',
+      sharedAsk.status === 200 &&
+        typeof sharedAnswer?.answer === 'string' &&
+        sharedAnswer.answer.length > 0 &&
+        Array.isArray(sharedAnswer?.sources),
+      { status: sharedAsk.status },
+    );
+
+    const shareRevoke = await fetchJson('/trpc/share.revoke', {
+      method: 'POST',
+      body: JSON.stringify({ id: shareCreate.body?.result?.data?.id }),
+    });
+    const sharedAfterRevoke = await fetch(`${BASE}/api/share/${shareToken}`);
+    const revokeAsk = await fetch(`${BASE}/api/share/${shareToken}/ask`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question: 'Still there?' }),
+    });
+    print(
+      'a revoked share link stops working immediately',
+      shareRevoke.body?.result?.data?.revoked === true &&
+        sharedAfterRevoke.status === 404 &&
+        revokeAsk.status === 404,
+      { view: sharedAfterRevoke.status, ask: revokeAsk.status },
+    );
+
+    const unknownShare = await fetch(`${BASE}/api/share/nxs_${'a'.repeat(43)}`);
+    print('an unknown share token is 404', unknownShare.status === 404);
+
     // --- admin queue view (P-3) -----------------------------------------
     const queue = await fetchJson('/trpc/admin.queue', { method: 'GET' });
     const queueData = queue.body?.result?.data;

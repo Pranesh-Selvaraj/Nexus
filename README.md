@@ -469,6 +469,15 @@ Instead of polling, register an endpoint in **Settings → Webhooks** and Nexus 
 
 Headers: `X-Nexus-Event`, `X-Nexus-Delivery`, and `X-Nexus-Signature: sha256=<hex HMAC-SHA256 of the raw body>` keyed with the secret shown once at creation. `document.failed` carries `data.error` instead of a chunk count. Deliveries time out after 5 seconds, do not follow redirects, retry five times with exponential backoff, and record the last status/error on the endpoint so a failing receiver is visible in Settings. The signing secret is encrypted at rest with `SETTINGS_SECRET`; without that key webhook creation is refused with an explanatory error. Targets are address-checked like ingestion (private/loopback/link-local refused) — `WEBHOOK_ALLOW_PRIVATE_HOSTS=true` is a local-testing override only.
 
+### Read-only share links
+
+Any workspace can be shared without an account: **Share** in the workspace toolbar creates a capability URL (`/share/nxs_…`) that lets visitors read the document list and ask grounded questions. It is strictly read-only — no uploads, edits, deletions, settings or exports are reachable from the shared page.
+
+- The token is generated server-side, shown **once**, and stored only as a sha256 hash; if it is lost, revoke the link and create a new one.
+- Links can carry a label and an expiry (7/30/90 days or never) and are revocable at any time; a revoked or expired link answers `404` immediately.
+- Questions on the shared page run through the same retrieval pipeline as chat and cite the sources, executing as the workspace owner but only in read mode. The shared surface is rate-limited per client IP (30 requests/minute).
+- Links are capabilities: anyone who has the URL can use it. Treat them like an unlisted document and revoke when a group is done. `PUBLIC_BASE_URL` controls the host used in the generated URL (defaults to `FRONTEND_ORIGIN` or `http://localhost:5173`).
+
 ### MCP, CLI and the browser share target
 
 The same REST surface powers three first-class clients, all authenticated with a scoped key:

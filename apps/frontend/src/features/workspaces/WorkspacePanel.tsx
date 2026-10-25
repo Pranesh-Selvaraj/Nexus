@@ -4,6 +4,7 @@ import { ChatPanel } from '../chat/ChatPanel';
 import { LanguagePanel } from '../language/LanguagePanel';
 import { StudyPanel } from '../study/StudyPanel';
 import { VoiceChatPanel } from '../voice/VoiceChatPanel';
+import { ShareDialog } from '../share/ShareDialog';
 import { DocumentList } from '../upload/DocumentList';
 import { UploadDropzone } from '../upload/UploadDropzone';
 import { useToast } from '../../components/Toast';
@@ -18,6 +19,7 @@ export function WorkspacePanel({ workspaceId }: Props) {
   const [view, setView] = useState<'chat' | 'study' | 'voice' | 'language'>(
     'chat',
   );
+  const [shareOpen, setShareOpen] = useState(false);
   const voiceConfig = trpc.voice.config.useQuery(undefined);
   const utils = trpc.useUtils();
 
@@ -76,21 +78,36 @@ export function WorkspacePanel({ workspaceId }: Props) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Workspace modes: conversation vs the study loop. */}
-      <div className="flex items-center gap-1 border-b border-zinc-800 bg-zinc-950 px-3 py-1.5">
-        {(['chat', 'study', 'voice', 'language'] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setView(mode)}
-            className={`rounded-lg px-3 py-1 text-xs font-medium capitalize transition-colors ${
-              view === mode
-                ? 'bg-zinc-800 text-zinc-100'
-                : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
-            }`}
-          >
-            {mode}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-950 px-3 py-1.5">
+        <div className="flex items-center gap-1">
+          {(['chat', 'study', 'voice', 'language'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setView(mode)}
+              className={`rounded-lg px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                view === mode
+                  ? 'bg-zinc-800 text-zinc-100'
+                  : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
+              }`}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setShareOpen(true)}
+          className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+        >
+          Share
+        </button>
       </div>
+
+      {shareOpen && (
+        <ShareDialog
+          workspaceId={workspaceId}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
       {/* Chat stays mounted while in Study so the open conversation (and
           the in-flight stream state) survives tab switches. */}

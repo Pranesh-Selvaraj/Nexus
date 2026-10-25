@@ -557,6 +557,36 @@ export const apiKeys = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Sharing (L-13): read-only capability links for a workspace
+// ---------------------------------------------------------------------------
+
+export const workspaceShareLinks = pgTable(
+  'workspace_share_links',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    label: text('label'),
+    // sha256 of the capability token; the token itself is shown once.
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('workspace_share_links_workspace_id_idx').on(table.workspaceId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Webhooks (P-5): user-configured endpoints notified when indexing finishes
 // ---------------------------------------------------------------------------
 
@@ -763,3 +793,4 @@ export type CefrEstimate = typeof cefrEstimates.$inferSelect;
 export type PronunciationAttempt = typeof pronunciationAttempts.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type Webhook = typeof webhooks.$inferSelect;
+export type WorkspaceShareLink = typeof workspaceShareLinks.$inferSelect;
