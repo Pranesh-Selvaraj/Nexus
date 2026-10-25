@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:http';
+import { createServer, type Server } from 'node:http';
+import { createHmac } from 'node:crypto';
 
 import '../src/utils/env.js';
 import {
@@ -24,9 +25,15 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
 
 /** Like fetchJson but against an arbitrary base URL (auth-mode instance). */
 async function fetchJsonAuth(base: string, path: string, init?: RequestInit) {
+  // FormData must keep the runtime-generated multipart boundary; only JSON
+  // bodies get the JSON content type.
+  const isForm = init?.body instanceof FormData;
   const res = await fetch(`${base}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      ...(isForm ? {} : { 'content-type': 'application/json' }),
+      ...(init?.headers ?? {}),
+    },
   });
   const body = await res.json().catch(() => null);
   return { status: res.status, body };
@@ -45,9 +52,13 @@ const child = spawn('pnpm', ['exec', 'tsx', 'src/index.ts'], {
     ...process.env,
     PORT: String(API_PORT),
     WS_PATH: '/ws',
-    // Deterministic: secret settings must be rejected on this instance
-    // regardless of the repo .env contents (dotenv never overrides it).
-    SETTINGS_SECRET: '',
+    // Deterministic settings key: webhooks and stored provider keys need to
+    // encrypt at rest on this instance. The "no key configured" behaviour is
+    // asserted separately on the auth-mode instance below, which has none.
+    SETTINGS_SECRET: 'smoke-settings-secret',
+    // The webhook checks deliver to a receiver this script runs on 127.0.0.1;
+    // the strict private-target refusal is unit-tested on its own.
+    WEBHOOK_ALLOW_PRIVATE_HOSTS: 'true',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -57,7 +68,13 @@ const worker = spawn(
   ['exec', 'tsx', 'src/workers/embedding.worker.ts'],
   {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env },
+    // Same settings key and local-target override as the API: deliveries are
+    // signed (decrypt the stored secret) and re-validated in the worker.
+    env: {
+      ...process.env,
+      SETTINGS_SECRET: 'smoke-settings-secret',
+      WEBHOOK_ALLOW_PRIVATE_HOSTS: 'true',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   },
 );
@@ -69,6 +86,27 @@ worker.stderr.on('data', (d) => (stdout += d.toString()));
 
 let ok = true;
 try {
+  // --- webhook receiver (P-5) -----------------------------------------
+  // A tiny local endpoint that records every signed delivery.
+  const hookHits: Array<{
+    headers: Record<string, string | string[] | undefined>;
+    body: string;
+  }> = [];
+  const webhookServer: Server = createServer((req, res) => {
+    let data = '';
+    req.on('data', (chunk) => (data += chunk));
+    req.on('end', () => {
+      hookHits.push({ headers: req.headers, body: data });
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
+  });
+  await new Promise<void>((resolve) =>
+    webhookServer.listen(0, '127.0.0.1', () => resolve()),
+  );
+  const hookPort = (webhookServer.address() as { port: number }).port;
+  const hookUrl = `http://127.0.0.1:${hookPort}/hook`;
+
   // wait for API
   let healthy = false;
   for (let i = 0; i < 30; i++) {
@@ -504,17 +542,6 @@ try {
     method: 'POST',
     body: JSON.stringify({ key: 'openai.embeddingBaseUrl', value: '' }),
   });
-
-  // secrets require SETTINGS_SECRET (unset in this instance)
-  const secretWithoutKey = await fetchJson('/trpc/settings.update', {
-    method: 'POST',
-    body: JSON.stringify({ key: 'openai.apiKey', value: 'sk-123456' }),
-  });
-  print(
-    'settings.update secret without SETTINGS_SECRET rejected',
-    secretWithoutKey.body?.error?.data?.code === 'BAD_REQUEST' &&
-      String(secretWithoutKey.body?.error?.message).includes('SETTINGS_SECRET'),
-  );
 
   // connection test targets the configured provider: with the mock
   // (OPENAI_BASE_URL set) it verifies chat + embeddings end to end;
@@ -1702,7 +1729,14 @@ try {
       method: 'POST',
       body: JSON.stringify({
         name: 'smoke integration',
-        scopes: ['search', 'ask', 'documents:read'],
+        scopes: [
+          'search',
+          'ask',
+          'documents:read',
+          'documents:write',
+          'reviews:read',
+          'reviews:write',
+        ],
       }),
     });
     const createdData = created.body?.result?.data;
@@ -1713,7 +1747,7 @@ try {
       typeof apiKey === 'string' &&
         apiKey.startsWith('ndx_') &&
         typeof createdData?.prefix === 'string' &&
-        createdData?.scopes?.length === 3,
+        createdData?.scopes?.length === 6,
       { prefix: createdData?.prefix },
     );
 
@@ -1797,6 +1831,210 @@ try {
         chars: ask.body?.answer?.length,
         ttftMs: ask.body?.timings?.firstTokenMs,
       },
+    );
+
+    const restUpload = new FormData();
+    restUpload.append('workspaceId', apiWorkspaceId ?? '');
+    restUpload.append(
+      'file',
+      new File(
+        [
+          'Scoped API keys let a script upload a document. Fingerprints dedupe identical bytes. '.repeat(
+            6,
+          ),
+        ],
+        'api-upload.txt',
+        { type: 'text/plain' },
+      ),
+    );
+    const uploaded = await fetchJsonAuth(BASE, '/api/v1/documents', {
+      method: 'POST',
+      headers: authHeader,
+      body: restUpload,
+    });
+    print(
+      'api v1 uploads a document with documents:write',
+      uploaded.status === 201 &&
+        uploaded.body?.duplicate === false &&
+        typeof uploaded.body?.document?.id === 'string',
+      { status: uploaded.status, type: uploaded.body?.document?.fileType },
+    );
+
+    const restUploadAgain = new FormData();
+    restUploadAgain.append('workspaceId', apiWorkspaceId ?? '');
+    restUploadAgain.append(
+      'file',
+      new File(
+        [
+          'Scoped API keys let a script upload a document. Fingerprints dedupe identical bytes. '.repeat(
+            6,
+          ),
+        ],
+        'api-upload.txt',
+        { type: 'text/plain' },
+      ),
+    );
+    const duplicateUpload = await fetchJsonAuth(BASE, '/api/v1/documents', {
+      method: 'POST',
+      headers: authHeader,
+      body: restUploadAgain,
+    });
+    print(
+      'api v1 upload reports a duplicate instead of indexing twice',
+      duplicateUpload.status === 200 &&
+        duplicateUpload.body?.duplicate === true &&
+        duplicateUpload.body?.document?.id === uploaded.body?.document?.id,
+      { status: duplicateUpload.status },
+    );
+
+    // Reviews: create a deck + card through tRPC, then read and grade it over REST.
+    const apiDeck = await fetchJson('/trpc/study.decks.create', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspaceId: apiWorkspaceId,
+        name: 'API deck',
+      }),
+    });
+    const apiDeckId = apiDeck.body?.result?.data?.id;
+    const apiCard = await fetchJson('/trpc/study.cards.create', {
+      method: 'POST',
+      body: JSON.stringify({
+        deckId: apiDeckId,
+        front: 'What does the API allow?',
+        back: 'Scoped search, ask, uploads and reviews.',
+      }),
+    });
+    const apiCardId = apiCard.body?.result?.data?.id;
+
+    const due = await fetchJsonAuth(
+      BASE,
+      `/api/v1/reviews/due?workspaceId=${apiWorkspaceId}&limit=10`,
+      { headers: authHeader },
+    );
+    print(
+      'api v1 lists due cards with interval previews',
+      due.status === 200 &&
+        (due.body?.cards ?? []).some(
+          (card: any) => card.id === apiCardId && card.intervals,
+        ),
+      { status: due.status, count: due.body?.cards?.length },
+    );
+
+    const review = await fetchJsonAuth(BASE, '/api/v1/reviews', {
+      method: 'POST',
+      headers: authHeader,
+      body: JSON.stringify({ cardId: apiCardId, rating: 'good' }),
+    });
+    print(
+      'api v1 grades a review and reschedules the card',
+      review.status === 200 &&
+        typeof review.body?.nextDueAt === 'string' &&
+        new Date(review.body.nextDueAt).getTime() > Date.now() &&
+        typeof review.body?.remaining === 'number',
+      { status: review.status, nextDueAt: review.body?.nextDueAt },
+    );
+
+    // Webhooks: create one for this workspace, then verify a test delivery and
+    // a real document.indexed event are signed and carry the payload.
+    const hook = await fetchJson('/trpc/webhook.create', {
+      method: 'POST',
+      body: JSON.stringify({
+        workspaceId: apiWorkspaceId,
+        url: hookUrl,
+        events: ['document.indexed'],
+      }),
+    });
+    const hookId = hook.body?.result?.data?.id as string | undefined;
+    const hookSecret = hook.body?.result?.data?.secret as string | undefined;
+    print(
+      'webhook.create returns a signing secret once',
+      typeof hookId === 'string' &&
+        typeof hookSecret === 'string' &&
+        hookSecret.length >= 32,
+      { id: hookId, secretChars: hookSecret?.length },
+    );
+
+    const hookList = await fetchJson('/trpc/webhook.list', { method: 'GET' });
+    const listedHook = (hookList.body?.result?.data ?? []).find(
+      (row: any) => row.id === hookId,
+    );
+    print(
+      'webhook.list never returns the signing secret',
+      Boolean(listedHook) && listedHook?.secret === undefined,
+    );
+
+    const hookTest = await fetchJson('/trpc/webhook.test', {
+      method: 'POST',
+      body: JSON.stringify({ id: hookId }),
+    });
+    let testHit: (typeof hookHits)[number] | undefined;
+    for (let i = 0; i < 40; i++) {
+      await sleep(250);
+      testHit = hookHits.find((hit) => {
+        try {
+          return JSON.parse(hit.body).deliveryId !== undefined;
+        } catch {
+          return false;
+        }
+      });
+      if (testHit) break;
+    }
+    const expectedSignature = testHit
+      ? `sha256=${createHmac('sha256', hookSecret ?? '')
+          .update(testHit.body)
+          .digest('hex')}`
+      : '';
+    print(
+      'webhook test delivery is signed and identified',
+      hookTest.body?.result?.data?.queued === true &&
+        Boolean(testHit) &&
+        testHit?.headers['x-nexus-signature'] === expectedSignature &&
+        typeof testHit?.headers['x-nexus-delivery'] === 'string',
+      {
+        signature: testHit?.headers['x-nexus-signature'] === expectedSignature,
+        event: testHit?.headers['x-nexus-event'],
+      },
+    );
+
+    // A real indexing run must fan out the event to the endpoint.
+    const hookUpload = new FormData();
+    hookUpload.append('workspaceId', apiWorkspaceId ?? '');
+    hookUpload.append(
+      'file',
+      new File(
+        [
+          'Nexus webhook event document. Hybrid retrieval is grounded. '.repeat(
+            6,
+          ),
+        ],
+        'webhook-event.txt',
+        { type: 'text/plain' },
+      ),
+    );
+    await fetchJsonAuth(BASE, '/api/v1/documents', {
+      method: 'POST',
+      headers: authHeader,
+      body: hookUpload,
+    });
+    let indexedHit: { event: string; title?: string } | undefined;
+    for (let i = 0; i < 60; i++) {
+      await sleep(500);
+      const hit = [...hookHits]
+        .reverse()
+        .find((entry) => JSON.parse(entry.body).event === 'document.indexed');
+      if (hit) {
+        const parsed = JSON.parse(hit.body);
+        if (parsed.data?.title === 'webhook-event.txt') {
+          indexedHit = { event: parsed.event, title: parsed.data.title };
+          break;
+        }
+      }
+    }
+    print(
+      'document.indexed fires the webhook with the document payload',
+      indexedHit?.event === 'document.indexed' &&
+        indexedHit?.title === 'webhook-event.txt',
+      indexedHit,
     );
 
     const notOwned = await fetchJsonAuth(
@@ -1940,6 +2178,23 @@ try {
     meAuthed.status === 200 &&
       ((await meAuthed.json()) as { user?: { email?: string } }).user?.email ===
         'local@nexus.dev',
+  );
+
+  // This instance has no SETTINGS_SECRET: storing a provider secret must fail
+  // with an actionable error instead of writing plaintext.
+  const authSecretSave = await fetchJsonAuth(
+    AUTH_BASE,
+    '/trpc/settings.update',
+    {
+      method: 'POST',
+      headers: { cookie },
+      body: JSON.stringify({ key: 'openai.apiKey', value: 'sk-123456' }),
+    },
+  );
+  print(
+    'auth settings.update secret without SETTINGS_SECRET rejected',
+    authSecretSave.body?.error?.data?.code === 'BAD_REQUEST' &&
+      String(authSecretSave.body?.error?.message).includes('SETTINGS_SECRET'),
   );
 
   // authenticated upload works, anonymous upload is rejected
