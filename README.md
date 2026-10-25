@@ -20,6 +20,7 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 - [Getting started](#getting-started)
 - [Scripts](#scripts)
 - [Environment variables](#environment-variables)
+- [API access](#api-access)
 - [Project structure](#project-structure)
 - [CI/CD and security](#cicd-and-security)
 - [Contributing](#contributing)
@@ -265,6 +266,8 @@ All variables live in `.env` (see `.env.example`). The backend auto-discovers `.
 | `MAX_UPLOAD_MB`              | `25`                                          | Per-file upload size limit                                                                                                                            |
 | `MAX_IMPORT_MB`              | `100`                                         | Workspace archive import size limit (multipart JSON upload)                                                                                           |
 | `FRONTEND_ORIGIN`            | `http://localhost:5173`                       | Allowed CORS origin                                                                                                                                   |
+| `LOG_LEVEL`                  | `info`                                        | Structured log level (`debug`, `info`, `warn`, `error`, `silent`)                                                                                     |
+| `METRICS_TOKEN`              | _(unset)_                                     | When set, `GET /metrics` requires `Authorization: Bearer <token>` (or `?token=`)                                                                      |
 
 > ⚠️ Never commit a real `.env` file. It is git-ignored and scanned for secrets in CI (gitleaks).
 
@@ -367,6 +370,45 @@ Precedence: **UI value → environment variable → default**. Emptying a field 
 - Keys set via environment variables show an `env` badge and are read straight from `.env` (never written to the database).
 - Saving keys from the UI requires `SETTINGS_SECRET`; without it the panel shows a banner and rejects secret saves. Generate one with `openssl rand -hex 32`.
 - Decrypted keys live only in process memory (with a short-TTL cache) for outgoing requests.
+
+## API access
+
+Everything the UI does is available to scripts through a scoped REST API on the backend port (`http://localhost:3000/api/v1` by default). Create a key in **Settings → API keys**: the full key (`ndx_…`) is shown once, only its sha256 hash is stored, and each key carries explicit scopes (`search`, `ask`, `documents:read`, `documents:write`, `reviews:read`, `reviews:write`). Revoking a key takes effect on the next request.
+
+```bash
+KEY=ndx_…                                   # from Settings → API keys
+BASE=http://localhost:3000/api/v1
+
+curl -H "Authorization: Bearer $KEY" "$BASE/me"
+curl -H "Authorization: Bearer $KEY" "$BASE/workspaces"
+curl -H "Authorization: Bearer $KEY" "$BASE/documents?workspaceId=$WS"
+
+# Hybrid search: the same ranking a chat answer uses
+curl -H "Authorization: Bearer $KEY" "$BASE/search?workspaceId=$WS&q=hybrid+retrieval&limit=5"
+
+# Grounded answer, non-streaming, with cited sources and timings
+curl -X POST -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
+  -d '{"workspaceId":"'"$WS"'","question":"What is hybrid retrieval?"}' \
+  "$BASE/ask"
+```
+
+| Endpoint          | Scope            | Returns                                                             |
+| ----------------- | ---------------- | ------------------------------------------------------------------- |
+| `GET /me`         | any live key     | The key id, owner and granted scopes                                |
+| `GET /workspaces` | `documents:read` | Workspaces owned by the key's user, with document counts            |
+| `GET /documents`  | `documents:read` | Documents in a workspace (same DTO as the UI, including structure)  |
+| `GET /search`     | `search`         | `{ query, sources }` from the chat retrieval pipeline               |
+| `POST /ask`       | `ask`            | `{ answer, sources, query, usage, timings }`; sources carry `cited` |
+
+Behavior worth knowing: authentication is **API-key only** (session cookies are not accepted, so a cross-site request cannot drive an integration), an unknown or revoked key is a `401`, a live key missing the route's scope is a `403` with `requiredScope`, and a workspace the key's user does not own is a `404` rather than a `403`. Provider failures surface as `502`. Every response echoes `X-Request-Id`.
+
+### Observability
+
+The API emits structured JSON logs (pino) with a request id, method, path, status and duration; secrets and auth headers are redacted. `GET /metrics` serves Prometheus metrics: `nexus_http_requests_total`, `nexus_http_request_duration_seconds`, `nexus_chat_ttft_seconds`, `nexus_chat_tokens_total`, `nexus_retrieval_duration_seconds{stage}`, `nexus_queue_jobs{queue,state}` (sampled at scrape) and the default process metrics. Set `METRICS_TOKEN` when the API is reachable from the internet:
+
+```bash
+curl -H "Authorization: Bearer $METRICS_TOKEN" http://localhost:3000/metrics
+```
 
 ## Project structure
 
