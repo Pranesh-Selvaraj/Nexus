@@ -1644,6 +1644,212 @@ try {
     articleServer.close();
   }
 
+  // --- public REST API (P-5) and metrics (P-1) -------------------------
+  {
+    // A dedicated workspace: the main one is deleted by the earlier checks,
+    // and the API must be verified against documents it actually owns.
+    const apiWs = await fetchJson('/trpc/workspace.create', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'API Smoke Workspace', description: 'v1' }),
+    });
+    const apiWorkspaceId = apiWs.body?.result?.data?.id as string | undefined;
+    const apiFile = new FormData();
+    apiFile.append('workspaceId', apiWorkspaceId ?? '');
+    apiFile.append(
+      'file',
+      new File(
+        [
+          'Nexus exposes a scoped REST API. Hybrid retrieval fuses vector similarity with keyword search. '.repeat(
+            12,
+          ),
+        ],
+        'api-smoke.txt',
+        { type: 'text/plain' },
+      ),
+    );
+    await fetch(`${BASE}/api/upload`, { method: 'POST', body: apiFile });
+    let apiDoc: any;
+    for (let i = 0; i < 20; i++) {
+      await sleep(1000);
+      const list = await fetchJson(
+        `/trpc/document.listByWorkspace?input=${encodeURIComponent(JSON.stringify({ workspaceId: apiWorkspaceId }))}`,
+        { method: 'GET' },
+      );
+      apiDoc = (list.body?.result?.data ?? [])[0];
+      if (apiDoc && apiDoc.status === 'ready') break;
+    }
+    print('api v1 smoke workspace indexed', apiDoc?.status === 'ready');
+
+    const metrics = await fetch(`${BASE}/metrics`);
+    const metricsText = await metrics.text();
+    print(
+      'metrics endpoint exposes request and queue series',
+      metrics.status === 200 &&
+        metricsText.includes('nexus_http_requests_total') &&
+        metricsText.includes('nexus_queue_jobs') &&
+        metricsText.includes('nexus_chat_ttft_seconds'),
+      { status: metrics.status, bytes: metricsText.length },
+    );
+
+    const noKey = await fetchJsonAuth(BASE, '/api/v1/me');
+    print('api v1 rejects a request without a key', noKey.status === 401);
+    const badKey = await fetchJsonAuth(BASE, '/api/v1/me', {
+      headers: { authorization: 'Bearer ndx_000000000000_notarealkey' },
+    });
+    print('api v1 rejects an unknown key', badKey.status === 401);
+
+    const created = await fetchJson('/trpc/apiKey.create', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'smoke integration',
+        scopes: ['search', 'ask', 'documents:read'],
+      }),
+    });
+    const createdData = created.body?.result?.data;
+    const apiKey = createdData?.key as string | undefined;
+    const authHeader = { authorization: `Bearer ${apiKey}` };
+    print(
+      'apiKey.create returns the secret once with a display prefix',
+      typeof apiKey === 'string' &&
+        apiKey.startsWith('ndx_') &&
+        typeof createdData?.prefix === 'string' &&
+        createdData?.scopes?.length === 3,
+      { prefix: createdData?.prefix },
+    );
+
+    const listed = await fetchJson('/trpc/apiKey.list', { method: 'GET' });
+    const listedKeys = (listed.body?.result?.data ?? []) as any[];
+    print(
+      'apiKey.list never returns the secret',
+      listedKeys.some((key) => key.id === createdData?.id) &&
+        listedKeys.every((key) => key.key === undefined),
+    );
+
+    const me = await fetchJsonAuth(BASE, '/api/v1/me', {
+      headers: authHeader,
+    });
+    print(
+      'api v1 me reports the granted scopes',
+      me.status === 200 &&
+        Array.isArray(me.body?.scopes) &&
+        me.body.scopes.includes('search') &&
+        me.body.scopes.includes('documents:read'),
+      me.body,
+    );
+
+    const workspaces = await fetchJsonAuth(BASE, '/api/v1/workspaces', {
+      headers: authHeader,
+    });
+    print(
+      'api v1 lists the key owner workspaces',
+      workspaces.status === 200 &&
+        (workspaces.body?.workspaces ?? []).some(
+          (w: any) => w.id === apiWorkspaceId,
+        ),
+      { count: workspaces.body?.workspaces?.length },
+    );
+
+    const restDocs = await fetchJsonAuth(
+      BASE,
+      `/api/v1/documents?workspaceId=${apiWorkspaceId}`,
+      { headers: authHeader },
+    );
+    print(
+      'api v1 lists documents of a workspace',
+      restDocs.status === 200 &&
+        Array.isArray(restDocs.body?.documents) &&
+        restDocs.body.documents.length > 0,
+      { count: restDocs.body?.documents?.length },
+    );
+
+    const search = await fetchJsonAuth(
+      BASE,
+      `/api/v1/search?workspaceId=${apiWorkspaceId}&q=${encodeURIComponent('retrieval augmented generation')}`,
+      { headers: authHeader },
+    );
+    print(
+      'api v1 search returns ranked sources',
+      search.status === 200 &&
+        Array.isArray(search.body?.sources) &&
+        search.body.sources.length > 0 &&
+        typeof search.body?.query === 'string',
+      { count: search.body?.sources?.length },
+    );
+
+    const ask = await fetchJsonAuth(BASE, '/api/v1/ask', {
+      method: 'POST',
+      headers: authHeader,
+      body: JSON.stringify({
+        workspaceId: apiWorkspaceId,
+        question: 'What is Nexus in one sentence?',
+      }),
+    });
+    print(
+      'api v1 ask returns an answer with cited sources and timings',
+      ask.status === 200 &&
+        typeof ask.body?.answer === 'string' &&
+        ask.body.answer.length > 0 &&
+        Array.isArray(ask.body?.sources) &&
+        ask.body.sources.some((source: any) => source.cited === true) &&
+        typeof ask.body?.timings?.totalMs === 'number',
+      {
+        status: ask.status,
+        chars: ask.body?.answer?.length,
+        ttftMs: ask.body?.timings?.firstTokenMs,
+      },
+    );
+
+    const notOwned = await fetchJsonAuth(
+      BASE,
+      '/api/v1/documents?workspaceId=00000000-0000-4000-8000-000000000000',
+      { headers: authHeader },
+    );
+    print(
+      'api v1 hides workspaces the key does not own',
+      notOwned.status === 404,
+      { status: notOwned.status },
+    );
+
+    const readOnly = await fetchJson('/trpc/apiKey.create', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'search only', scopes: ['search'] }),
+    });
+    const readOnlyKey = readOnly.body?.result?.data?.key as string | undefined;
+    const denied = await fetchJsonAuth(
+      BASE,
+      `/api/v1/documents?workspaceId=${apiWorkspaceId}`,
+      { headers: { authorization: `Bearer ${readOnlyKey}` } },
+    );
+    print(
+      'api v1 enforces the required scope',
+      denied.status === 403 && denied.body?.requiredScope === 'documents:read',
+      { status: denied.status, required: denied.body?.requiredScope },
+    );
+
+    const revoked = await fetchJson('/trpc/apiKey.revoke', {
+      method: 'POST',
+      body: JSON.stringify({ id: createdData?.id }),
+    });
+    const afterRevoke = await fetchJsonAuth(BASE, '/api/v1/me', {
+      headers: authHeader,
+    });
+    print(
+      'a revoked key stops working immediately',
+      revoked.body?.result?.data?.revoked === true &&
+        afterRevoke.status === 401,
+      { status: afterRevoke.status },
+    );
+
+    await fetchJson('/trpc/workspace.delete', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId: apiWorkspaceId }),
+    });
+    await fetchJson('/trpc/apiKey.revoke', {
+      method: 'POST',
+      body: JSON.stringify({ id: readOnly.body?.result?.data?.id }),
+    });
+  }
+
   // -------------------------------------------------------------------
   // Authentication mode: a second API instance with AUTH_PASSWORD set
   // -------------------------------------------------------------------
@@ -1656,6 +1862,7 @@ try {
       PORT: String(AUTH_PORT),
       AUTH_PASSWORD: 'smoke-secret',
       LOCAL_USER_EMAIL: 'local@nexus.dev',
+      METRICS_TOKEN: 'smoke-metrics-token',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -1679,6 +1886,17 @@ try {
   // unauthenticated requests are rejected everywhere
   const meAnon = await fetch(`${AUTH_BASE}/api/auth/me`);
   print('auth /me without cookie -> 401', meAnon.status === 401);
+
+  // METRICS_TOKEN makes the scrape endpoint private on this instance.
+  const metricsAnon = await fetch(`${AUTH_BASE}/metrics`);
+  const metricsWithToken = await fetch(`${AUTH_BASE}/metrics`, {
+    headers: { authorization: 'Bearer smoke-metrics-token' },
+  });
+  print(
+    'metrics honours METRICS_TOKEN',
+    metricsAnon.status === 401 && metricsWithToken.status === 200,
+    { anon: metricsAnon.status, bearer: metricsWithToken.status },
+  );
 
   const trpcAnon = await fetchJsonAuth(AUTH_BASE, '/trpc/workspace.list', {
     method: 'GET',
