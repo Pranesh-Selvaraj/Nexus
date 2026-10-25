@@ -7,18 +7,19 @@ allowBuilds:
   bcrypt: true
   '@tailwindcss/oxide': true
   msgpackr-extract: true
-  langchain: true
 
 minimumReleaseAgeExclude:
   - langsmith@0.8.10
   - vite@8.3.5
 
 overrides:
-  '@langchain/core': 0.3.80
   langsmith: 0.8.10
   uuid: 11.1.1
   esbuild: 0.25.0
   js-yaml: 4.3.2 # GHSA-2883-xcg3-v3hh (langchain)
+  zod: '>=4.6.6' # GHSA-mrhx-c7xc-m3w5
+  body-parser: '>=2.4.0' # GHSA-27r3-jxmh-p828
+  ip-address: '>=10.7.4' # GHSA-rxp7-6hxx-x8q5
   qs: '>=6.16.0' # GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g (express/body-parser)
   brace-expansion: '>=5.0.12' # GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr (minimatch/eslint)
   proxy-addr: '>=2.0.8' # GHSA-jqcg-44mw-7w3h (express)
