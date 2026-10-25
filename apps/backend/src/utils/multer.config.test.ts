@@ -38,7 +38,8 @@ describe('multer fileFilter', () => {
       'evil.exe',
       'script.sh',
       'doc.docx.bak',
-      'photo.png',
+      'payload.php',
+      'archive.tar.gz',
       'noext',
     ]) {
       const result = await filter(name);
@@ -47,8 +48,24 @@ describe('multer fileFilter', () => {
     }
   });
 
-  it('rejects nested/dotted names based on the final extension', async () => {
-    const result = await filter('archive.tar.gz');
-    expect(result).toBeInstanceOf(Error);
+  it('accepts the Phase 4 ingestion formats', async () => {
+    for (const name of [
+      'book.epub',
+      'deck.pptx',
+      'sheet.xlsx',
+      'notes.odt',
+      'notes.rtf',
+      'folder.zip',
+      'page.html',
+      'captions.srt',
+      'captions.vtt',
+      'painting.png',
+      'photo.JPG',
+      'diagram.webp',
+      'lecture.mp3',
+      'lecture.mp4',
+    ]) {
+      await expect(filter(name)).resolves.toBe(true);
+    }
   });
 });

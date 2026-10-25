@@ -16,6 +16,9 @@ export function toDocumentDTO(
     errorMessage: doc.errorMessage,
     attempts: doc.attempts,
     needsReindex,
+    metadata: doc.metadata ?? null,
+    sourceUrl: doc.sourceUrl ?? null,
+    contentHash: doc.contentHash ?? null,
     createdAt: new Date(doc.createdAt).toISOString(),
   };
 }

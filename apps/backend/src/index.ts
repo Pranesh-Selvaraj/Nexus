@@ -2,7 +2,7 @@ import './utils/env.js';
 
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -17,6 +17,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { WebSocketServer } from 'ws';
 import { z } from 'zod';
 import {
+  ingestUrlInputSchema,
   ttsRequestSchema,
   workspaceArchiveSchema,
   workspaceIdSchema,
@@ -43,6 +44,13 @@ import {
 } from './utils/multer.config.js';
 import { toDocumentDTO } from './utils/dto.js';
 import { getSettingNumber } from './services/settings.service.js';
+import { isImageFormat, mimeForFormat } from './services/ingestion/magic.js';
+import { ingestUrlContent } from './services/ingestion/url-ingest.js';
+import { UnsafeUrlError } from './services/ingestion/url-fetch.js';
+import {
+  UploadRejectedError,
+  validateUpload,
+} from './services/ingestion/validate.js';
 import {
   audioFilePath,
   getOwnedAudio,
@@ -352,17 +360,55 @@ async function main(): Promise<void> {
           return;
         }
 
-        // 3. Write the buffer under a path built from validated inputs only.
+        // 3. Admission: magic bytes decide the format and the parser; zip
+        //    containers are checked against the decompression limits and
+        //    images against the vision size cap before anything is written.
+        const maxImageMb = await getSettingNumber('vision.maxImageMb');
+        let validated;
+        try {
+          validated = await validateUpload(
+            req.file.buffer,
+            req.file.originalname,
+            { maxImageMb },
+          );
+        } catch (err) {
+          if (err instanceof UploadRejectedError) {
+            res.status(400).json({ error: err.message });
+            return;
+          }
+          throw err;
+        }
+        const fileType = validated.detected.format;
+
+        // 4. Duplicate detection by content hash (same bytes, same workspace):
+        //    return the existing document instead of indexing it twice. A
+        //    previously failed document does not block a fresh attempt.
+        const [existing] = await db
+          .select()
+          .from(documents)
+          .where(
+            and(
+              eq(documents.workspaceId, workspace.id),
+              eq(documents.contentHash, validated.contentHash),
+              ne(documents.status, 'failed'),
+            ),
+          )
+          .limit(1);
+        if (existing) {
+          res.status(200).json({
+            document: toDocumentDTO(existing),
+            duplicate: true,
+          });
+          return;
+        }
+
+        // 5. Write the buffer under a path built from validated inputs only.
         const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
         await mkdir(workspaceDir, { recursive: true });
         const finalPath = path.join(workspaceDir, randomUUID());
         storedPath = finalPath;
         await writeFile(finalPath, req.file.buffer);
 
-        // 4. Derive the stored file type from the original name (metadata only,
-        //    never a path).
-        const fileType =
-          path.extname(req.file.originalname).slice(1).toLowerCase() || 'txt';
         const relativePath = path
           .relative(UPLOAD_DIR, finalPath)
           .split(path.sep)
@@ -372,9 +418,11 @@ async function main(): Promise<void> {
           .insert(documents)
           .values({
             workspaceId: workspace.id,
-            title: req.file.originalname,
+            // Metadata only - never used to build a path.
+            title: path.basename(req.file.originalname).slice(0, 200),
             filePath: relativePath,
             fileType,
+            contentHash: validated.contentHash,
             status: 'processing',
           })
           .returning();
@@ -407,6 +455,143 @@ async function main(): Promise<void> {
       }
     },
   );
+
+  // --- URL ingestion (web articles, YouTube transcripts) ---------------
+  // The fetch happens here (SSRF-guarded, size-capped) and the extracted text
+  // is stored as a normal Markdown upload, so indexing stays offline and the
+  // parsed content is stable across retries.
+  const ingestLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 10,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many URL imports, please retry in a minute' },
+  });
+  app.post('/api/ingest/url', ingestLimiter, async (req, res) => {
+    let storedPath: string | null = null;
+    let success = false;
+    try {
+      const currentUser = await resolveUser(readSessionCookie(req.headers));
+      if (!currentUser) {
+        res.status(401).json({ error: 'Not authenticated' });
+        return;
+      }
+      const parsed = ingestUrlInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          error: 'Provide a workspaceId and an http(s) URL to import',
+        });
+        return;
+      }
+      const [workspace] = await db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(
+          and(
+            eq(workspaces.id, parsed.data.workspaceId),
+            eq(workspaces.userId, currentUser.id),
+          ),
+        )
+        .limit(1);
+      if (!workspace) {
+        res.status(404).json({ error: 'Workspace not found' });
+        return;
+      }
+
+      let content;
+      try {
+        content = await ingestUrlContent(parsed.data.url);
+      } catch (err) {
+        if (err instanceof UnsafeUrlError) {
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        throw err;
+      }
+
+      const contentHash = createHash('sha256')
+        .update(content.markdown)
+        .digest('hex');
+      const [existing] = await db
+        .select()
+        .from(documents)
+        .where(
+          and(
+            eq(documents.workspaceId, workspace.id),
+            eq(documents.contentHash, contentHash),
+            ne(documents.status, 'failed'),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        res.status(200).json({
+          document: toDocumentDTO(existing),
+          kind: content.kind,
+          sourceUrl: content.sourceUrl,
+          title: existing.title,
+          wordCount: content.wordCount,
+          duplicate: true,
+        });
+        return;
+      }
+
+      const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
+      await mkdir(workspaceDir, { recursive: true });
+      const finalPath = path.join(workspaceDir, randomUUID());
+      storedPath = finalPath;
+      await writeFile(finalPath, content.markdown, 'utf8');
+      const relativePath = path
+        .relative(UPLOAD_DIR, finalPath)
+        .split(path.sep)
+        .join('/');
+
+      const [created] = await db
+        .insert(documents)
+        .values({
+          workspaceId: workspace.id,
+          title: content.title.slice(0, 300),
+          filePath: relativePath,
+          // The extracted body is Markdown; provenance lives in metadata.
+          fileType: 'md',
+          contentHash,
+          sourceUrl: content.sourceUrl,
+          metadata: content.metadata,
+          status: 'processing',
+        })
+        .returning();
+      if (!created) throw new Error('Failed to create document record');
+
+      try {
+        await enqueueDocumentEmbedding(created.id);
+      } catch (enqueueError) {
+        await db
+          .delete(documents)
+          .where(eq(documents.id, created.id))
+          .catch(() => undefined);
+        throw enqueueError;
+      }
+
+      success = true;
+      res.status(201).json({
+        document: toDocumentDTO(created),
+        kind: content.kind,
+        sourceUrl: content.sourceUrl,
+        title: content.title,
+        wordCount: content.wordCount,
+      });
+    } catch (err) {
+      console.error('[ingest] url failed:', sanitizeForLog(err));
+      if (!res.headersSent) {
+        res.status(502).json({
+          error: friendlyErrorMessage(err) || 'Could not import that URL',
+        });
+      }
+    } finally {
+      if (!success && storedPath) {
+        await rm(storedPath, { force: true }).catch(() => undefined);
+      }
+    }
+  });
 
   // --- Speech: transcription and synthesis -----------------------------
   // Dictation and pronunciation send recorded audio as multipart (never JSON:
@@ -546,6 +731,74 @@ async function main(): Promise<void> {
         res.status(502).json({
           error: friendlyErrorMessage(err) || 'Speech synthesis failed',
         });
+      }
+    }
+  });
+
+  // --- Image bytes (vision previews, attachments, source thumbnails) ---
+  // Ownership is derived from the workspace; the stored path is server-built
+  // and never includes client input. Only image formats are served, with a
+  // restrictive CSP/sandbox so a crafted payload cannot execute as a document.
+  const imageIdSchema = z.string().uuid();
+  app.get('/api/images/:documentId', async (req, res) => {
+    try {
+      const currentUser = await resolveUser(readSessionCookie(req.headers));
+      if (!currentUser) {
+        res.status(401).json({ error: 'Not authenticated' });
+        return;
+      }
+      const parsedId = imageIdSchema.safeParse(req.params.documentId);
+      if (!parsedId.success) {
+        res.status(400).json({ error: 'Invalid image id' });
+        return;
+      }
+      const [doc] = await db
+        .select({
+          id: documents.id,
+          filePath: documents.filePath,
+          fileType: documents.fileType,
+        })
+        .from(documents)
+        .innerJoin(workspaces, eq(workspaces.id, documents.workspaceId))
+        .where(
+          and(
+            eq(documents.id, parsedId.data),
+            eq(workspaces.userId, currentUser.id),
+          ),
+        )
+        .limit(1);
+      if (!doc || !isImageFormat(doc.fileType)) {
+        res.status(404).json({ error: 'Image not found' });
+        return;
+      }
+      // Stored paths are server-generated UUIDs, but the containment check
+      // keeps a corrupted/hand-edited row from streaming another file.
+      const filePath = path.resolve(UPLOAD_DIR, doc.filePath);
+      const uploadRoot = path.resolve(UPLOAD_DIR);
+      if (
+        filePath !== uploadRoot &&
+        !filePath.startsWith(uploadRoot + path.sep)
+      ) {
+        res.status(404).json({ error: 'Image not found' });
+        return;
+      }
+      const info = await stat(filePath);
+      res.setHeader('Content-Type', mimeForFormat(doc.fileType));
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      res.setHeader('Content-Disposition', 'inline');
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.setHeader('Content-Length', String(info.size));
+      const stream = createReadStream(filePath);
+      stream.on('error', (streamErr) => {
+        console.error('[image] stream failed:', sanitizeForLog(streamErr));
+        res.destroy();
+      });
+      stream.pipe(res);
+    } catch (err) {
+      console.error('[image] failed:', sanitizeForLog(err));
+      if (!res.headersSent) {
+        res.status(404).json({ error: 'Image not found' });
       }
     }
   });

@@ -48,6 +48,131 @@ export const workspaceIdSchema = z.object({
 export const documentStatusSchema = z.enum(['processing', 'ready', 'failed']);
 export type DocumentStatus = z.infer<typeof documentStatusSchema>;
 
+/**
+ * What an ingested file actually is, derived from its bytes (magic bytes for
+ * containers and images, text heuristics for prose) rather than only from the
+ * name the client sent. The parser registry keys off this value.
+ */
+export const fileFormatSchema = z.enum([
+  'pdf',
+  'docx',
+  'pptx',
+  'xlsx',
+  'odt',
+  'rtf',
+  'epub',
+  'zip',
+  'html',
+  'txt',
+  'md',
+  'csv',
+  'json',
+  'srt',
+  'vtt',
+  'png',
+  'jpeg',
+  'webp',
+  'gif',
+  'tiff',
+  'bmp',
+  'mp3',
+  'wav',
+  'ogg',
+  'flac',
+  'm4a',
+  'aac',
+  'webm',
+  'mp4',
+  'mov',
+]);
+export type FileFormat = z.infer<typeof fileFormatSchema>;
+
+export const fileCategorySchema = z.enum([
+  'document',
+  'image',
+  'audio',
+  'video',
+  'archive',
+]);
+export type FileCategory = z.infer<typeof fileCategorySchema>;
+
+export const IMAGE_FILE_TYPES: FileFormat[] = [
+  'png',
+  'jpeg',
+  'webp',
+  'gif',
+  'tiff',
+  'bmp',
+];
+
+export const MEDIA_FILE_TYPES: FileFormat[] = [
+  'mp3',
+  'wav',
+  'ogg',
+  'flac',
+  'm4a',
+  'aac',
+  'webm',
+  'mp4',
+  'mov',
+];
+
+/** True for formats the UI can render as an <img> (vision-capable). */
+export function isImageFileType(fileType: string | null | undefined): boolean {
+  return (
+    !!fileType &&
+    (IMAGE_FILE_TYPES as string[]).includes(fileType.toLowerCase())
+  );
+}
+
+/** True for audio/video formats transcribed through the STT pipeline. */
+export function isMediaFileType(fileType: string | null | undefined): boolean {
+  return (
+    !!fileType &&
+    (MEDIA_FILE_TYPES as string[]).includes(fileType.toLowerCase())
+  );
+}
+
+/**
+ * Structure the ingestion pipeline extracted from a document: the format it
+ * detected, whether OCR/vision/transcription ran, and the table of contents.
+ * Rendered as document cards in the library and used to label citations.
+ */
+export const documentStructureSchema = z.object({
+  /** Parser that produced the text (usually the detected file format). */
+  format: z.string(),
+  /** Human-facing family: book, slides, sheet, web, image, transcript, ... */
+  kind: z.string().nullable().optional(),
+  title: z.string().nullable().optional(),
+  author: z.string().nullable().optional(),
+  /** Original URL for web/YouTube ingestion. */
+  sourceUrl: z.string().nullable().optional(),
+  /** ISO timestamp of the fetch that produced sourceUrl content. */
+  fetchedAt: z.string().nullable().optional(),
+  pageCount: z.number().int().nonnegative().nullable().optional(),
+  wordCount: z.number().int().nonnegative().nullable().optional(),
+  /** Estimated reading time in minutes (~200 words/min). */
+  readingMinutes: z.number().int().nonnegative().nullable().optional(),
+  /** True when OCR (tesseract) produced the text. */
+  ocr: z.boolean().optional(),
+  /** True when a vision model described the image. */
+  vision: z.boolean().optional(),
+  /** True when the text is a speech-to-text transcript. */
+  transcript: z.boolean().optional(),
+  /** Spoken duration for audio/video, in seconds. */
+  durationSeconds: z.number().nonnegative().nullable().optional(),
+  /** Table of contents (chapters, slides, sheets, archive members). */
+  chapters: z
+    .array(
+      z.object({
+        title: z.string(),
+        page: z.number().int().nonnegative(),
+      }),
+    )
+    .optional(),
+});
+export type DocumentStructure = z.infer<typeof documentStructureSchema>;
+
 export const documentDTOSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -61,6 +186,12 @@ export const documentDTOSchema = z.object({
   attempts: z.number().int().nonnegative(),
   /** True when some chunks were embedded with a different/unknown model. */
   needsReindex: z.boolean(),
+  /** Structure extracted at ingestion (format, TOC, OCR/vision flags). */
+  metadata: documentStructureSchema.nullable().optional(),
+  /** Canonical URL for URL/YouTube ingestion. */
+  sourceUrl: z.string().nullable().optional(),
+  /** sha256 of the uploaded bytes, used for duplicate detection. */
+  contentHash: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 
@@ -77,6 +208,23 @@ export type DocumentDTO = z.infer<typeof documentDTOSchema>;
 export const listDocumentsInputSchema = z.object({
   workspaceId: z.string().uuid(),
 });
+
+/** POST /api/ingest/url body: a web article or a YouTube link. */
+export const ingestUrlInputSchema = z.object({
+  workspaceId: z.string().uuid(),
+  url: z.string().trim().min(8).max(2048),
+});
+export type IngestUrlInput = z.infer<typeof ingestUrlInputSchema>;
+
+export const ingestUrlResultSchema = z.object({
+  document: documentDTOSchema,
+  /** 'article' for Readability-extracted pages, 'video' for transcripts. */
+  kind: z.enum(['article', 'video']),
+  sourceUrl: z.string(),
+  title: z.string(),
+  wordCount: z.number().int().nonnegative(),
+});
+export type IngestUrlResult = z.infer<typeof ingestUrlResultSchema>;
 
 export const documentIdSchema = z.object({
   documentId: z.string().uuid(),
@@ -109,6 +257,10 @@ export const chatStreamInputSchema = z.object({
   regenerate: z.boolean().optional(),
   /** Tutor persona id (see chat.personas); falls back to the setting. */
   persona: z.string().max(40).optional(),
+  /** Image documents attached to this turn (vision chat). */
+  imageDocumentIds: z.array(z.string().uuid()).max(4).optional(),
+  /** Instruction preset used when images are attached. */
+  visionMode: z.enum(['general', 'art', 'diagram', 'equation']).optional(),
 });
 export type ChatStreamInput = z.infer<typeof chatStreamInputSchema>;
 
@@ -131,6 +283,10 @@ export const sourceSchema = z.object({
   documentId: z.string().uuid(),
   title: z.string(),
   content: z.string(),
+  /** Detected format of the source document (image/pdf/epub/...). */
+  fileType: z.string().nullable().optional(),
+  /** True when this source came from an image attached to the question. */
+  attached: z.boolean().optional(),
   page: z.number().nullable(),
   pageEnd: z.number().nullable().optional(),
   headingPath: z.array(z.string()).nullable().optional(),
@@ -201,6 +357,11 @@ export const messageDTOSchema = z.object({
   kind: messageKindSchema,
   content: z.string(),
   sources: z.array(sourceSchema).nullable(),
+  /** Images attached to a user turn (vision chat). */
+  attachments: z
+    .object({ imageDocumentIds: z.array(z.string().uuid()) })
+    .nullable()
+    .optional(),
   usage: usageSchema.nullable(),
   feedback: z.enum(['up', 'down']).nullable(),
   retrievalDebug: retrievalDebugSchema.nullable().optional(),
@@ -844,3 +1005,74 @@ export const dictationScoreInputSchema = z.object({
   language: z.string().max(40).optional(),
 });
 export type DictationScoreInput = z.infer<typeof dictationScoreInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Vision (image ingestion, image chat, art/diagram analysis)
+// ---------------------------------------------------------------------------
+
+export const visionModeSchema = z.enum([
+  'general',
+  'art',
+  'diagram',
+  'equation',
+]);
+export type VisionMode = z.infer<typeof visionModeSchema>;
+
+export const VISION_MODES: { id: VisionMode; label: string; hint: string }[] = [
+  {
+    id: 'general',
+    label: 'Describe',
+    hint: 'What is in the image, its text, and how it relates to your material.',
+  },
+  {
+    id: 'art',
+    label: 'Art critique',
+    hint: 'Composition, colour, technique, and art-historical context.',
+  },
+  {
+    id: 'diagram',
+    label: 'Diagram',
+    hint: 'Components, labels, flows, and the relationships between them.',
+  },
+  {
+    id: 'equation',
+    label: 'Equations',
+    hint: 'Transcribe formulas to LaTeX and explain each symbol.',
+  },
+];
+
+/** Effective vision capabilities for the client (keys stay on the server). */
+export const visionConfigSchema = z.object({
+  /** The feature switch (settings: vision.enabled). */
+  enabled: z.boolean(),
+  /** True when a vision-capable provider is configured. */
+  available: z.boolean(),
+  /** Model used for image requests (empty means the chat model). */
+  model: z.string(),
+  ocrEnabled: z.boolean(),
+  /** True when a tesseract binary (and rasterizer for PDFs) was detected. */
+  ocrAvailable: z.boolean(),
+  maxImageMb: z.number(),
+  modes: z.array(visionModeSchema),
+});
+export type VisionConfig = z.infer<typeof visionConfigSchema>;
+
+export const analyzeImageInputSchema = z.object({
+  workspaceId: z.string().uuid(),
+  documentId: z.string().uuid(),
+  mode: visionModeSchema.default('general'),
+  /** Optional extra instruction from the user. */
+  question: z.string().trim().max(2000).optional(),
+});
+export type AnalyzeImageInput = z.infer<typeof analyzeImageInputSchema>;
+
+export const analyzeImageResultSchema = z.object({
+  documentId: z.string().uuid(),
+  mode: visionModeSchema,
+  analysis: z.string(),
+  model: z.string(),
+  /** Text OCR extracted (empty when OCR is disabled or unavailable). */
+  ocrText: z.string(),
+  cached: z.boolean(),
+});
+export type AnalyzeImageResult = z.infer<typeof analyzeImageResultSchema>;

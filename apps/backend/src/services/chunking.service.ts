@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import fs from 'node:fs/promises';
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
@@ -66,6 +66,30 @@ async function renderPdfPage(pageData: PdfPageData): Promise<string> {
 }
 
 /**
+ * Extract per-page text from a PDF buffer.
+ *
+ * Pulled out of `extractPages` so container members (a PDF inside an
+ * uploaded ZIP folder) can be parsed from memory, without a file path.
+ */
+export async function extractPdfPagesFromBuffer(
+  buffer: Buffer,
+): Promise<SourcePage[]> {
+  // pdf.js (bundled with pdf-parse v1) mishandles some Node Buffers
+  // (bad XRef entry) while parsing the same bytes as a Uint8Array fine.
+  const data = await pdfParse(new Uint8Array(buffer) as unknown as Buffer, {
+    pagerender: renderPdfPage,
+  });
+  const pages = data.text
+    .split('\f')
+    .map((text, i) => ({ page: i + 1, text: text.trim() }))
+    .filter((page) => page.text.length > 0);
+  if (pages.length === 0) {
+    throw new Error('PDF contains no extractable text');
+  }
+  return pages;
+}
+
+/**
  * Extract per-page text from an uploaded file.
  *
  * PDF pages are delimited by a form-feed appended by the custom renderer,
@@ -79,19 +103,7 @@ export async function extractPages(
   const buffer = await fs.readFile(filePath);
 
   if (fileType === 'pdf') {
-    // pdf.js (bundled with pdf-parse v1) mishandles some Node Buffers
-    // (bad XRef entry) while parsing the same bytes as a Uint8Array fine.
-    const data = await pdfParse(new Uint8Array(buffer) as unknown as Buffer, {
-      pagerender: renderPdfPage,
-    });
-    const pages = data.text
-      .split('\f')
-      .map((text, i) => ({ page: i + 1, text: text.trim() }))
-      .filter((page) => page.text.length > 0);
-    if (pages.length === 0) {
-      throw new Error('PDF contains no extractable text');
-    }
-    return pages;
+    return extractPdfPagesFromBuffer(buffer);
   }
 
   if (fileType === 'docx') {

@@ -47,6 +47,14 @@ COPY --from=build /app/node_modules /app/node_modules
 # the package-local node_modules dir; the shared .pnpm store lives at the
 # root. Both must travel together for resolution to work.
 
+# OCR for scanned PDFs and images. The ingestion pipeline shells out to the
+# system tesseract binary (and poppler's pdftoppm to rasterize PDF pages)
+# instead of downloading language data at runtime, so the image ships them.
+# Set OCR_ENABLED=false to skip OCR entirely at runtime.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends tesseract-ocr poppler-utils \
+  && rm -rf /var/lib/apt/lists/*
+
 # Uploads dir must be writable by the node user (uid 1000). When an empty
 # named volume is mounted here, Docker seeds it with these permissions.
 RUN mkdir -p /app/apps/backend/uploads && chown -R node:node /app/apps/backend

@@ -32,6 +32,7 @@ export const ALLOWED_AUDIO_EXTENSIONS = new Set([
 // Kept for compatibility with callers that still read the env value; the
 // effective limit now comes from the `server.maxUploadMb` setting.
 export const ALLOWED_EXTENSIONS = new Set([
+  // Documents and books
   'pdf',
   'docx',
   'txt',
@@ -39,6 +40,36 @@ export const ALLOWED_EXTENSIONS = new Set([
   'markdown',
   'csv',
   'json',
+  'epub',
+  'html',
+  'htm',
+  'pptx',
+  'xlsx',
+  'odt',
+  'rtf',
+  'zip',
+  'srt',
+  'vtt',
+  // Images (OCR + vision)
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'gif',
+  'tif',
+  'tiff',
+  'bmp',
+  // Audio / video (transcription)
+  'mp3',
+  'wav',
+  'ogg',
+  'oga',
+  'm4a',
+  'flac',
+  'aac',
+  'webm',
+  'mp4',
+  'mov',
 ]);
 
 /**
@@ -55,9 +86,12 @@ export const ALLOWED_EXTENSIONS = new Set([
 const storage = multer.memoryStorage();
 
 /**
- * Rejects files whose extension is not in ALLOWED_EXTENSIONS. The error
- * message is deliberately static: the real extension must not end up in log
- * output or error responses derived from it (log-injection hardening).
+ * Admission check before the buffer is handed to the content sniffer: the
+ * extension must be in ALLOWED_EXTENSIONS. This is *not* how the file type is
+ * chosen (bytes decide that - see services/ingestion/validate.ts); it keeps
+ * obviously wrong names out early. The error message is deliberately static:
+ * the real extension must not end up in log output or error responses
+ * derived from it (log-injection hardening).
  */
 export function fileFilter(
   _req: Express.Request,

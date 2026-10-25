@@ -2,14 +2,18 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import { TRPCError } from '@trpc/server';
-import { and, eq, getTableColumns, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 
 import {
   documentIdSchema,
   listDocumentsInputSchema,
   workspaceIdSchema,
 } from '@nexus/shared-types';
-import type { DocumentDTO, RetrievalStatus } from '@nexus/shared-types';
+import type {
+  DocumentDTO,
+  DocumentStructure,
+  RetrievalStatus,
+} from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
 import { documents, workspaces } from '../db/schema.js';
@@ -56,6 +60,9 @@ interface DocumentRow {
   chunk_count: number;
   error_message: string | null;
   attempts: number;
+  metadata: DocumentStructure | null;
+  source_url: string | null;
+  content_hash: string | null;
   created_at: Date;
   needs_reindex: boolean;
 }
@@ -71,6 +78,9 @@ function rowToDocumentDTO(row: DocumentRow): DocumentDTO {
     errorMessage: row.error_message,
     attempts: Number(row.attempts),
     needsReindex: Boolean(row.needs_reindex),
+    metadata: row.metadata ?? null,
+    sourceUrl: row.source_url ?? null,
+    contentHash: row.content_hash ?? null,
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -102,7 +112,8 @@ export const documentRouter = t.router({
       const result = await db.execute(
         sql`
           SELECT d.id, d.workspace_id, d.title, d.file_type, d.status,
-                 d.chunk_count, d.error_message, d.attempts, d.created_at,
+                 d.chunk_count, d.error_message, d.attempts, d.metadata,
+                 d.source_url, d.content_hash, d.created_at,
                  ${needsReindexPredicate(model, dims, sql.raw('d.id'))} AS needs_reindex
           FROM documents d
           WHERE d.workspace_id = ${input.workspaceId}
@@ -219,6 +230,36 @@ export const documentRouter = t.router({
       }
       await enqueueDocumentEmbedding(updated.id);
       return toDocumentDTO(updated);
+    }),
+
+  /**
+   * Ready image documents in a workspace, for the chat composer's attachment
+   * picker and the vision studio. Only metadata is returned; bytes come from
+   * GET /api/images/:documentId after an ownership check.
+   */
+  images: protectedProcedure
+    .input(workspaceIdSchema)
+    .query(async ({ ctx, input }): Promise<DocumentDTO[]> => {
+      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+      const rows = await db
+        .select()
+        .from(documents)
+        .where(
+          and(
+            eq(documents.workspaceId, input.workspaceId),
+            eq(documents.status, 'ready'),
+            inArray(documents.fileType, [
+              'png',
+              'jpeg',
+              'webp',
+              'gif',
+              'tiff',
+              'bmp',
+            ]),
+          ),
+        )
+        .orderBy(desc(documents.createdAt));
+      return rows.map((row) => toDocumentDTO(row));
     }),
 
   remove: protectedProcedure

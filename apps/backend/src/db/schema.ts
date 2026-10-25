@@ -14,7 +14,11 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import type { RetrievalDebug, Source } from '@nexus/shared-types';
+import type {
+  DocumentStructure,
+  RetrievalDebug,
+  Source,
+} from '@nexus/shared-types';
 
 // ---------------------------------------------------------------------------
 // Custom types
@@ -96,7 +100,14 @@ export const documents = pgTable(
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     filePath: text('file_path').notNull(),
+    // Detected format (magic bytes), not the client-supplied extension.
     fileType: text('file_type'),
+    // sha256 of the uploaded bytes: duplicate detection within a workspace.
+    contentHash: text('content_hash'),
+    // Canonical URL for URL/YouTube ingestion (provenance + citations).
+    sourceUrl: text('source_url'),
+    // Structure extracted by the parser: format, TOC, OCR/vision flags.
+    metadata: jsonb('metadata').$type<DocumentStructure | null>(),
     status: documentStatusEnum('status').notNull().default('processing'),
     chunkCount: integer('chunk_count').notNull().default(0),
     // Populated when indexing fails: sanitized error + attempt count so the
@@ -189,6 +200,11 @@ export const messages = pgTable(
     kind: messageKindEnum('kind').notNull().default('answer'),
     content: text('content').notNull(),
     sources: jsonb('sources').$type<Source[] | null>(),
+    // Images attached to a user turn (vision chat); assistant turns leave it
+    // null. Persisted so a reloaded conversation still shows the image.
+    attachments: jsonb('attachments').$type<{
+      imageDocumentIds: string[];
+    } | null>(),
     usage: jsonb('usage').$type<{
       promptTokens: number;
       completionTokens: number;
