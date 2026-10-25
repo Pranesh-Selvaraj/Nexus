@@ -30,6 +30,7 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 ## Features
 
 - 📁 **Workspaces** — organize documents into isolated workspaces.
+- 📱 **Installable, with offline review** — Nexus is a PWA: install it from the browser, open the review screen without a connection, grade cards offline and let the ratings sync when you reconnect; speech clips you already played replay from the cache.
 - 📤 **Anything you already read** — PDF, EPUB (chapter/section structure), DOCX, PPTX, XLSX, ODT, RTF, HTML, Markdown, plain text, CSV/JSON, subtitles (SRT/VTT), ZIP archives (with zip-bomb limits) and audio/video files (transcribed with the same STT pipeline as dictation), up to 25 MB each by default.
 - 🌐 **Web articles and YouTube** — paste a URL in the library to import an article (Readability extraction) or a YouTube transcript. The fetch is SSRF-safe: hostnames are resolved and every resolved address is checked, loopback/private/link-local/cloud-metadata ranges are refused, the connection is pinned to the validated address, redirects are capped and the response body is size-capped.
 - 🖼️ **Images and scanned pages** — PNG/JPEG/WebP/GIF/TIFF/BMP images and PDFs without a text layer are OCR'd with the system `tesseract` binary (and `pdftoppm` for PDF pages) and, when a vision model is configured, described by it. The description plus the OCR text are what retrieval searches, so a photographed diagram or a scanned page is as citable as a text file.
@@ -467,6 +468,14 @@ The same REST surface powers three first-class clients, all authenticated with a
   ```
 
   The digest is taken with the connection string split into `PG*` variables, so the password never appears in the process list or a log line.
+
+### Installable app and offline review
+
+Nexus ships a web app manifest and a service worker, so browsers offer **Install** and the app opens in its own window:
+
+- The worker precaches the app shell, serves navigations network-first with an offline fallback, caches built assets stale-while-revalidate, and caches `/api/audio/*` cache-first so a read-aloud clip that has already played replays offline. Dev-server module and HMR paths are never intercepted, and the app runs normally when service workers are unavailable.
+- The review screen caches the last due-card list per workspace. With the network off it opens from that cache, accepts ratings, advances the session without waiting on a dead request, and stores each rating in a local queue (one pending rating per card) with an offline banner and pending count. When `online` returns, the queue is replayed in order through the normal review mutation (FSRS schedules server-side), then the dashboard and due lists refresh.
+- Offline state lives in `localStorage` on that device only: due-card prompts/answers and the rating queue. It is not encrypted, so treat a shared browser profile like a shared notebook. Clearing site data removes it.
 
 ### Observability
 
