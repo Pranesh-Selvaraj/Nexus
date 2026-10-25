@@ -1,6 +1,3 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-
 import { TRPCError } from '@trpc/server';
 import { and, eq } from 'drizzle-orm';
 
@@ -22,7 +19,7 @@ import {
   visionConfig,
 } from '../services/ingestion/vision.service.js';
 import { getSetting, getSettingBoolean } from '../services/settings.service.js';
-import { UPLOAD_DIR } from '../utils/paths.js';
+import { storage } from '../services/storage/index.js';
 
 /** Load an image document the caller owns, or throw NOT_FOUND. */
 async function loadOwnedImage(userId: string, documentId: string) {
@@ -72,11 +69,10 @@ export const visionRouter = t.router({
     .input(analyzeImageInputSchema)
     .mutation(async ({ ctx, input }): Promise<AnalyzeImageResult> => {
       const doc = await loadOwnedImage(ctx.user.id, input.documentId);
-      const filePath = path.resolve(UPLOAD_DIR, doc.filePath);
 
       let buffer: Buffer;
       try {
-        buffer = await readFile(filePath);
+        buffer = await storage.get(doc.filePath);
       } catch {
         throw new TRPCError({
           code: 'NOT_FOUND',

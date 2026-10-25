@@ -1,13 +1,10 @@
-import { rm } from 'node:fs/promises';
-import path from 'node:path';
-
 import { and, eq, lt, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { documents, workspaces } from '../db/schema.js';
 import { ApiError } from '../utils/errors.js';
-import { UPLOAD_DIR } from '../utils/paths.js';
 import { getSettingNumber } from './settings.service.js';
+import { storage } from './storage/index.js';
 
 export interface WorkspaceUsage {
   workspaceId: string;
@@ -110,9 +107,7 @@ export async function purgeDocument(documentId: string): Promise<boolean> {
     .limit(1);
   if (!doc) return false;
   await db.delete(documents).where(eq(documents.id, documentId));
-  await rm(path.resolve(UPLOAD_DIR, doc.filePath), { force: true }).catch(
-    () => undefined,
-  );
+  await storage.delete(doc.filePath).catch(() => undefined);
   return true;
 }
 

@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 
 import { and, eq, ne } from 'drizzle-orm';
 
@@ -11,7 +9,7 @@ import { documents, workspaces } from '../db/schema.js';
 import { enqueueDocumentEmbedding } from '../queues/index.js';
 import { toDocumentDTO } from '../utils/dto.js';
 import { ApiError } from '../utils/errors.js';
-import { UPLOAD_DIR } from '../utils/paths.js';
+import { storage } from './storage/index.js';
 import { assertStorageQuota } from './storage.service.js';
 import {
   ingestUrlContent,
@@ -83,15 +81,8 @@ export async function ingestUrlForWorkspace(params: {
     };
   }
 
-  const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
-  await mkdir(workspaceDir, { recursive: true });
-  const finalPath = path.join(workspaceDir, randomUUID());
-  await writeFile(finalPath, content.markdown, 'utf8');
-
-  const relativePath = path
-    .relative(UPLOAD_DIR, finalPath)
-    .split(path.sep)
-    .join('/');
+  const key = `${workspace.id}/${randomUUID()}`;
+  await storage.put(key, content.markdown);
 
   try {
     const [created] = await db
@@ -99,7 +90,7 @@ export async function ingestUrlForWorkspace(params: {
       .values({
         workspaceId: workspace.id,
         title: content.title.slice(0, 300),
-        filePath: relativePath,
+        filePath: key,
         // The extracted body is Markdown; provenance lives in metadata.
         fileType: 'md',
         contentHash,
@@ -129,7 +120,7 @@ export async function ingestUrlForWorkspace(params: {
       wordCount: content.wordCount,
     };
   } catch (err) {
-    await rm(finalPath, { force: true }).catch(() => undefined);
+    await storage.delete(key).catch(() => undefined);
     throw err;
   }
 }

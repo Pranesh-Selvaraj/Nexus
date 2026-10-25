@@ -3,7 +3,6 @@ import './utils/env.js';
 import { stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
 
@@ -41,7 +40,7 @@ import {
 } from './services/observability/metrics.js';
 import { apiV1Router } from './routes/api-v1.js';
 import { appRouter } from './routers/_app.js';
-import { UPLOAD_DIR } from './utils/paths.js';
+import { storage } from './services/storage/index.js';
 import {
   archiveUpload,
   audioUpload,
@@ -575,30 +574,16 @@ async function main(): Promise<void> {
         res.status(404).json({ error: 'Image not found' });
         return;
       }
-      // Stored paths are server-generated UUIDs, but the containment check
-      // keeps a corrupted/hand-edited row from streaming another file.
-      const filePath = path.resolve(UPLOAD_DIR, doc.filePath);
-      const uploadRoot = path.resolve(UPLOAD_DIR);
-      if (
-        filePath !== uploadRoot &&
-        !filePath.startsWith(uploadRoot + path.sep)
-      ) {
-        res.status(404).json({ error: 'Image not found' });
-        return;
-      }
-      const info = await stat(filePath);
+      // Images are capped by VISION_MAX_IMAGE_MB, so buffering a single image
+      // is bounded; the storage driver serves local disk or S3 the same way.
+      const buffer = await storage.get(doc.filePath);
       res.setHeader('Content-Type', mimeForFormat(doc.fileType));
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
       res.setHeader('Content-Disposition', 'inline');
       res.setHeader('Cache-Control', 'private, max-age=300');
-      res.setHeader('Content-Length', String(info.size));
-      const stream = createReadStream(filePath);
-      stream.on('error', (streamErr) => {
-        console.error('[image] stream failed:', sanitizeForLog(streamErr));
-        res.destroy();
-      });
-      stream.pipe(res);
+      res.setHeader('Content-Length', String(buffer.length));
+      res.send(buffer);
     } catch (err) {
       console.error('[image] failed:', sanitizeForLog(err));
       if (!res.headersSent) {
@@ -837,7 +822,7 @@ async function main(): Promise<void> {
   httpServer.listen(PORT, () => {
     console.log(`[api] listening on http://localhost:${PORT}`);
     console.log(`[api] ws subscriptions on ws://localhost:${PORT}${WS_PATH}`);
-    console.log(`[api] uploads stored in ${UPLOAD_DIR}`);
+    console.log(`[api] document storage: ${storage.description}`);
     if (!process.env.OPENAI_API_KEY) {
       console.warn(
         '[api] WARNING: OPENAI_API_KEY not set - chat and embeddings will fail',

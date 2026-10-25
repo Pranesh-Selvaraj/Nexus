@@ -1,6 +1,3 @@
-import { rm } from 'node:fs/promises';
-import path from 'node:path';
-
 import { TRPCError } from '@trpc/server';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -21,7 +18,7 @@ import {
   importWorkspaceArchive,
 } from '../services/workspace-archive.service.js';
 import { ApiError } from '../utils/errors.js';
-import { UPLOAD_DIR } from '../utils/paths.js';
+import { storage } from '../services/storage/index.js';
 
 const importWorkspaceInputSchema = z.object({
   archive: workspaceArchiveSchema,
@@ -155,12 +152,9 @@ export const workspaceRouter = t.router({
         });
       }
 
-      // Remove the workspace's uploaded files from disk (the DB rows are
-      // cascade-deleted, but the files are not).
-      await rm(path.join(UPLOAD_DIR, deleted.id), {
-        recursive: true,
-        force: true,
-      }).catch(() => undefined);
+      // Remove the workspace's uploaded files (the DB rows cascade, but the
+      // stored objects do not).
+      await storage.deletePrefix(deleted.id).catch(() => undefined);
       return { deleted: true };
     }),
 

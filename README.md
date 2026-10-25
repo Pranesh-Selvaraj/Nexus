@@ -397,6 +397,16 @@ Precedence: **UI value → environment variable → default**. Emptying a field 
 - Saving keys from the UI requires `SETTINGS_SECRET`; without it the panel shows a banner and rejects secret saves. Generate one with `openssl rand -hex 32`.
 - Decrypted keys live only in process memory (with a short-TTL cache) for outgoing requests.
 
+## Document storage (local disk or S3)
+
+Document bytes go through a small storage interface (`services/storage`). The default keeps them under `UPLOAD_DIR`; setting `STORAGE_DRIVER=s3` writes them to any S3-compatible bucket (AWS S3, MinIO, Cloudflare R2, ...). Keys are the workspace-scoped, server-generated paths already stored in the database, so switching backends needs a copy of the objects, not a schema change.
+
+- **Configuration.** `S3_BUCKET` is required; `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_FORCE_PATH_STYLE` (defaults to true when an endpoint is set, which MinIO needs) and optional `S3_KEY_PREFIX` complete it. See `.env.example`.
+- **Parsers and previews.** OCR/PDF/media parsers need a local file, so the S3 driver downloads each object once into `S3_CACHE_DIR` (default `/tmp/nexus-s3-cache`) on first use and serves later reads from there. Image previews are streamed through the API from the bucket, not exposed directly, so bucket ACLs can stay private.
+- **Deletion and trash.** Deleting a document removes its object; emptying the trash and deleting a workspace remove every object under that workspace prefix. Trashed documents keep their objects until the purge window elapses, exactly like local disk.
+- **Self-test.** `pnpm --filter @nexus/backend storage:selftest` round-trips one object through the configured driver and is the quickest way to validate credentials before switching a deployment.
+- **MinIO profile.** `docker-compose.s3.yml` adds a MinIO service and wires the API/worker to it (`STORAGE_DRIVER=s3`); create the bucket once (`mc mb local/nexus`). For a source checkout, install nothing extra: the S3 client is a normal dependency.
+
 ## API access
 
 Everything the UI does is available to scripts through a scoped REST API on the backend port (`http://localhost:3000/api/v1` by default). Create a key in **Settings → API keys**: the full key (`ndx_…`) is shown once, only its sha256 hash is stored, and each key carries explicit scopes (`search`, `ask`, `documents:read`, `documents:write`, `reviews:read`, `reviews:write`). Revoking a key takes effect on the next request.

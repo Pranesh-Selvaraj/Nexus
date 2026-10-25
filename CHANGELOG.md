@@ -6,6 +6,42 @@ Releases are listed newest first. Every release uses the same layout: a `## [X.Y
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-10-25
+
+Phase 6 makes Nexus operable: an admin view of the indexing queue with retry/drop, a zip workspace export that contains the original files, and a storage abstraction so documents can live in S3-compatible object storage instead of a single host's disk. Local disk stays the default; object storage is opt-in.
+
+### ✨ Added
+
+- 🛠️ **Indexing queue admin (P-3).** Settings → Indexing queue shows waiting, active, delayed, failed, completed and paused counts read straight from BullMQ, plus every failed job with its document title, sanitized error, attempt count and failure time. Each job can be **Retried** (job id equals document id; the document returns to `processing` with its stored error cleared) or **Dropped** without retrying. The card refreshes every five seconds, and the endpoints are session-only so an API key cannot clear queue state.
+- 🗜️ **Zip workspace export (B-5).** The library's **Export workspace (.zip)** button now downloads an archive containing `workspace.json` (workspace metadata, document manifest without inline payloads, and full conversations), `README.txt` and the original stored files under `documents/`. Exports are owner-scoped, capped at 300 MB per archive with an actionable error above that, and the JSON archive over `workspace.export` remains the round-trip format used by import. Both paths share one query/builder in `workspace-archive.service`.
+- 🗄️ **S3-compatible document storage (P-6).** `STORAGE_DRIVER=s3` moves document bytes to any S3-compatible bucket (AWS, MinIO, R2); local disk remains the default and needs no configuration change. Keys are the existing workspace-scoped paths, the API proxies image previews so buckets stay private, parsers download objects once into `S3_CACHE_DIR` via a `materialize` step, deletion removes the object, and deleting a workspace removes every object under its prefix. `S3_ENDPOINT`, `S3_REGION`, `S3_FORCE_PATH_STYLE` (defaults to true with an endpoint, as MinIO requires), `S3_KEY_PREFIX` and the credential variables configure it; `docker-compose.s3.yml` adds a MinIO service and wires the API and worker to it.
+- 🧪 **`storage:selftest`.** `pnpm --filter @nexus/backend storage:selftest` round-trips one object through the configured driver (put/get/materialize/delete) and prints the backend description, so S3 credentials can be validated before a deployment switches over.
+
+### 🔧 Changed
+
+- 🧩 **Export building is shared.** The tRPC `workspace.export` procedure and the zip download now call one `exportWorkspaceArchive` implementation, so the two formats cannot disagree about documents or conversations.
+- 🧱 **All document file I/O goes through the storage driver.** Uploads and URL imports write through `put` (with rollback on enqueue failure), the worker resolves parser input through `materialize`, chat attachments and vision analysis read through `get`, image previews stream through `get`, trash purge deletes the object, and workspace deletion clears the prefix. Audio cache and workspace archives keep their own local directories (they are not document storage).
+- 📊 **Startup logs name the backend.** The API and worker print `document storage: local disk (<path>)` or `s3 (<bucket>[/prefix])`, so a deployment can see which backend it is actually using.
+
+### 🔒 Security
+
+- 🔐 **Bucket credentials stay server-side.** S3 credentials come from the environment, previews are proxied through the authenticated API rather than exposed by the bucket, and no presigned URLs are issued. Keep the bucket private.
+- 🧾 **Exports are owner-scoped plaintext copies.** `GET /api/workspaces/:id/export.zip` requires a session and returns `404` for a workspace the caller does not own; the zip contains original files and conversation history in clear text, so treat a download like the library itself.
+- 🧹 **Queue actions are session-only.** `admin.queue`/`retryJob`/`removeJob` cannot be called with an API key, and job errors are sanitized before display (`sanitizeForLog`), so a provider response cannot inject markup into the admin view.
+- 🗂️ **Storage keys are validated.** Absolute paths, backslashes and `..` segments are rejected before any filesystem or object-store operation, and workspace deletion only removes the caller's workspace prefix.
+
+### 🐛 Fixed
+
+- 🧷 **Export failures were silent in the UI.** The previous JSON download resolved through a tRPC refetch and swallowed errors; the zip path reports the API's error message in a toast and uses the server-provided filename.
+- 🧪 **Queue failures lacked a document-level explanation.** Failed jobs only surfaced in worker logs; they now show the document title and sanitized error in Settings, with retry/drop actions that update the document state.
+
+### 📝 Notes
+
+- 🧪 **Verification:** 266 backend unit tests across 32 files (5 new local-storage tests: round-trip, materialize, delete/prefix, traversal rejection, description), **152/152** smoke checks (zip magic/content-type, manifest/readme/file entries, foreign-workspace 404, admin counts, unknown-retry NOT_FOUND), **4/4** Playwright suites, and 52 visual captures including the queue card; `typecheck`, `lint`, `format:check`, `build`, `pnpm audit` and `pnpm peers check` are clean.
+- 🔬 **S3 was verified end-to-end, not just configured.** Against an S3-compatible mock: uploaded a document through the API, the worker materialized and parsed the object from the bucket, the document reached `ready`, an uploaded PNG was served back through `GET /api/images/:id` with identical bytes, and deleting the workspace removed every object under its prefix. The shared `storage:selftest` repeats the adapter round-trip for any deployment.
+- 🧭 **Decision record:** `docs/decisions/0003-document-storage-abstraction.md` explains the `StorageDriver`/`materialize` shape, path-style S3 defaults, keeping local disk as the default, and the alternatives (always-S3, presigned URLs, streaming parsers, a media service).
+- ⏳ **Deliberately deferred:** multi-user sharing and roles (L-13), domain packs (L-14), i18n (U-7), cursor pagination across the UI, OpenTelemetry traces / Sentry-compatible reporting, and a Helm chart. The queue is still one `embedding` queue (no parse/embed/tts split); the admin view covers failed jobs, not per-queue priorities. Switching to S3 has no object-copy/migration command — existing local files must be copied into the bucket under their stored keys.
+
 ## [0.4.8] - 2026-10-25
 
 Phase 5 is about running Nexus at a size it was not designed for. Retrieval now plans against per-dimension HNSW indexes instead of scanning every vector, the workspace moved onto chunks so the ANN scan can filter without a join, and a load-test harness measures the result rather than guessing (100k chunks: 7ms p50 versus 152ms for the exact-scan path). Release images are built for amd64 and arm64, and an optional GPU profile runs local Whisper.

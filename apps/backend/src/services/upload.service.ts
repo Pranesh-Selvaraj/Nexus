@@ -1,4 +1,3 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
@@ -12,8 +11,8 @@ import { documents, workspaces } from '../db/schema.js';
 import { enqueueDocumentEmbedding } from '../queues/index.js';
 import { toDocumentDTO } from '../utils/dto.js';
 import { ApiError } from '../utils/errors.js';
-import { UPLOAD_DIR } from '../utils/paths.js';
 import { getSettingNumber } from './settings.service.js';
+import { storage } from './storage/index.js';
 import { assertStorageQuota } from './storage.service.js';
 import { UploadRejectedError, validateUpload } from './ingestion/validate.js';
 
@@ -102,15 +101,10 @@ export async function ingestUpload(params: {
     return { document: toDocumentDTO(existing), duplicate: true };
   }
 
-  const workspaceDir = path.join(UPLOAD_DIR, workspace.id);
-  await mkdir(workspaceDir, { recursive: true });
-  const finalPath = path.join(workspaceDir, randomUUID());
-  await writeFile(finalPath, params.file.buffer);
-
-  const relativePath = path
-    .relative(UPLOAD_DIR, finalPath)
-    .split(path.sep)
-    .join('/');
+  // Workspace-scoped, server-generated key: the storage driver decides whether
+  // this is a local path or an object key.
+  const key = `${workspace.id}/${randomUUID()}`;
+  await storage.put(key, params.file.buffer);
 
   let created: typeof documents.$inferSelect | undefined;
   try {
@@ -119,7 +113,7 @@ export async function ingestUpload(params: {
       .values({
         workspaceId: workspace.id,
         title: path.basename(params.file.originalname).slice(0, 200),
-        filePath: relativePath,
+        filePath: key,
         fileType: validated.detected.format,
         contentHash: validated.contentHash,
         sizeBytes: params.file.buffer.length,
@@ -139,7 +133,7 @@ export async function ingestUpload(params: {
       throw enqueueError;
     }
   } catch (err) {
-    await rm(finalPath, { force: true }).catch(() => undefined);
+    await storage.delete(key).catch(() => undefined);
     throw err;
   }
 

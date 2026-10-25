@@ -1,6 +1,4 @@
-import { readFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
-import path from 'node:path';
 
 import { TRPCError } from '@trpc/server';
 import { observable } from '@trpc/server/observable';
@@ -46,7 +44,7 @@ import {
   visionAvailable,
 } from '../services/ingestion/vision.service.js';
 import { mimeForFormat } from '../services/ingestion/magic.js';
-import { UPLOAD_DIR } from '../utils/paths.js';
+import { storage } from '../services/storage/index.js';
 import { friendlyErrorMessage } from '../utils/errors.js';
 
 function toConversationDTO(row: {
@@ -151,9 +149,7 @@ async function loadAttachedImages(
       });
     }
     const mime = mimeForFormat(row.fileType);
-    const buffer = await readFile(path.resolve(UPLOAD_DIR, row.filePath)).catch(
-      () => null,
-    );
+    const buffer = await storage.get(row.filePath).catch(() => null);
     if (!buffer) {
       throw new TRPCError({
         code: 'NOT_FOUND',

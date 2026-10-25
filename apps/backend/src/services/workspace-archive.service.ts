@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 
 import JSZip from 'jszip';
 import { and, eq } from 'drizzle-orm';
@@ -17,7 +15,7 @@ import {
 } from '../db/schema.js';
 import { enqueueDocumentEmbedding } from '../queues/index.js';
 import { ALLOWED_EXTENSIONS } from '../utils/multer.config.js';
-import { UPLOAD_DIR } from '../utils/paths.js';
+import { storage } from './storage/index.js';
 
 /**
  * Build the JSON archive for a workspace the caller owns. Shared by the tRPC
@@ -42,9 +40,7 @@ export async function exportWorkspaceArchive(
     docRows.map(async (doc) => {
       let contentBase64 = '';
       try {
-        contentBase64 = (
-          await readFile(path.join(UPLOAD_DIR, doc.filePath))
-        ).toString('base64');
+        contentBase64 = (await storage.get(doc.filePath)).toString('base64');
       } catch {
         // file missing on disk - export metadata only
       }
@@ -249,14 +245,10 @@ export async function importWorkspaceArchive(
 
   // Restore documents: write file contents under fresh server-controlled
   // names and re-queue embeddings.
-  const workspaceDir = path.join(UPLOAD_DIR, created.id);
-  await mkdir(workspaceDir, { recursive: true });
-
   for (const doc of archive.documents) {
-    const filename = randomUUID();
-    const filePath = path.join(workspaceDir, filename);
+    const key = `${created.id}/${randomUUID()}`;
     try {
-      await writeFile(filePath, Buffer.from(doc.contentBase64, 'base64'));
+      await storage.put(key, Buffer.from(doc.contentBase64, 'base64'));
     } catch (err) {
       console.error('[import] skipping unreadable document:', err);
       continue;
@@ -272,7 +264,7 @@ export async function importWorkspaceArchive(
       .values({
         workspaceId: created.id,
         title: doc.title,
-        filePath: `${created.id}/${filename}`,
+        filePath: key,
         fileType,
         status: 'processing',
       })

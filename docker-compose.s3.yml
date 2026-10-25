@@ -1,0 +1,53 @@
+# Optional MinIO object storage profile (P-6).
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.s3.yml up -d
+#
+# The backend then needs STORAGE_DRIVER=s3 and the S3_* variables from .env
+# (see .env.example). Create the bucket once, e.g. with `mc mb local/nexus`.
+services:
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-nexus}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-nexus-minio-secret}
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - nexus-minio:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    environment:
+      STORAGE_DRIVER: s3
+      S3_BUCKET: ${S3_BUCKET:-nexus}
+      S3_ENDPOINT: http://minio:9000
+      S3_FORCE_PATH_STYLE: 'true'
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-nexus}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-nexus-minio-secret}
+      S3_CACHE_DIR: /tmp/nexus-s3-cache
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  worker:
+    environment:
+      STORAGE_DRIVER: s3
+      S3_BUCKET: ${S3_BUCKET:-nexus}
+      S3_ENDPOINT: http://minio:9000
+      S3_FORCE_PATH_STYLE: 'true'
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-nexus}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-nexus-minio-secret}
+      S3_CACHE_DIR: /tmp/nexus-s3-cache
+    depends_on:
+      minio:
+        condition: service_healthy
+
+volumes:
+  nexus-minio:

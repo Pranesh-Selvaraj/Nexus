@@ -1,7 +1,5 @@
 import '../utils/env.js';
 
-import path from 'node:path';
-
 import { Worker } from 'bullmq';
 import { eq, lt, sql } from 'drizzle-orm';
 
@@ -33,7 +31,7 @@ import {
   emitWebhookEvent,
 } from '../services/webhook.service.js';
 import { sanitizeForLog } from '../utils/sanitize.js';
-import { UPLOAD_DIR } from '../utils/paths.js';
+import { storage } from '../services/storage/index.js';
 
 async function processDocument(documentId: string): Promise<void> {
   const [doc] = await db
@@ -48,7 +46,8 @@ async function processDocument(documentId: string): Promise<void> {
     .set({ status: 'processing', errorMessage: null, updatedAt: new Date() })
     .where(eq(documents.id, doc.id));
 
-  const filePath = path.resolve(UPLOAD_DIR, doc.filePath);
+  // Parsers need a local file: local disk returns the path, S3 downloads once.
+  const filePath = await storage.materialize(doc.filePath);
 
   // 1. Parse file -> pages through the format registry (magic-byte format is
   //    stored on the row at upload time). Media transcription needs the
@@ -321,5 +320,5 @@ void scheduleMaintenance().catch((err) =>
 );
 
 console.log(
-  `[worker] listening for embedding jobs (redis: ${process.env.REDIS_URL ?? 'redis://localhost:6379'}, uploads: ${path.resolve(UPLOAD_DIR)})`,
+  `[worker] listening for embedding jobs (redis: ${process.env.REDIS_URL ?? 'redis://localhost:6379'}, storage: ${storage.description})`,
 );
