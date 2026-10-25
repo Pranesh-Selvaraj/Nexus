@@ -35,6 +35,7 @@ export function DocumentList({ workspaceId }: Props) {
   // "Analyse" affordance is hidden instead of failing after the click.
   const vision = trpc.vision.config.useQuery(undefined);
   const [analysing, setAnalysing] = useState<DocumentDTO | null>(null);
+  const [trashOpen, setTrashOpen] = useState(false);
 
   const invalidateDocuments = () => {
     void utils.document.listByWorkspace.invalidate({ workspaceId });
@@ -43,10 +44,51 @@ export function DocumentList({ workspaceId }: Props) {
     void utils.workspace.list.invalidate();
   };
 
+  const restoreDocument = trpc.document.restore.useMutation({
+    onSuccess: () => {
+      invalidateDocuments();
+      void utils.document.listTrashed.invalidate({ workspaceId });
+    },
+    onError: (err) =>
+      toast.push({ kind: 'error', message: `Restore failed: ${err.message}` }),
+  });
   const removeDocument = trpc.document.remove.useMutation({
-    onSuccess: invalidateDocuments,
+    onSuccess: (_data, variables) => {
+      invalidateDocuments();
+      if (trashOpen) {
+        void utils.document.listTrashed.invalidate({ workspaceId });
+      }
+      toast.push({
+        kind: 'info',
+        message: 'Moved to trash',
+        action: {
+          label: 'Undo',
+          onClick: () =>
+            restoreDocument.mutate({ documentId: variables.documentId }),
+        },
+      });
+    },
     onError: (err) =>
       toast.push({ kind: 'error', message: `Delete failed: ${err.message}` }),
+  });
+  const trashed = trpc.document.listTrashed.useQuery(
+    { workspaceId },
+    { enabled: trashOpen },
+  );
+  const emptyTrash = trpc.document.emptyTrash.useMutation({
+    onSuccess: (result) => {
+      invalidateDocuments();
+      void utils.document.listTrashed.invalidate({ workspaceId });
+      toast.push({
+        kind: 'success',
+        message: `Permanently deleted ${result.purged} document${result.purged === 1 ? '' : 's'}`,
+      });
+    },
+    onError: (err) =>
+      toast.push({
+        kind: 'error',
+        message: `Empty trash failed: ${err.message}`,
+      }),
   });
   const retryDocument = trpc.document.retry.useMutation({
     onSuccess: invalidateDocuments,
@@ -108,6 +150,68 @@ export function DocumentList({ workspaceId }: Props) {
             />
           ))}
         </ul>
+
+        <div className="mt-3 border-t border-zinc-800 pt-2">
+          <button
+            onClick={() => setTrashOpen((open) => !open)}
+            className="w-full rounded-lg px-2 py-1.5 text-left text-[11px] text-zinc-500 transition-colors hover:bg-zinc-900 hover:text-zinc-300"
+            aria-expanded={trashOpen}
+          >
+            {trashOpen ? 'Hide trash' : 'Show trash'}
+          </button>
+          {trashOpen && (
+            <div className="mt-1.5 space-y-1.5">
+              {trashed.isLoading && (
+                <p className="px-2 text-[11px] text-zinc-600">
+                  Loading trash...
+                </p>
+              )}
+              {trashed.data?.length === 0 && (
+                <p className="px-2 text-[11px] text-zinc-600">
+                  Trash is empty.
+                </p>
+              )}
+              {trashed.data?.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 px-2 py-1.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] text-zinc-300">
+                      {doc.title}
+                    </p>
+                    <p className="text-[10px] text-zinc-600">
+                      deleted{' '}
+                      {doc.deletedAt
+                        ? new Date(doc.deletedAt).toLocaleDateString()
+                        : 'recently'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() =>
+                      restoreDocument.mutate({ documentId: doc.id })
+                    }
+                    disabled={restoreDocument.isPending}
+                    className="shrink-0 rounded border border-zinc-700 px-2 py-1 text-[10px] text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+              {(trashed.data?.length ?? 0) > 0 && (
+                <button
+                  onClick={() => emptyTrash.mutate({ workspaceId })}
+                  disabled={emptyTrash.isPending}
+                  className="w-full rounded-lg border border-red-900/60 px-2 py-1.5 text-[11px] text-red-400 transition-colors hover:bg-red-950/40 disabled:opacity-40"
+                >
+                  {emptyTrash.isPending
+                    ? 'Deleting...'
+                    : 'Empty trash permanently'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {analysing && (
@@ -317,6 +421,7 @@ function StatusBadge({ status }: { status: DocumentDTO['status'] }) {
     processing: 'bg-amber-950/50 text-amber-400 animate-pulse',
     ready: 'bg-emerald-950/50 text-emerald-400',
     failed: 'bg-red-950/50 text-red-400',
+    deleted: 'bg-zinc-800 text-zinc-400',
   };
   return (
     <span

@@ -10,6 +10,8 @@ import {
 export interface ToastInput {
   kind: 'info' | 'success' | 'error';
   message: string;
+  /** Optional single action (e.g. Undo). Toasts with actions stay longer. */
+  action?: { label: string; onClick: () => void };
 }
 
 interface Toast extends ToastInput {
@@ -23,6 +25,7 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 const TOAST_TTL_MS = 6_000;
+const TOAST_ACTION_TTL_MS = 12_000;
 
 /** Minimal app-wide toast stack (replaces alert()/silent failures). */
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -31,9 +34,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const push = useCallback((toast: ToastInput) => {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { ...toast, id }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((item) => item.id !== id));
-    }, TOAST_TTL_MS);
+    window.setTimeout(
+      () => {
+        setToasts((prev) => prev.filter((item) => item.id !== id));
+      },
+      toast.action ? TOAST_ACTION_TTL_MS : TOAST_TTL_MS,
+    );
   }, []);
 
   const value = useMemo(() => ({ push }), [push]);
@@ -57,7 +63,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   : 'border-zinc-700 bg-zinc-900/95 text-zinc-200'
             }`}
           >
-            {toast.message}
+            <div className="flex items-center justify-between gap-3">
+              <span>{toast.message}</span>
+              {toast.action && (
+                <button
+                  onClick={() => {
+                    toast.action?.onClick();
+                    setToasts((prev) =>
+                      prev.filter((item) => item.id !== toast.id),
+                    );
+                  }}
+                  className="shrink-0 rounded-md border border-current/40 px-2 py-1 text-xs font-semibold hover:bg-white/5"
+                >
+                  {toast.action.label}
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

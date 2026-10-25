@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { trpc } from '../../lib/trpc';
 import { ApiKeysCard } from './ApiKeysCard';
+import { StorageCard } from './StorageCard';
 import { WebhooksCard } from './WebhooksCard';
 
 const GROUPS: { id: string; label: string }[] = [
@@ -12,6 +13,7 @@ const GROUPS: { id: string; label: string }[] = [
   { id: 'voice', label: 'Voice' },
   { id: 'language', label: 'Language' },
   { id: 'server', label: 'Server' },
+  { id: 'storage', label: 'Storage & trash' },
   { id: 'auth', label: 'Authentication' },
   { id: 'ui', label: 'Appearance' },
 ];
@@ -379,6 +381,7 @@ export function SettingsPanel() {
 
         <ApiKeysCard />
         <WebhooksCard />
+        <StorageCard />
 
         {error && (
           <p className="mb-4 rounded-lg bg-red-950/40 px-4 py-2 text-sm text-red-400">
