@@ -2,8 +2,11 @@
 
 Thanks for your interest in contributing! This document describes the workflow, conventions, and quality gates every contribution must pass.
 
+Before proposing a change, read **[docs/MISSION.md](docs/MISSION.md)**. It states why Nexus exists, what "ultimate learning portal" means in measurable terms, and the principles a feature must serve. A change that adds capability without improving the learner's understanding, retention or trust is not finished.
+
 ## Table of contents
 
+- [Mission](#mission)
 - [Code of conduct](#code-of-conduct)
 - [Development environment](#development-environment)
 - [Branching strategy](#branching-strategy)
@@ -14,6 +17,10 @@ Thanks for your interest in contributing! This document describes the workflow, 
 - [Testing](#testing)
 - [Security](#security)
 - [Reviewing](#reviewing)
+
+## Mission
+
+Nexus is a learning portal first: grounded answers, deliberate practice, measurable retention and learner-owned data. The full mission, ambition, principles, learning model and non-goals live in **[docs/MISSION.md](docs/MISSION.md)**. Keep that document in view when scoping a change; if a feature does not move the learner from "I have the material" to "I can use and remember it", question whether it belongs.
 
 ## Code of conduct
 

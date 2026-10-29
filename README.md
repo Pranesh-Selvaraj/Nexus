@@ -1,8 +1,10 @@
 # Nexus
 
-> Full-stack AI RAG workspace with hybrid search, real-time streaming, and queue-based document indexing.
+> A self-hosted learning portal that turns anything you read, watch or photograph into grounded, practiceable knowledge.
 
-Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload documents into workspaces, have them chunked, embedded, and indexed asynchronously, then chat with your documents over a real-time WebSocket connection backed by hybrid (vector + keyword) search.
+Nexus helps you learn anything — technology, languages, art, science, music, an exam, a codebase — from your own material. Bring books, slides, lectures, web pages, YouTube talks, photos and notes into a topic; ask questions that cite the exact passage or image; turn the same material into flashcards, quizzes, dictation and pronunciation practice; and let spaced repetition and a cross-topic dashboard show what is due, what was reviewed and what is actually sticking. It is self-hosted, provider-agnostic and exportable, so the knowledge and the learning data stay yours.
+
+The full statement of why Nexus exists — its mission, the learning-science basis, the feature-to-learning map, success criteria and non-goals — is in **[docs/MISSION.md](docs/MISSION.md)**.
 
 [![Release](https://img.shields.io/github/v/release/Pranesh-Selvaraj/Nexus?sort=semver)](https://github.com/Pranesh-Selvaraj/Nexus/releases)
 [![CI](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/ci.yml)
@@ -14,6 +16,7 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 
 ## Table of contents
 
+- [Mission and ambition](#mission-and-ambition)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Tech stack](#tech-stack)
@@ -26,6 +29,22 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 - [Contributing](#contributing)
 - [Security](#security)
 - [License](#license)
+
+## Mission and ambition
+
+**Mission:** help people turn anything they can read, watch, listen to or photograph into knowledge they can use, remember and build on — with an AI tutor that stays grounded in their sources and a practice loop that makes retention measurable.
+
+The ambition is to be the **ultimate learning portal**: a single place where any source becomes structured, searchable material; a tutor answers only from that material and shows its evidence; the same material becomes deliberate practice; spaced repetition schedules what is about to be forgotten; and the dashboard shows what is due and what was reviewed across every topic — all running on infrastructure the learner controls and with every document, conversation and card exportable.
+
+That ambition is constrained by principles, not feature count:
+
+- **Grounded before generative** — cite the source or state the gap; never invent.
+- **Active over passive** — every reading surface leads to a question, card, quiz or drill.
+- **One topic, many inputs** — formats and provenance are unified by the subject being learned.
+- **Practice is first-class** — chat alone does not make knowledge stick.
+- **Explainable and owned** — retrieval shows its reasoning, and the data is portable and self-hostable.
+
+Read the full document for the problem statement, the learning-science mapping (retrieval practice, spaced repetition, immediate feedback, interleaving, dual coding, metacognition), the learner loop, what each feature is for, who it is for, the measurable definition of "ultimate", the honest line between shipped and ambition, and the non-goals: **[docs/MISSION.md](docs/MISSION.md)**.
 
 ## Features
 
@@ -49,7 +68,7 @@ Nexus is a self-hosted RAG (Retrieval-Augmented Generation) workspace. Upload do
 
 ### The learning portal
 
-Nexus opens as a learning portal rather than an empty chat:
+Nexus opens as a learning portal rather than an empty chat — the product expression of the [mission](docs/MISSION.md):
 
 - **Home** is a universal dashboard: topics, sources, cards due now, reviews done today, a "Continue learning" row, a suggested next step and suggested activities, plus recently added sources.
 - **Topics** is the gallery of everything you are learning. Create a topic per subject (a language, a course, an exam, art history, a codebase...) with an optional goal; import a previous workspace backup from the same page. Each card shows source count and due work.
@@ -570,7 +589,8 @@ packages/
 extensions/
   browser/          Manifest V3 share target (save the current page)
 docs/
-  decisions/        Architecture decision records (ingestion, vision, ...)
+  MISSION.md        Mission, ambition, learning model and success criteria
+  decisions/        Architecture decision records (ingestion, retrieval, storage, UI)
 .github/
   workflows/        CI, CodeQL, release
   dependabot.yml    Automated dependency update PRs
