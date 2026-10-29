@@ -150,6 +150,11 @@ export function TopicPage({
               ← All topics
             </button>
             <h1 className="mt-0.5 truncate text-xl font-bold tracking-tight">
+              {workspace.metadata?.icon && (
+                <span className="mr-1.5" aria-hidden>
+                  {workspace.metadata.icon}
+                </span>
+              )}
               {workspace.name}
             </h1>
             <p className="mt-0.5 line-clamp-1 text-xs text-zinc-500">
@@ -229,6 +234,38 @@ export function TopicPage({
           </button>
         ))}
       </nav>
+
+      {tab === 'learn' &&
+        (workspace.metadata?.starterPrompts?.length ?? 0) > 0 && (
+          <div className="flex items-center gap-2 overflow-x-auto border-b border-zinc-800/60 bg-zinc-900/20 px-4 py-1.5">
+            <span className="shrink-0 text-[10px] uppercase tracking-wider text-zinc-600">
+              Try asking
+            </span>
+            {workspace.metadata?.starterPrompts?.map((prompt) => (
+              <button
+                key={prompt}
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(prompt)
+                    .then(() =>
+                      toast.push({
+                        kind: 'info',
+                        message: 'Question copied — paste it into the chat',
+                      }),
+                    )
+                    .catch(() => undefined);
+                }}
+                title="Copy this question"
+                className="shrink-0 rounded-full border border-zinc-800 px-2.5 py-1 text-[11px] text-zinc-400 transition-colors hover:border-nexus-700/60 hover:text-zinc-200"
+              >
+                {prompt}
+              </button>
+            ))}
+            <span className="shrink-0 text-[10px] text-zinc-600">
+              · plan is in Practice → Notes
+            </span>
+          </div>
+        )}
 
       {shareOpen && (
         <ShareDialog

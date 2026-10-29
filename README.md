@@ -53,6 +53,19 @@ Nexus opens as a learning portal rather than an empty chat:
 
 - **Home** is a universal dashboard: topics, sources, cards due now, reviews done today, a "Continue learning" row, a suggested next step and suggested activities, plus recently added sources.
 - **Topics** is the gallery of everything you are learning. Create a topic per subject (a language, a course, an exam, art history, a codebase...) with an optional goal; import a previous workspace backup from the same page. Each card shows source count and due work.
+
+### Domain packs
+
+Five first-party packs give a topic a running start — **Spanish for beginners (A1)**, **Python foundations**, **How to read a painting**, **Cell biology essentials** and **Music theory basics**. Installing one from the Topics gallery creates a normal topic containing:
+
+- a **plan** note (a checklist you can edit) in Practice → Notes,
+- a **starter deck** of flashcards, due immediately, in Practice → Decks,
+- three **starter questions** shown above the chat (click to copy),
+- a **welcome conversation** summarising the plan and how to use the topic,
+- the pack's persona preselected as a suggestion in the topic metadata.
+
+Everything is ordinary user data afterwards: rename, edit, delete or add sources to the topic. Packs are curated content shipped with Nexus (no external downloads), and installing one twice is prevented by pointing "Install pack" at the already-installed topic ("Open topic").
+
 - **A topic** has four modes: **Learn** (chat with your sources, with a Sources rail for uploads, URLs and the library), **Practice** (study dashboard, flashcards, quizzes, studio artifacts and notes), **Voice** (push-to-talk tutor), and **Language** (vocabulary, dictation, pronunciation, CEFR progress). The topic header keeps Share, Export, re-index and Delete in one place.
 - The shell keeps the sidebar for Home, Topics, a quick topic list, Settings and the signed-in user; mobile gets an off-canvas drawer and a compact header.
 

@@ -6,6 +6,7 @@ import { dashboardRouter } from './dashboard.router.js';
 import { documentRouter } from './document.router.js';
 import { languageRouter } from './language.router.js';
 import { notesRouter } from './notes.router.js';
+import { packsRouter } from './packs.router.js';
 import { quizRouter } from './quiz.router.js';
 import { settingsRouter } from './settings.router.js';
 import { shareRouter } from './share.router.js';
@@ -40,6 +41,7 @@ export const appRouter = t.router({
   storage: storageRouter,
   share: shareRouter,
   dashboard: dashboardRouter,
+  packs: packsRouter,
   workspace: workspaceRouter,
   document: documentRouter,
   chat: chatRouter,

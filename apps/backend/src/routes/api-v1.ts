@@ -87,6 +87,7 @@ export function apiV1Router(): Router {
             id: workspaces.id,
             name: workspaces.name,
             description: workspaces.description,
+            metadata: workspaces.metadata,
             createdAt: workspaces.createdAt,
             // Fully qualify the outer column: an interpolated `${workspaces.id}`
             // renders as a bare `"id"` inside the subquery, which resolves to
@@ -107,6 +108,7 @@ export function apiV1Router(): Router {
             description: row.description,
             documentCount: Number(row.documentCount),
             createdAt: row.createdAt.toISOString(),
+            metadata: row.metadata ?? null,
           })),
         });
       } catch (err) {

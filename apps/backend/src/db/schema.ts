@@ -18,6 +18,7 @@ import {
 import type {
   ApiScope,
   DocumentStructure,
+  WorkspaceMetadata,
   WebhookEvent,
   RetrievalDebug,
   Source,
@@ -88,6 +89,9 @@ export const workspaces = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     description: text('description'),
+    // Presentation/onboarding metadata: installed domain pack, icon, plan and
+    // starter prompts. Null for ordinary topics.
+    metadata: jsonb('metadata').$type<WorkspaceMetadata | null>(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

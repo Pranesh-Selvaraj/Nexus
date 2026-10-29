@@ -6,6 +6,42 @@ Releases are listed newest first. Every release uses the same layout: a `## [X.Y
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-10-25
+
+Learning a new subject now starts from a curated pack. The Topics gallery ships five first-party domain packs (Spanish A1, Python foundations, reading a painting, cell biology, music theory); installing one creates a complete topic with a plan, a starter deck, starter questions and a welcome conversation — all editable, because a pack is a starting point, not a separate product.
+
+### ✨ Added
+
+- 🎒 **Five first-party domain packs (L-14).** Each pack bundles a persona suggestion, a short plan, three starter questions and a starter flashcard deck: Spanish for beginners (A1), Python foundations, How to read a painting, Cell biology essentials and Music theory basics. They are static, reviewed content compiled into the backend — no remote downloads, no code execution.
+- 🗂️ **A pack gallery on the Topics page.** Each card shows the domain, description, deck size and plan length with **Install pack**; once installed it becomes **Open topic**, pointing at the workspace that already holds it, so a pack cannot be installed twice by accident.
+- 🧭 **Installation creates a real topic.** The installer writes the lesson plan as an editable note (`Practice → Notes`), creates a starter deck whose cards are due immediately (`Practice → Decks`), opens a "Start here" conversation summarising the plan and how to practise, and stores the pack metadata (icon, persona suggestion, plan, starter prompts) on the workspace.
+- 💬 **Starter questions in the chat.** Pack topics show a "Try asking" strip above the conversation with the pack's three questions; clicking one copies it for the composer, so the first session has a concrete next action.
+- 🏷️ **Pack identity in the UI.** The topic header shows the pack icon and the plan/help text points to the notes; workspace DTOs and the REST `/api/v1/workspaces` payload carry the metadata for clients.
+
+### 🔧 Changed
+
+- 🗃️ **Workspaces gained optional metadata.** Migration 0020 adds `workspaces.metadata` (JSONB) for `packId`, `icon`, `personaId`, starter prompts and plan; ordinary topics leave it null, and the existing workspace payloads include it without changing any other field.
+- 🧩 **Topics remain the single object.** Installing a pack creates a normal workspace with a note, deck, conversation and cards rather than a parallel "course" entity, so everything stays editable with the existing study, chat and library tools.
+- 📚 **Documentation** describes the packs and their contents and states explicitly that they are starting points.
+
+### 🔒 Security
+
+- 🧱 **Packs are inert content.** Installing a pack only writes rows the caller owns (workspace, deck, cards, note, conversation); it cannot execute code, contact the network or read another user's data, and pack content is shipped in the repository rather than fetched at runtime.
+- 🧾 **No new authorization surface.** `packs.list` and `packs.install` are protected procedures scoped to the signed-in user; installation reuses the same workspace ownership rules as manual creation.
+- 📦 **`qs` advisory closed (GHSA-6pq8-jhm2-2vcw).** `qs.stringify` with `arrayFormat: 'comma'` could throw an uncaught `TypeError` on array elements with a non-callable own `toString`, a denial-of-service vector reachable through Express query parsing; the workspace override now requires `qs >= 6.16.1` (previously >= 6.16.0, which admitted the vulnerable 6.16.0). `pnpm audit` is back to zero.
+
+### 🐛 Fixed
+
+- 🧭 **New learners faced an empty topic after creating one** with no idea what to do first; a pack now provides a plan, questions and due cards from the first minute.
+- 🧪 **The visual harness could not re-install a pack on a reused database** because the pack showed "Open topic"; the harness now removes the previous pack topic first, and the Playwright pack suite does the same so runs are repeatable.
+
+### 📝 Notes
+
+- 🧪 **Verification:** 266 unit tests, smoke **164/164** (packs list shape, install metadata, starter deck with ≥5 cards, plan note, welcome conversation; plus all prior checks), **6/6** Playwright suites including a pack-install flow that opens the plan in Notes and the deck in Decks, and **57** visual captures including the gallery and an installed pack topic. `typecheck`, `lint`, `format:check`, `build`, `pnpm audit` and `pnpm peers check` are clean.
+- 🗄️ **Migration 0020** adds the nullable `workspaces.metadata` column; existing topics are unaffected.
+- ⏳ **Deliberately deferred:** user-authored/importable packs, pack versioning and updates, pack-specific retrieval profiles, more domains (history, maths, law, music OMR), and the remaining collaboration work (memberships/roles, comments, audit log) and i18n.
+- 🧷 **Pack content is intentionally small.** Each starter deck has 5–6 cards and the plans have 5–7 steps; they are seeds for the learner's own sources and questions, not a replacement for a full curriculum.
+
 ## [0.4.11] - 2026-10-25
 
 Nexus is now a learning portal rather than a document chat tool. The app opens on a universal dashboard, topics replace workspaces as the primary object, and every topic is organised around four ways to learn: Learn, Practice, Voice and Language. The underlying features are the same ones from the previous phases — the rewrite is the navigation, the framing and the dashboard that makes them feel like a course, not a file manager.

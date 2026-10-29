@@ -2,7 +2,11 @@ import { TRPCError } from '@trpc/server';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
-import type { WorkspaceArchive, WorkspaceDTO } from '@nexus/shared-types';
+import type {
+  WorkspaceArchive,
+  WorkspaceDTO,
+  WorkspaceMetadata,
+} from '@nexus/shared-types';
 import {
   createWorkspaceInputSchema,
   updateWorkspaceInputSchema,
@@ -28,6 +32,7 @@ interface WorkspaceRow {
   id: string;
   name: string;
   description: string | null;
+  metadata: WorkspaceMetadata | null;
   created_at: Date;
   document_count: number;
 }
@@ -39,6 +44,7 @@ function toWorkspaceDTO(row: WorkspaceRow): WorkspaceDTO {
     description: row.description,
     documentCount: Number(row.document_count),
     createdAt: new Date(row.created_at).toISOString(),
+    metadata: row.metadata ?? null,
   };
 }
 
@@ -46,7 +52,7 @@ export const workspaceRouter = t.router({
   list: protectedProcedure.query(async ({ ctx }): Promise<WorkspaceDTO[]> => {
     const result = await db.execute(
       sql`
-        SELECT w.id, w.name, w.description, w.created_at,
+        SELECT w.id, w.name, w.description, w.metadata, w.created_at,
                (SELECT COUNT(*)::int FROM documents d
                 WHERE d.workspace_id = w.id
                   AND d.status <> 'deleted') AS document_count
@@ -77,6 +83,7 @@ export const workspaceRouter = t.router({
         id: created.id,
         name: created.name,
         description: created.description,
+        metadata: created.metadata ?? null,
         created_at: created.createdAt,
         document_count: 0,
       });
@@ -128,6 +135,7 @@ export const workspaceRouter = t.router({
         id: updated.id,
         name: updated.name,
         description: updated.description,
+        metadata: updated.metadata ?? null,
         created_at: updated.createdAt,
         document_count: Number(docCount.count),
       });

@@ -20,12 +20,31 @@ export function TopicsPage({ onOpenTopic, autoCreate = false }: Props) {
   const utils = trpc.useUtils();
   const toast = useToast();
   const overview = trpc.dashboard.overview.useQuery(undefined);
+  const packs = trpc.packs.list.useQuery(undefined);
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(autoCreate);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
+
+  const installPack = trpc.packs.install.useMutation({
+    onSuccess: async (workspace) => {
+      await utils.workspace.list.invalidate();
+      await utils.dashboard.overview.invalidate();
+      await utils.packs.list.invalidate();
+      toast.push({
+        kind: 'success',
+        message: 'Pack installed — your plan is ready',
+      });
+      onOpenTopic(workspace.id);
+    },
+    onError: (err) =>
+      toast.push({
+        kind: 'error',
+        message: `Could not install pack: ${err.message}`,
+      }),
+  });
 
   const create = trpc.workspace.create.useMutation({
     onSuccess: async (workspace) => {
@@ -184,6 +203,73 @@ export function TopicsPage({ onOpenTopic, autoCreate = false }: Props) {
               </div>
             </div>
           </form>
+        )}
+
+        {(packs.data?.packs.length ?? 0) > 0 && (
+          <section className="mt-6" aria-label="Domain packs">
+            <div className="flex items-baseline justify-between">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
+                  Start from a pack
+                </h2>
+                <p className="mt-0.5 text-[11px] text-zinc-600">
+                  A pack installs a ready topic with a plan, starter questions
+                  and a flashcard deck you can edit.
+                </p>
+              </div>
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {packs.data?.packs.map((pack) => {
+                const installedId = packs.data?.installed[pack.id];
+                return (
+                  <article
+                    key={pack.id}
+                    className="flex flex-col rounded-2xl border border-zinc-800 bg-gradient-to-b from-zinc-900/70 to-zinc-900/30 p-3"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-xl" aria-hidden>
+                        {pack.icon}
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="truncate text-xs font-semibold text-zinc-100">
+                          {pack.name}
+                        </h3>
+                        <p className="text-[10px] uppercase tracking-wide text-zinc-600">
+                          {pack.domain}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-2 line-clamp-3 min-h-[3.2em] flex-1 text-[11px] leading-relaxed text-zinc-500">
+                      {pack.description}
+                    </p>
+                    <p className="mt-1 text-[10px] text-zinc-600">
+                      {pack.cardCount} cards · {pack.plan.steps.length}-step
+                      plan
+                    </p>
+                    <button
+                      onClick={() =>
+                        installedId
+                          ? onOpenTopic(installedId)
+                          : installPack.mutate({ packId: pack.id })
+                      }
+                      disabled={installPack.isPending}
+                      className={`mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-40 ${
+                        installedId
+                          ? 'border border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+                          : 'bg-nexus-600 text-white hover:bg-nexus-500'
+                      }`}
+                    >
+                      {installedId
+                        ? 'Open topic'
+                        : installPack.isPending
+                          ? 'Installing...'
+                          : 'Install pack'}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {overview.isLoading && (

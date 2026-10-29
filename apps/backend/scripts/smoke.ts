@@ -2240,6 +2240,75 @@ try {
     const unknownShare = await fetch(`${BASE}/api/share/nxs_${'a'.repeat(43)}`);
     print('an unknown share token is 404', unknownShare.status === 404);
 
+    // --- domain packs (L-14) --------------------------------------------
+    const packs = await fetchJson('/trpc/packs.list', { method: 'GET' });
+    const packList = (packs.body?.result?.data?.packs ?? []) as any[];
+    print(
+      'packs.list exposes the built-in domain packs',
+      packList.length >= 5 &&
+        packList.every(
+          (pack) =>
+            typeof pack.id === 'string' &&
+            Array.isArray(pack.plan?.steps) &&
+            pack.cardCount > 0,
+        ),
+      { packs: packList.length },
+    );
+
+    const packInstall = await fetchJson('/trpc/packs.install', {
+      method: 'POST',
+      body: JSON.stringify({ packId: 'tech-python-foundations' }),
+    });
+    const packWorkspace = packInstall.body?.result?.data;
+    const packWorkspaceId = packWorkspace?.id as string | undefined;
+    print(
+      'installing a pack creates a topic with its plan metadata',
+      Boolean(packWorkspaceId) &&
+        packWorkspace?.metadata?.packId === 'tech-python-foundations' &&
+        packWorkspace?.metadata?.starterPrompts?.length >= 3,
+      { id: packWorkspaceId, icon: packWorkspace?.metadata?.icon },
+    );
+
+    const packDecks = await fetchJson(
+      `/trpc/study.decks.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: packWorkspaceId }))}`,
+      { method: 'GET' },
+    );
+    const packDeck = (packDecks.body?.result?.data ?? [])[0];
+    print(
+      'the pack creates a starter deck with its cards',
+      Boolean(packDeck?.id) && packDeck?.cardCount >= 5,
+      { deck: packDeck?.name, cards: packDeck?.cardCount },
+    );
+
+    const packNotes = await fetchJson(
+      `/trpc/notes.notes.list?input=${encodeURIComponent(JSON.stringify({ workspaceId: packWorkspaceId }))}`,
+      { method: 'GET' },
+    );
+    const packNote = (packNotes.body?.result?.data ?? [])[0];
+    print(
+      'the pack writes the plan as a note',
+      typeof packNote?.contentMd === 'string' &&
+        packNote.contentMd.includes('Python fundamentals'),
+      { title: packNote?.title },
+    );
+
+    const packConversations = await fetchJson(
+      `/trpc/chat.listByWorkspace?input=${encodeURIComponent(JSON.stringify({ workspaceId: packWorkspaceId }))}`,
+      { method: 'GET' },
+    );
+    const packConversation = (packConversations.body?.result?.data ?? [])[0];
+    print(
+      'the pack opens with a welcome conversation',
+      Boolean(packConversation?.id) &&
+        String(packConversation?.title).startsWith('Start here:'),
+      { title: packConversation?.title },
+    );
+
+    await fetchJson('/trpc/workspace.delete', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId: packWorkspaceId }),
+    });
+
     // --- learning-portal dashboard --------------------------------------
     const overview = await fetchJson('/trpc/dashboard.overview', {
       method: 'GET',
