@@ -53,7 +53,10 @@ export const dashboardRouter = t.router({
             MAX(d.updated_at) AS last_activity
           FROM workspaces w
           LEFT JOIN documents d ON d.workspace_id = w.id
-          WHERE w.user_id = ${ctx.user.id}
+          WHERE (w.user_id = ${ctx.user.id} OR EXISTS (
+            SELECT 1 FROM workspace_members m
+            WHERE m.workspace_id = w.id AND m.user_id = ${ctx.user.id}
+          ))
           GROUP BY w.id, w.name, w.description
           ORDER BY MAX(d.updated_at) DESC NULLS LAST, w.created_at DESC
         `,
@@ -78,7 +81,10 @@ export const dashboardRouter = t.router({
                  d.file_type, d.status, d.created_at
           FROM documents d
           JOIN workspaces w ON w.id = d.workspace_id
-          WHERE w.user_id = ${ctx.user.id}
+          WHERE (w.user_id = ${ctx.user.id} OR EXISTS (
+            SELECT 1 FROM workspace_members m
+            WHERE m.workspace_id = w.id AND m.user_id = ${ctx.user.id}
+          ))
             AND d.status <> 'deleted'
           ORDER BY d.created_at DESC
           LIMIT 6
@@ -103,7 +109,10 @@ export const dashboardRouter = t.router({
           JOIN flashcards c ON c.id = r.card_id
           JOIN decks d ON d.id = c.deck_id
           JOIN workspaces w ON w.id = d.workspace_id
-          WHERE w.user_id = ${ctx.user.id}
+          WHERE (w.user_id = ${ctx.user.id} OR EXISTS (
+            SELECT 1 FROM workspace_members m
+            WHERE m.workspace_id = w.id AND m.user_id = ${ctx.user.id}
+          ))
             AND r.reviewed_at >= date_trunc('day', now())
         `,
       );
@@ -117,7 +126,10 @@ export const dashboardRouter = t.router({
           SELECT COALESCE(SUM((d.metadata->>'wordCount')::bigint), 0)::bigint AS words
           FROM documents d
           JOIN workspaces w ON w.id = d.workspace_id
-          WHERE w.user_id = ${ctx.user.id}
+          WHERE (w.user_id = ${ctx.user.id} OR EXISTS (
+            SELECT 1 FROM workspace_members m
+            WHERE m.workspace_id = w.id AND m.user_id = ${ctx.user.id}
+          ))
             AND d.status <> 'deleted'
         `,
       );

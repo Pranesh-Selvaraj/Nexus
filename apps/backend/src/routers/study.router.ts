@@ -20,9 +20,11 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import { ApiError } from '../utils/errors.js';
 import { decks, flashcards, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
+import { assertWorkspaceAccessTrpc } from '../middleware/access.js';
 import { getOrCreateDefaultDeck } from '../services/deck.service.js';
 import { computeStreak, emptySchedule } from '../services/fsrs.service.js';
 import { loadDocumentText } from '../services/source-text.service.js';
@@ -36,15 +38,9 @@ import { generateCardsFromText } from '../services/study.service.js';
 async function assertWorkspaceOwnership(
   userId: string,
   workspaceId: string,
+  minRole: 'reader' | 'editor' | 'owner' = 'reader',
 ): Promise<void> {
-  const [workspace] = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
-    .limit(1);
-  if (!workspace) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
-  }
+  await assertWorkspaceAccessTrpc(userId, workspaceId, minRole);
 }
 
 export const studyRouter = t.router({
@@ -176,7 +172,11 @@ export const studyRouter = t.router({
     create: protectedProcedure
       .input(createDeckInputSchema)
       .mutation(async ({ ctx, input }): Promise<DeckDTO> => {
-        await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+        await assertWorkspaceOwnership(
+          ctx.user.id,
+          input.workspaceId,
+          'editor',
+        );
         const [created] = await db
           .insert(decks)
           .values({ workspaceId: input.workspaceId, name: input.name })
@@ -199,16 +199,20 @@ export const studyRouter = t.router({
       .input(deckIdSchema.extend({ name: createDeckInputSchema.shape.name }))
       .mutation(async ({ ctx, input }): Promise<{ renamed: boolean }> => {
         const [deck] = await db
-          .select({ id: decks.id })
+          .select({ id: decks.id, workspaceId: decks.workspaceId })
           .from(decks)
           .innerJoin(workspaces, eq(workspaces.id, decks.workspaceId))
           .where(
-            and(eq(decks.id, input.deckId), eq(workspaces.userId, ctx.user.id)),
+            and(
+              eq(decks.id, input.deckId),
+              workspaceAccessPredicate(ctx.user.id),
+            ),
           )
           .limit(1);
         if (!deck) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Deck not found' });
         }
+        await assertWorkspaceOwnership(ctx.user.id, deck.workspaceId, 'editor');
         await db
           .update(decks)
           .set({ name: input.name })
@@ -220,16 +224,20 @@ export const studyRouter = t.router({
       .input(deckIdSchema)
       .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
         const [deck] = await db
-          .select({ id: decks.id })
+          .select({ id: decks.id, workspaceId: decks.workspaceId })
           .from(decks)
           .innerJoin(workspaces, eq(workspaces.id, decks.workspaceId))
           .where(
-            and(eq(decks.id, input.deckId), eq(workspaces.userId, ctx.user.id)),
+            and(
+              eq(decks.id, input.deckId),
+              workspaceAccessPredicate(ctx.user.id),
+            ),
           )
           .limit(1);
         if (!deck) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Deck not found' });
         }
+        await assertWorkspaceOwnership(ctx.user.id, deck.workspaceId, 'editor');
         await db.delete(decks).where(eq(decks.id, deck.id));
         return { deleted: true };
       }),
@@ -289,7 +297,10 @@ export const studyRouter = t.router({
           .from(decks)
           .innerJoin(workspaces, eq(workspaces.id, decks.workspaceId))
           .where(
-            and(eq(decks.id, input.deckId), eq(workspaces.userId, ctx.user.id)),
+            and(
+              eq(decks.id, input.deckId),
+              workspaceAccessPredicate(ctx.user.id),
+            ),
           )
           .limit(1);
         if (!deck) {
@@ -318,20 +329,24 @@ export const studyRouter = t.router({
       .input(updateCardInputSchema)
       .mutation(async ({ ctx, input }): Promise<FlashcardDTO> => {
         const [row] = await db
-          .select({ ...getTableColumns(flashcards) })
+          .select({
+            ...getTableColumns(flashcards),
+            workspaceId: decks.workspaceId,
+          })
           .from(flashcards)
           .innerJoin(decks, eq(decks.id, flashcards.deckId))
           .innerJoin(workspaces, eq(workspaces.id, decks.workspaceId))
           .where(
             and(
               eq(flashcards.id, input.cardId),
-              eq(workspaces.userId, ctx.user.id),
+              workspaceAccessPredicate(ctx.user.id),
             ),
           )
           .limit(1);
         if (!row) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Card not found' });
         }
+        await assertWorkspaceOwnership(ctx.user.id, row.workspaceId, 'editor');
         const [updated] = await db
           .update(flashcards)
           .set({
@@ -351,20 +366,21 @@ export const studyRouter = t.router({
       .input(cardIdSchema)
       .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
         const [row] = await db
-          .select({ id: flashcards.id })
+          .select({ id: flashcards.id, workspaceId: decks.workspaceId })
           .from(flashcards)
           .innerJoin(decks, eq(decks.id, flashcards.deckId))
           .innerJoin(workspaces, eq(workspaces.id, decks.workspaceId))
           .where(
             and(
               eq(flashcards.id, input.cardId),
-              eq(workspaces.userId, ctx.user.id),
+              workspaceAccessPredicate(ctx.user.id),
             ),
           )
           .limit(1);
         if (!row) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Card not found' });
         }
+        await assertWorkspaceOwnership(ctx.user.id, row.workspaceId, 'editor');
         await db.delete(flashcards).where(eq(flashcards.id, row.id));
         return { deleted: true };
       }),
@@ -377,7 +393,11 @@ export const studyRouter = t.router({
           ctx,
           input,
         }): Promise<{ deckId: string; created: FlashcardDTO[] }> => {
-          await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+          await assertWorkspaceOwnership(
+            ctx.user.id,
+            input.workspaceId,
+            'editor',
+          );
 
           const sourceText = input.documentId
             ? await loadDocumentText(input.workspaceId, input.documentId)

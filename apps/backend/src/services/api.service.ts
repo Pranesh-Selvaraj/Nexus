@@ -1,14 +1,11 @@
 import { performance } from 'node:perf_hooks';
 
-import { and, eq } from 'drizzle-orm';
-
 import type { AskResult, SearchResult, Source } from '@nexus/shared-types';
 
-import { db } from '../db/index.js';
+import { assertWorkspaceAccess } from './access.service.js';
 import { ApiError } from '../utils/errors.js';
 
 export { ApiError };
-import { workspaces } from '../db/schema.js';
 import { streamAnswer } from './llm.service.js';
 import {
   chatTokens,
@@ -22,12 +19,7 @@ export async function assertWorkspaceOwner(
   workspaceId: string,
   userId: string,
 ): Promise<void> {
-  const [row] = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
-    .limit(1);
-  if (!row) throw new ApiError('Workspace not found', 404);
+  await assertWorkspaceAccess(userId, workspaceId, 'reader');
 }
 
 /**

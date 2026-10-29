@@ -5,6 +5,7 @@ import { and, desc, eq, isNull, or, gt } from 'drizzle-orm';
 import type { DocumentDTO } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { assertWorkspaceAccess } from './access.service.js';
 import { documents, workspaceShareLinks, workspaces } from '../db/schema.js';
 import { ApiError } from '../utils/errors.js';
 import { toDocumentDTO } from '../utils/dto.js';
@@ -57,12 +58,7 @@ async function assertOwnedWorkspace(
   userId: string,
   workspaceId: string,
 ): Promise<void> {
-  const [workspace] = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
-    .limit(1);
-  if (!workspace) throw new ApiError('Workspace not found', 404);
+  await assertWorkspaceAccess(userId, workspaceId, 'owner');
 }
 
 /**

@@ -15,6 +15,8 @@ import type {
 import { db } from '../db/index.js';
 import { chunks, documents, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
+import { assertWorkspaceAccessTrpc } from '../middleware/access.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import {
   cancelDocumentEmbedding,
   enqueueDocumentEmbedding,
@@ -89,15 +91,9 @@ function rowToDocumentDTO(row: DocumentRow): DocumentDTO {
 async function assertWorkspaceOwnership(
   userId: string,
   workspaceId: string,
+  minRole: 'reader' | 'editor' | 'owner' = 'reader',
 ): Promise<void> {
-  const [workspace] = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
-    .limit(1);
-  if (!workspace) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
-  }
+  await assertWorkspaceAccessTrpc(userId, workspaceId, minRole);
 }
 
 export const documentRouter = t.router({
@@ -167,7 +163,7 @@ export const documentRouter = t.router({
   reindexAll: protectedProcedure
     .input(workspaceIdSchema)
     .mutation(async ({ ctx, input }): Promise<{ queued: number }> => {
-      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId, 'editor');
       const [model, dims] = await Promise.all([
         getEffectiveEmbeddingModel(),
         getEmbeddingDimensions(),
@@ -243,7 +239,7 @@ export const documentRouter = t.router({
   images: protectedProcedure
     .input(workspaceIdSchema)
     .query(async ({ ctx, input }): Promise<DocumentDTO[]> => {
-      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId, 'editor');
       const rows = await db
         .select()
         .from(documents)
@@ -275,14 +271,20 @@ export const documentRouter = t.router({
         })
         .from(documents)
         .innerJoin(workspaces, eq(workspaces.id, documents.workspaceId))
-        .where(eq(documents.id, input.documentId))
+        .where(
+          and(
+            eq(documents.id, input.documentId),
+            workspaceAccessPredicate(ctx.user.id),
+          ),
+        )
         .limit(1);
-      if (!doc || doc.workspaceUserId !== ctx.user.id) {
+      if (!doc) {
         throw new TRPCError({
           code: 'NOT_FOUND',
           message: 'Document not found',
         });
       }
+      await assertWorkspaceOwnership(ctx.user.id, doc.workspaceId, 'editor');
       if (doc.status === 'deleted') return { deleted: true };
 
       // Soft delete: keep the row and the stored file for the purge window so
@@ -315,18 +317,20 @@ export const documentRouter = t.router({
         })
         .from(documents)
         .innerJoin(workspaces, eq(workspaces.id, documents.workspaceId))
-        .where(eq(documents.id, input.documentId))
+        .where(
+          and(
+            eq(documents.id, input.documentId),
+            workspaceAccessPredicate(ctx.user.id),
+          ),
+        )
         .limit(1);
-      if (
-        !doc ||
-        doc.workspaceUserId !== ctx.user.id ||
-        doc.status !== 'deleted'
-      ) {
+      if (!doc || doc.status !== 'deleted') {
         throw new TRPCError({
           code: 'NOT_FOUND',
           message: 'Trashed document not found',
         });
       }
+      await assertWorkspaceOwnership(ctx.user.id, doc.workspaceId, 'editor');
       await db
         .update(documents)
         .set({
@@ -345,7 +349,7 @@ export const documentRouter = t.router({
   listTrashed: protectedProcedure
     .input(workspaceIdSchema)
     .query(async ({ ctx, input }): Promise<DocumentDTO[]> => {
-      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId, 'editor');
       const rows = await db
         .select()
         .from(documents)
@@ -363,7 +367,7 @@ export const documentRouter = t.router({
   emptyTrash: protectedProcedure
     .input(workspaceIdSchema)
     .mutation(async ({ ctx, input }): Promise<{ purged: number }> => {
-      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId, 'editor');
       const rows = await db
         .select({ id: documents.id })
         .from(documents)

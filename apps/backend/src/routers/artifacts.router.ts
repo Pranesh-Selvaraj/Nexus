@@ -9,8 +9,10 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import { artifacts, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
+import { assertWorkspaceAccessTrpc } from '../middleware/access.js';
 import {
   ARTIFACT_META,
   generateArtifact,
@@ -20,15 +22,9 @@ import { loadDocumentText } from '../services/source-text.service.js';
 async function assertWorkspaceOwnership(
   userId: string,
   workspaceId: string,
+  minRole: 'reader' | 'editor' | 'owner' = 'reader',
 ): Promise<void> {
-  const [workspace] = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
-    .limit(1);
-  if (!workspace) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
-  }
+  await assertWorkspaceAccessTrpc(userId, workspaceId, minRole);
 }
 
 function toArtifactDTO(row: typeof artifacts.$inferSelect): ArtifactDTO {
@@ -65,7 +61,7 @@ export const artifactsRouter = t.router({
   generate: protectedProcedure
     .input(generateArtifactInputSchema)
     .mutation(async ({ ctx, input }): Promise<ArtifactDTO> => {
-      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId, 'editor');
       const sourceText = input.documentId
         ? await loadDocumentText(input.workspaceId, input.documentId)
         : (input.text ?? '');
@@ -100,13 +96,13 @@ export const artifactsRouter = t.router({
     .input(artifactIdSchema)
     .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
       const [row] = await db
-        .select({ id: artifacts.id })
+        .select({ id: artifacts.id, workspaceId: artifacts.workspaceId })
         .from(artifacts)
         .innerJoin(workspaces, eq(workspaces.id, artifacts.workspaceId))
         .where(
           and(
             eq(artifacts.id, input.artifactId),
-            eq(workspaces.userId, ctx.user.id),
+            workspaceAccessPredicate(ctx.user.id),
           ),
         )
         .limit(1);
@@ -116,6 +112,7 @@ export const artifactsRouter = t.router({
           message: 'Artifact not found',
         });
       }
+      await assertWorkspaceOwnership(ctx.user.id, row.workspaceId, 'editor');
       await db.delete(artifacts).where(eq(artifacts.id, row.id));
       return { deleted: true };
     }),

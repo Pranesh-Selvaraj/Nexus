@@ -12,14 +12,15 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import { documents, notes, workspaces } from '../db/schema.js';
 import { authenticateApiKey, requireApiKey } from '../middleware/api-auth.js';
 import {
   ApiError,
   answerQuestion,
-  assertWorkspaceOwner,
   searchWorkspace,
 } from '../services/api.service.js';
+import { assertWorkspaceAccess } from '../services/access.service.js';
 import { toDocumentDTO } from '../utils/dto.js';
 import { upload } from '../utils/multer.config.js';
 import { ingestUpload } from '../services/upload.service.js';
@@ -99,7 +100,7 @@ export function apiV1Router(): Router {
           )`,
           })
           .from(workspaces)
-          .where(eq(workspaces.userId, userId))
+          .where(workspaceAccessPredicate(userId))
           .orderBy(desc(workspaces.createdAt));
         res.json({
           workspaces: rows.map((row) => ({
@@ -134,7 +135,7 @@ export function apiV1Router(): Router {
           .where(
             and(
               eq(workspaces.id, parsed.data.workspaceId),
-              eq(workspaces.userId, userId),
+              workspaceAccessPredicate(userId),
             ),
           )
           .limit(1);
@@ -216,9 +217,10 @@ export function apiV1Router(): Router {
           .json({ error: 'Invalid request', issues: parsed.error.issues });
         return;
       }
-      await assertWorkspaceOwner(
-        parsed.data.workspaceId,
+      await assertWorkspaceAccess(
         identityOf(req).userId,
+        parsed.data.workspaceId,
+        'editor',
       );
       const [created] = await db
         .insert(notes)

@@ -5,6 +5,7 @@ import { and, eq, ne } from 'drizzle-orm';
 import type { IngestUrlResult } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { assertWorkspaceAccess } from './access.service.js';
 import { documents, workspaces } from '../db/schema.js';
 import { enqueueDocumentEmbedding } from '../queues/index.js';
 import { toDocumentDTO } from '../utils/dto.js';
@@ -33,15 +34,11 @@ export async function ingestUrlForWorkspace(params: {
   workspaceId: string;
   url: string;
 }): Promise<UrlIngestResult> {
+  await assertWorkspaceAccess(params.userId, params.workspaceId, 'editor');
   const [workspace] = await db
     .select({ id: workspaces.id })
     .from(workspaces)
-    .where(
-      and(
-        eq(workspaces.id, params.workspaceId),
-        eq(workspaces.userId, params.userId),
-      ),
-    )
+    .where(eq(workspaces.id, params.workspaceId))
     .limit(1);
   if (!workspace) throw new ApiError('Workspace not found', 404);
 

@@ -53,6 +53,7 @@ import { getSettingNumber } from './services/settings.service.js';
 import { isImageFormat, mimeForFormat } from './services/ingestion/magic.js';
 import { ingestUrlForWorkspace } from './services/url-ingest.service.js';
 import { ingestUpload } from './services/upload.service.js';
+import { workspaceAccessPredicate } from './services/access.service.js';
 import { buildWorkspaceZip } from './services/workspace-archive.service.js';
 import { answerQuestion } from './services/api.service.js';
 import {
@@ -228,6 +229,77 @@ async function main(): Promise<void> {
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { error: 'Too many login attempts, please retry later' },
+  });
+
+  /** Public auth capabilities so the login screen can offer registration. */
+  app.get('/api/auth/config', (_req, res) => {
+    res.json({
+      authEnabled: authEnabled(),
+      registrationEnabled: process.env.ALLOW_REGISTRATION === 'true',
+    });
+  });
+
+  /**
+   * Self-service account creation (opt-in with ALLOW_REGISTRATION=true).
+   * Memberships decide what a new account can access: nothing, until an owner
+   * adds it to a workspace.
+   */
+  app.post('/api/auth/register', loginLimiter, async (req, res) => {
+    try {
+      if (!authEnabled() || process.env.ALLOW_REGISTRATION !== 'true') {
+        res.status(403).json({ error: 'Registration is disabled' });
+        return;
+      }
+      const { email, password, name } = (req.body ?? {}) as {
+        email?: unknown;
+        password?: unknown;
+        name?: unknown;
+      };
+      if (typeof email !== 'string' || typeof password !== 'string') {
+        res.status(400).json({ error: 'Email and password are required' });
+        return;
+      }
+      const normalized = email.trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) {
+        res.status(400).json({ error: 'Enter a valid email address' });
+        return;
+      }
+      if (password.length < 8) {
+        res
+          .status(400)
+          .json({ error: 'Choose a password of at least 8 characters' });
+        return;
+      }
+      const displayName =
+        typeof name === 'string' && name.trim()
+          ? name.trim().slice(0, 80)
+          : normalized.split('@')[0];
+      const [user] = await db
+        .insert(users)
+        .values({
+          email: normalized,
+          name: displayName,
+          passwordHash: await hashPassword(password),
+        })
+        .onConflictDoNothing({ target: users.email })
+        .returning({ id: users.id, email: users.email, name: users.name });
+      if (!user) {
+        res.status(409).json({ error: 'An account with that email exists' });
+        return;
+      }
+      const { token, expiresAt } = await createSession(user.id);
+      res.setHeader(
+        'Set-Cookie',
+        sessionCookie(token, Math.floor((await sessionTtlMs()) / 1000)),
+      );
+      res.status(201).json({
+        user: { id: user.id, email: user.email, name: user.name },
+        expiresAt: expiresAt.toISOString(),
+      });
+    } catch (err) {
+      console.error('[auth] register failed:', sanitizeForLog(err));
+      res.status(500).json({ error: 'Registration failed' });
+    }
   });
 
   app.post('/api/auth/login', loginLimiter, async (req, res) => {
@@ -457,7 +529,7 @@ async function main(): Promise<void> {
             .where(
               and(
                 eq(workspaces.id, parsed.data.workspaceId),
-                eq(workspaces.userId, currentUser.id),
+                workspaceAccessPredicate(currentUser.id),
               ),
             )
             .limit(1);
@@ -516,7 +588,7 @@ async function main(): Promise<void> {
           .where(
             and(
               eq(workspaces.id, parsed.data.workspaceId),
-              eq(workspaces.userId, currentUser.id),
+              workspaceAccessPredicate(currentUser.id),
             ),
           )
           .limit(1);
@@ -572,7 +644,7 @@ async function main(): Promise<void> {
         .where(
           and(
             eq(documents.id, parsedId.data),
-            eq(workspaces.userId, currentUser.id),
+            workspaceAccessPredicate(currentUser.id),
           ),
         )
         .limit(1);

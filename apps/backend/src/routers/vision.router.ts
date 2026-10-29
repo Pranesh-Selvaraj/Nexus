@@ -9,6 +9,7 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import { documents, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
 import { mimeForFormat } from '../services/ingestion/magic.js';
@@ -34,7 +35,7 @@ async function loadOwnedImage(userId: string, documentId: string) {
     })
     .from(documents)
     .innerJoin(workspaces, eq(workspaces.id, documents.workspaceId))
-    .where(and(eq(documents.id, documentId), eq(workspaces.userId, userId)))
+    .where(and(eq(documents.id, documentId), workspaceAccessPredicate(userId)))
     .limit(1);
   if (!row) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Image not found' });

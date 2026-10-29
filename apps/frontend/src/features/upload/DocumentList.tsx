@@ -16,9 +16,11 @@ import { ImageAnalysisPanel } from '../vision/ImageAnalysisPanel';
 
 interface Props {
   workspaceId: string;
+  /** Readers can browse and ask, but not retry/delete/generate. */
+  readOnly?: boolean;
 }
 
-export function DocumentList({ workspaceId }: Props) {
+export function DocumentList({ workspaceId, readOnly = false }: Props) {
   const utils = trpc.useUtils();
   const toast = useToast();
   const query = trpc.document.listByWorkspace.useQuery(
@@ -137,6 +139,7 @@ export function DocumentList({ workspaceId }: Props) {
                 vision.data?.enabled && vision.data?.available,
               )}
               onAnalyse={() => setAnalysing(doc)}
+              readOnly={readOnly}
               onDelete={() => removeDocument.mutate({ documentId: doc.id })}
               onRetry={() => retryDocument.mutate({ documentId: doc.id })}
               onMakeCards={() =>
@@ -228,6 +231,7 @@ export function DocumentList({ workspaceId }: Props) {
 interface RowProps {
   doc: DocumentDTO;
   visionAvailable: boolean;
+  readOnly: boolean;
   onAnalyse: () => void;
   onDelete: () => void;
   onRetry: () => void;
@@ -238,6 +242,7 @@ interface RowProps {
 function DocumentRow({
   doc,
   visionAvailable,
+  readOnly,
   onAnalyse,
   onDelete,
   onRetry,
@@ -386,6 +391,7 @@ function DocumentRow({
               title="Generate flashcards from this document"
               aria-label="Generate flashcards"
               onClick={onMakeCards}
+              hidden={readOnly}
               className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-nexus-300"
             >
               <CardsIcon className="h-3.5 w-3.5" />
@@ -396,6 +402,7 @@ function DocumentRow({
               title="Retry indexing"
               aria-label="Retry indexing"
               onClick={onRetry}
+              hidden={readOnly}
               className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
             >
               <RetryIcon className="h-3.5 w-3.5" />
@@ -405,6 +412,7 @@ function DocumentRow({
             title="Delete document"
             aria-label="Delete document"
             onClick={onDelete}
+            hidden={readOnly}
             disabled={isDeleting}
             className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 disabled:opacity-50"
           >

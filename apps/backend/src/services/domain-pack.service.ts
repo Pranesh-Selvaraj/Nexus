@@ -1,8 +1,7 @@
-import { eq } from 'drizzle-orm';
-
 import type { PacksOverview, WorkspaceDTO } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import {
   conversations,
   decks,
@@ -13,13 +12,14 @@ import {
 } from '../db/schema.js';
 import { DOMAIN_PACKS, findPack, toDomainPack } from '../domain-packs/index.js';
 import { ApiError } from '../utils/errors.js';
+import { ensureOwnerMembership } from './member.service.js';
 
 /** Built-in packs plus which one the user already installed, and where. */
 export async function listPacks(userId: string): Promise<PacksOverview> {
   const rows = await db
     .select({ id: workspaces.id, metadata: workspaces.metadata })
     .from(workspaces)
-    .where(eq(workspaces.userId, userId));
+    .where(workspaceAccessPredicate(userId));
   const installed: Record<string, string> = {};
   for (const row of rows) {
     const packId = row.metadata?.packId;
@@ -58,6 +58,7 @@ export async function installPack(
     })
     .returning();
   if (!workspace) throw new ApiError('Could not create the topic', 500);
+  await ensureOwnerMembership(workspace.id, userId);
 
   const [deck] = await db
     .insert(decks)

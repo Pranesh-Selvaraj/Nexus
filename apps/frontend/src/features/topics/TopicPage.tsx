@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { ChatPanel } from '../chat/ChatPanel';
 import { LanguagePanel } from '../language/LanguagePanel';
+import { MembersDialog } from '../share/MembersDialog';
 import { ShareDialog } from '../share/ShareDialog';
 import { StudyPanel } from '../study/StudyPanel';
 import { DocumentList } from '../upload/DocumentList';
@@ -56,6 +57,7 @@ export function TopicPage({
   const utils = trpc.useUtils();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [shareOpen, setShareOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const workspaces = trpc.workspace.list.useQuery(undefined);
   const workspace = workspaces.data?.find((item) => item.id === workspaceId);
   const voiceConfig = trpc.voice.config.useQuery(undefined);
@@ -137,6 +139,10 @@ export function TopicPage({
     );
   }
 
+  const role = workspace.role ?? 'reader';
+  const isOwner = role === 'owner';
+  const canEdit = role === 'owner' || role === 'editor';
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Topic header: identity, activity and workspace actions. */}
@@ -167,6 +173,21 @@ export function TopicPage({
               {workspace.documentCount} source
               {workspace.documentCount === 1 ? '' : 's'}
             </span>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] ${
+                role === 'owner'
+                  ? 'bg-nexus-950/40 text-nexus-300'
+                  : role === 'editor'
+                    ? 'bg-emerald-950/40 text-emerald-300'
+                    : 'bg-zinc-900 text-zinc-500'
+              }`}
+            >
+              {role === 'owner'
+                ? 'Owner'
+                : role === 'editor'
+                  ? 'Editor'
+                  : 'Read only'}
+            </span>
             {retrievalStatus.data &&
               retrievalStatus.data.documentsNeedingReindex > 0 && (
                 <button
@@ -183,24 +204,36 @@ export function TopicPage({
               </span>
             )}
             <button
-              onClick={() => setShareOpen(true)}
+              onClick={() => setMembersOpen(true)}
               className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800"
             >
-              Share
+              Members
             </button>
-            <button
-              onClick={() => void handleExport()}
-              className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800"
-            >
-              Export
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleteTopic.isPending}
-              className="rounded-lg border border-red-900/50 px-2.5 py-1 text-[11px] text-red-400 hover:bg-red-950/40 disabled:opacity-40"
-            >
-              Delete
-            </button>
+            {isOwner && (
+              <button
+                onClick={() => setShareOpen(true)}
+                className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800"
+              >
+                Share
+              </button>
+            )}
+            {canEdit && (
+              <button
+                onClick={() => void handleExport()}
+                className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-zinc-800"
+              >
+                Export
+              </button>
+            )}
+            {isOwner && (
+              <button
+                onClick={handleDelete}
+                disabled={deleteTopic.isPending}
+                className="rounded-lg border border-red-900/50 px-2.5 py-1 text-[11px] text-red-400 hover:bg-red-950/40 disabled:opacity-40"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
 
@@ -273,6 +306,13 @@ export function TopicPage({
           onClose={() => setShareOpen(false)}
         />
       )}
+      {membersOpen && (
+        <MembersDialog
+          workspaceId={workspaceId}
+          isOwner={isOwner}
+          onClose={() => setMembersOpen(false)}
+        />
+      )}
 
       {/* Learn keeps chat mounted so a stream survives tab switches. */}
       <div
@@ -294,8 +334,16 @@ export function TopicPage({
               Settings
             </button>
           </div>
-          <UploadDropzone workspaceId={workspaceId} />
-          <DocumentList workspaceId={workspaceId} />
+          {canEdit ? (
+            <UploadDropzone workspaceId={workspaceId} />
+          ) : (
+            <p className="px-4 py-3 text-[11px] leading-relaxed text-zinc-500">
+              This topic is shared with you as a reader: you can browse the
+              sources and ask questions, but only editors can add or remove
+              them.
+            </p>
+          )}
+          <DocumentList workspaceId={workspaceId} readOnly={!canEdit} />
         </aside>
       </div>
 

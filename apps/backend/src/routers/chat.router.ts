@@ -19,6 +19,8 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
+import { assertWorkspaceAccessTrpc } from '../middleware/access.js';
 import {
   conversations,
   documents,
@@ -74,13 +76,17 @@ function toConversationDTO(row: {
 async function assertConversationOwnership(
   userId: string,
   conversationId: string,
+  minRole: 'reader' | 'editor' | 'owner' = 'reader',
 ): Promise<void> {
   const [row] = await db
-    .select({ id: conversations.id })
+    .select({ id: conversations.id, workspaceId: conversations.workspaceId })
     .from(conversations)
     .innerJoin(workspaces, eq(workspaces.id, conversations.workspaceId))
     .where(
-      and(eq(conversations.id, conversationId), eq(workspaces.userId, userId)),
+      and(
+        eq(conversations.id, conversationId),
+        workspaceAccessPredicate(userId),
+      ),
     )
     .limit(1);
   if (!row) {
@@ -89,6 +95,7 @@ async function assertConversationOwnership(
       message: 'Conversation not found',
     });
   }
+  await assertWorkspaceAccessTrpc(userId, row.workspaceId, minRole);
 }
 
 interface AttachedImage {
@@ -195,7 +202,7 @@ export const chatRouter = t.router({
         .where(
           and(
             eq(workspaces.id, input.workspaceId),
-            eq(workspaces.userId, ctx.user.id),
+            workspaceAccessPredicate(ctx.user.id),
           ),
         )
         .limit(1);
@@ -264,7 +271,7 @@ export const chatRouter = t.router({
         .where(
           and(
             eq(messages.id, input.messageId),
-            eq(workspaces.userId, ctx.user.id),
+            workspaceAccessPredicate(ctx.user.id),
           ),
         )
         .limit(1);
@@ -284,7 +291,11 @@ export const chatRouter = t.router({
   delete: protectedProcedure
     .input(conversationIdSchema)
     .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
-      await assertConversationOwnership(ctx.user.id, input.conversationId);
+      await assertConversationOwnership(
+        ctx.user.id,
+        input.conversationId,
+        'editor',
+      );
       const [deleted] = await db
         .delete(conversations)
         .where(eq(conversations.id, input.conversationId))
@@ -326,7 +337,7 @@ export const chatRouter = t.router({
               .where(
                 and(
                   eq(workspaces.id, input.workspaceId),
-                  eq(workspaces.userId, ctx.user.id),
+                  workspaceAccessPredicate(ctx.user.id),
                 ),
               )
               .limit(1);

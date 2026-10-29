@@ -17,8 +17,10 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import { vocabularyItems, workspaces } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
+import { assertWorkspaceAccessTrpc } from '../middleware/access.js';
 import { estimateCefr, scoreDictation } from '../services/language.service.js';
 import {
   deleteVocabulary,
@@ -30,15 +32,9 @@ import {
 async function assertWorkspaceOwnership(
   userId: string,
   workspaceId: string,
+  minRole: 'reader' | 'editor' | 'owner' = 'reader',
 ): Promise<void> {
-  const [workspace] = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
-    .limit(1);
-  if (!workspace) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
-  }
+  await assertWorkspaceAccessTrpc(userId, workspaceId, minRole);
 }
 
 async function assertVocabularyOwnership(
@@ -50,7 +46,10 @@ async function assertVocabularyOwnership(
     .from(vocabularyItems)
     .innerJoin(workspaces, eq(workspaces.id, vocabularyItems.workspaceId))
     .where(
-      and(eq(vocabularyItems.id, vocabularyId), eq(workspaces.userId, userId)),
+      and(
+        eq(vocabularyItems.id, vocabularyId),
+        workspaceAccessPredicate(userId),
+      ),
     )
     .limit(1);
   if (!row) {
@@ -78,7 +77,11 @@ export const languageRouter = t.router({
     mine: protectedProcedure
       .input(mineVocabularyInputSchema)
       .mutation(async ({ ctx, input }): Promise<MineVocabularyResult> => {
-        await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+        await assertWorkspaceOwnership(
+          ctx.user.id,
+          input.workspaceId,
+          'editor',
+        );
         return mineAndStore(input);
       }),
 

@@ -2547,6 +2547,184 @@ try {
   });
   print('auth upload with cookie -> 201', upAuthed.status === 201);
 
+  // --- multi-user memberships and roles (L-13) -------------------------
+  {
+    const pgMod = await import('pg');
+    const client = new pgMod.Client({
+      connectionString: process.env.DATABASE_URL,
+    });
+    await client.connect();
+    const { hashPassword } = await import('../src/services/auth.service.js');
+    await client.query(`DELETE FROM users WHERE email = $1`, [
+      'member@nexus.dev',
+    ]);
+    await client.query(
+      `INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3)`,
+      ['member@nexus.dev', 'Member', await hashPassword('member-secret')],
+    );
+    await client.end();
+
+    const memberLogin = await fetch(`${AUTH_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: 'member@nexus.dev',
+        password: 'member-secret',
+      }),
+    });
+    const memberCookie = (memberLogin.headers.get('set-cookie') ?? '').split(
+      ';',
+    )[0];
+    print(
+      'member account can sign in',
+      memberLogin.status === 200 && memberCookie.startsWith('nexus_session='),
+    );
+
+    const beforeAdd = await fetchJsonAuth(AUTH_BASE, '/trpc/workspace.list', {
+      headers: { cookie: memberCookie },
+    });
+    print(
+      'a new account sees no workspaces before being added',
+      !(beforeAdd.body?.result?.data ?? []).some(
+        (item: any) => item.id === authWsId,
+      ),
+    );
+
+    const added = await fetchJsonAuth(AUTH_BASE, '/trpc/members.add', {
+      method: 'POST',
+      headers: { cookie },
+      body: JSON.stringify({
+        workspaceId: authWsId,
+        email: 'member@nexus.dev',
+        role: 'reader',
+      }),
+    });
+    const memberId = added.body?.result?.data?.userId;
+    print(
+      'the owner adds a member by email with the reader role',
+      added.body?.result?.data?.role === 'reader' &&
+        typeof memberId === 'string',
+    );
+
+    const afterAdd = await fetchJsonAuth(AUTH_BASE, '/trpc/workspace.list', {
+      headers: { cookie: memberCookie },
+    });
+    print(
+      'the member now sees the shared workspace with their role',
+      (afterAdd.body?.result?.data ?? []).some(
+        (item: any) => item.id === authWsId && item.role === 'reader',
+      ),
+    );
+
+    const memberDocs = await fetchJsonAuth(
+      AUTH_BASE,
+      `/trpc/document.listByWorkspace?input=${encodeURIComponent(JSON.stringify({ workspaceId: authWsId }))}`,
+      { headers: { cookie: memberCookie } },
+    );
+    const sharedDocId = (memberDocs.body?.result?.data ?? [])[0]?.id;
+    const readerRemove = await fetchJsonAuth(
+      AUTH_BASE,
+      '/trpc/document.remove',
+      {
+        method: 'POST',
+        headers: { cookie: memberCookie },
+        body: JSON.stringify({ documentId: sharedDocId }),
+      },
+    );
+    print(
+      'a reader cannot delete shared documents',
+      readerRemove.body?.error?.data?.code === 'FORBIDDEN',
+      { code: readerRemove.body?.error?.data?.code },
+    );
+
+    const readerUpload = new FormData();
+    readerUpload.append('workspaceId', authWsId);
+    readerUpload.append(
+      'file',
+      new File(['reader upload'], 'member.txt', { type: 'text/plain' }),
+    );
+    const readerUploadRes = await fetch(`${AUTH_BASE}/api/upload`, {
+      method: 'POST',
+      headers: { cookie: memberCookie },
+      body: readerUpload,
+    });
+    print('a reader cannot upload sources', readerUploadRes.status === 403, {
+      status: readerUploadRes.status,
+    });
+
+    const promote = await fetchJsonAuth(AUTH_BASE, '/trpc/members.updateRole', {
+      method: 'POST',
+      headers: { cookie },
+      body: JSON.stringify({
+        workspaceId: authWsId,
+        userId: memberId,
+        role: 'editor',
+      }),
+    });
+    print(
+      'the owner promotes the member to editor',
+      promote.body?.result?.data?.updated === true,
+    );
+
+    const editorUpload = new FormData();
+    editorUpload.append('workspaceId', authWsId);
+    editorUpload.append(
+      'file',
+      new File(['editor upload'], 'editor.txt', { type: 'text/plain' }),
+    );
+    const editorUploadRes = await fetch(`${AUTH_BASE}/api/upload`, {
+      method: 'POST',
+      headers: { cookie: memberCookie },
+      body: editorUpload,
+    });
+    print(
+      'an editor can upload sources to the shared workspace',
+      editorUploadRes.status === 201,
+      { status: editorUploadRes.status },
+    );
+
+    const memberDeleteWorkspace = await fetchJsonAuth(
+      AUTH_BASE,
+      '/trpc/workspace.delete',
+      {
+        method: 'POST',
+        headers: { cookie: memberCookie },
+        body: JSON.stringify({ workspaceId: authWsId }),
+      },
+    );
+    print(
+      'an editor still cannot delete the workspace',
+      memberDeleteWorkspace.body?.error?.data?.code === 'FORBIDDEN',
+      { code: memberDeleteWorkspace.body?.error?.data?.code },
+    );
+
+    const removed = await fetchJsonAuth(AUTH_BASE, '/trpc/members.remove', {
+      method: 'POST',
+      headers: { cookie },
+      body: JSON.stringify({ workspaceId: authWsId, userId: memberId }),
+    });
+    const afterRemove = await fetchJsonAuth(AUTH_BASE, '/trpc/workspace.list', {
+      headers: { cookie: memberCookie },
+    });
+    print(
+      'removing the member revokes access immediately',
+      removed.body?.result?.data?.removed === true &&
+        !(afterRemove.body?.result?.data ?? []).some(
+          (item: any) => item.id === authWsId,
+        ),
+    );
+
+    const pgCleanup = await import('pg');
+    const cleanup = new pgCleanup.Client({
+      connectionString: process.env.DATABASE_URL,
+    });
+    await cleanup.connect();
+    await cleanup.query(`DELETE FROM users WHERE email = $1`, [
+      'member@nexus.dev',
+    ]);
+    await cleanup.end();
+  }
+
   // clean up the auth workspace while the session is still valid
   const cleanupAuthWsId = wsAuth.body?.result?.data?.id;
   if (cleanupAuthWsId) {

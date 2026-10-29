@@ -148,6 +148,13 @@
       "when": 1793274701321,
       "tag": "0020_phase9_workspace_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793279793842,
+      "tag": "0021_phase10_workspace_members",
+      "breakpoints": true
     }
   ]
 }

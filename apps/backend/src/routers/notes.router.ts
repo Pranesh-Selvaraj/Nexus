@@ -13,6 +13,7 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import {
   chunks,
   conversations,
@@ -23,19 +24,14 @@ import {
   workspaces,
 } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
+import { assertWorkspaceAccessTrpc } from '../middleware/access.js';
 
 async function assertWorkspaceOwnership(
   userId: string,
   workspaceId: string,
+  minRole: 'reader' | 'editor' | 'owner' = 'reader',
 ): Promise<void> {
-  const [workspace] = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
-    .limit(1);
-  if (!workspace) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
-  }
+  await assertWorkspaceAccessTrpc(userId, workspaceId, minRole);
 }
 
 function toNoteDTO(row: typeof notes.$inferSelect): NoteDTO {
@@ -147,7 +143,11 @@ export const notesRouter = t.router({
     create: protectedProcedure
       .input(createNoteInputSchema)
       .mutation(async ({ ctx, input }): Promise<NoteDTO> => {
-        await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+        await assertWorkspaceOwnership(
+          ctx.user.id,
+          input.workspaceId,
+          'editor',
+        );
         const [created] = await db
           .insert(notes)
           .values({
@@ -171,12 +171,20 @@ export const notesRouter = t.router({
           .from(notes)
           .innerJoin(workspaces, eq(workspaces.id, notes.workspaceId))
           .where(
-            and(eq(notes.id, input.noteId), eq(workspaces.userId, ctx.user.id)),
+            and(
+              eq(notes.id, input.noteId),
+              workspaceAccessPredicate(ctx.user.id),
+            ),
           )
           .limit(1);
         if (!row) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Note not found' });
         }
+        await assertWorkspaceOwnership(
+          ctx.user.id,
+          row.workspaces.id,
+          'editor',
+        );
         const [updated] = await db
           .update(notes)
           .set({
@@ -197,16 +205,20 @@ export const notesRouter = t.router({
       .input(noteIdSchema)
       .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
         const [row] = await db
-          .select({ id: notes.id })
+          .select({ id: notes.id, workspaceId: notes.workspaceId })
           .from(notes)
           .innerJoin(workspaces, eq(workspaces.id, notes.workspaceId))
           .where(
-            and(eq(notes.id, input.noteId), eq(workspaces.userId, ctx.user.id)),
+            and(
+              eq(notes.id, input.noteId),
+              workspaceAccessPredicate(ctx.user.id),
+            ),
           )
           .limit(1);
         if (!row) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Note not found' });
         }
+        await assertWorkspaceOwnership(ctx.user.id, row.workspaceId, 'editor');
         await db.delete(notes).where(eq(notes.id, row.id));
         return { deleted: true };
       }),
@@ -237,7 +249,11 @@ export const notesRouter = t.router({
     create: protectedProcedure
       .input(createHighlightInputSchema)
       .mutation(async ({ ctx, input }): Promise<HighlightDTO> => {
-        await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+        await assertWorkspaceOwnership(
+          ctx.user.id,
+          input.workspaceId,
+          'editor',
+        );
         await assertTargetsInWorkspace(input);
         const [created] = await db
           .insert(highlights)
@@ -268,7 +284,7 @@ export const notesRouter = t.router({
           .where(
             and(
               eq(highlights.id, input.highlightId),
-              eq(workspaces.userId, ctx.user.id),
+              workspaceAccessPredicate(ctx.user.id),
             ),
           )
           .limit(1);
@@ -303,7 +319,7 @@ export const notesRouter = t.router({
           .where(
             and(
               eq(highlights.id, input.highlightId),
-              eq(workspaces.userId, ctx.user.id),
+              workspaceAccessPredicate(ctx.user.id),
             ),
           )
           .limit(1);

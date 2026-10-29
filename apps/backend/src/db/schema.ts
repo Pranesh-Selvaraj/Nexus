@@ -8,6 +8,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -60,6 +61,13 @@ export const documentStatusEnum = pgEnum('document_status', [
 
 export const messageRoleEnum = pgEnum('message_role', ['user', 'assistant']);
 
+/** Workspace roles (L-13): reader can learn, editor can change content, owner administers. */
+export const workspaceRoleEnum = pgEnum('workspace_role', [
+  'owner',
+  'editor',
+  'reader',
+]);
+
 export const messageKindEnum = pgEnum('message_kind', ['answer', 'error']);
 
 // ---------------------------------------------------------------------------
@@ -97,6 +105,26 @@ export const workspaces = pgTable(
       .defaultNow(),
   },
   (table) => [index('workspaces_user_id_idx').on(table.userId)],
+);
+
+export const workspaceMembers = pgTable(
+  'workspace_members',
+  {
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: workspaceRoleEnum('role').notNull().default('reader'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.userId] }),
+    index('workspace_members_user_id_idx').on(table.userId),
+  ],
 );
 
 export const documents = pgTable(
@@ -798,3 +826,4 @@ export type PronunciationAttempt = typeof pronunciationAttempts.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type Webhook = typeof webhooks.$inferSelect;
 export type WorkspaceShareLink = typeof workspaceShareLinks.$inferSelect;
+export type WorkspaceMember = typeof workspaceMembers.$inferSelect;

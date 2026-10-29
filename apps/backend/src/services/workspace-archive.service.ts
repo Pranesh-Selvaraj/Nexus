@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
 import JSZip from 'jszip';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import type { WorkspaceArchive, WorkspaceDTO } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { assertWorkspaceAccess } from './access.service.js';
+import { ensureOwnerMembership } from './member.service.js';
 import { ApiError } from '../utils/errors.js';
 import {
   conversations,
@@ -25,10 +27,11 @@ export async function exportWorkspaceArchive(
   userId: string,
   workspaceId: string,
 ): Promise<WorkspaceArchive> {
+  await assertWorkspaceAccess(userId, workspaceId, 'editor');
   const [workspace] = await db
     .select()
     .from(workspaces)
-    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
+    .where(eq(workspaces.id, workspaceId))
     .limit(1);
   if (!workspace) throw new ApiError('Workspace not found', 404);
 
@@ -242,6 +245,7 @@ export async function importWorkspaceArchive(
   if (!created) {
     throw new Error('Failed to create workspace');
   }
+  await ensureOwnerMembership(created.id, userId);
 
   // Restore documents: write file contents under fresh server-controlled
   // names and re-queue embeddings.

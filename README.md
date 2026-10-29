@@ -491,6 +491,16 @@ Instead of polling, register an endpoint in **Settings → Webhooks** and Nexus 
 
 Headers: `X-Nexus-Event`, `X-Nexus-Delivery`, and `X-Nexus-Signature: sha256=<hex HMAC-SHA256 of the raw body>` keyed with the secret shown once at creation. `document.failed` carries `data.error` instead of a chunk count. Deliveries time out after 5 seconds, do not follow redirects, retry five times with exponential backoff, and record the last status/error on the endpoint so a failing receiver is visible in Settings. The signing secret is encrypted at rest with `SETTINGS_SECRET`; without that key webhook creation is refused with an explanatory error. Targets are address-checked like ingestion (private/loopback/link-local refused) — `WEBHOOK_ALLOW_PRIVATE_HOSTS=true` is a local-testing override only.
 
+### Members and roles
+
+Topics can be shared with other accounts on the same deployment (L-13):
+
+- **Roles.** **Reader** can browse sources, chat, ask questions and practise; **Editor** can also add or remove sources, generate cards/quizzes/notes and export; **Owner** (the creator) additionally manages members, share links and deletion. The creator is always an owner and cannot be removed or demoted.
+- **Adding members.** The topic header's **Members** dialog lists everyone with their role. Owners add an existing account by email as reader or editor and can change a role or remove someone at any time; removal revokes access on the next request. A non-owner sees the member list read-only (no management controls).
+- **Accounts.** Multi-user deployments authenticate per account. Account creation is opt-in with `ALLOW_REGISTRATION=true` (the login screen then offers **Create account**); otherwise accounts should be provisioned by the administrator. A newly registered account sees no topics until it is added to one.
+- **Enforcement is server-side.** Every workspace-scoped procedure resolves the caller's membership and required role before touching data (`workspace_members` plus the creator fallback). Readers get `403` on mutations, non-members get `404` (so workspace ids cannot be probed), and resource-level routes (documents, decks, notes, quizzes, artifacts, conversations, uploads) resolve access through the workspace rather than trusting an id.
+- **What is shared.** Documents, conversations, decks, quizzes, notes and progress live in the topic and are visible to all members; personal pronunciation/vocabulary practice currently records per user where the schema has a user column.
+
 ### Read-only share links
 
 Any workspace can be shared without an account: **Share** in the workspace toolbar creates a capability URL (`/share/nxs_…`) that lets visitors read the document list and ask grounded questions. It is strictly read-only — no uploads, edits, deletions, settings or exports are reachable from the shared page.

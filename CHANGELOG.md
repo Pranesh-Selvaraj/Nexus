@@ -6,6 +6,45 @@ Releases are listed newest first. Every release uses the same layout: a `## [X.Y
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-10-25
+
+Topics are now genuinely shared. Workspace memberships with reader/editor/owner roles replace "only the creator can touch this", every workspace-scoped query resolves the caller's membership before it runs, and the Members dialog lets an owner add people by email, change roles or revoke access. Account creation is opt-in, so a self-hosted deployment can stay single-user or open registration and build a small study group.
+
+### ✨ Added
+
+- 👥 **Workspace memberships and roles (L-13).** `workspace_members` (migration 0021) stores a role per user per workspace; every existing workspace is backfilled with its creator as owner. **Reader** can browse, chat, ask and practise; **Editor** can add/remove sources, generate cards/quizzes/notes and export; **Owner** (the creator) manages members, share links and deletion. The creator is always an owner and cannot be demoted or removed.
+- 🧑‍🤝‍🧑 **A Members dialog.** The topic header shows the caller's role and opens a member list; owners add an existing account by email as reader or editor, change roles and remove people, while other members see the list read-only. Removal takes effect on the next request.
+- 🔐 **Opt-in registration.** `ALLOW_REGISTRATION=true` (with `AUTH_PASSWORD` set) enables `POST /api/auth/register` and a **Create account** option on the login screen, with scrypt-hashed passwords and the same login rate limit. Registered accounts have no access to any topic until an owner adds them.
+- 🛡️ **Membership-aware UI.** Topic headers show Owner/Editor/Read only, the Share and Delete actions are owner-only, readers lose the upload dropzone and the delete/retry/generate controls in the library, and shared topics appear in Home, Topics and the sidebar with their role.
+- 🔌 **Role metadata for clients.** `workspace.list` and the REST `/api/v1/workspaces` payload expose the caller's role and topic metadata, and `members.list/add/updateRole/remove` are session-only.
+
+### 🔧 Changed
+
+- 🔎 **Every workspace query resolves membership.** The routers' ownership helpers and the inline ownership joins now use a shared `workspaceAccessPredicate`/`assertWorkspaceAccess` pair (creator or member), and resource lookups (documents, decks, cards, notes, quizzes, artifacts, conversations) join through the workspace before any mutation. Readers get `403` on writes; non-members get `404`.
+- 📚 **The library rail and study tools follow the role.** Uploads, delete/retry/card generation and export are hidden or rejected for readers; review and chat remain available so a shared topic is still a learning space.
+- 🧾 **Backups and share links stay owner/editor territory.** Zip export requires editor, share-link management requires owner, and the public share link remains a read-only capability endpoint with no membership involved.
+
+### 🔒 Security
+
+- 🧱 **Server-side role enforcement, not UI-only.** Access is resolved from `workspace_members` (creator fallback) on every request; the UI gating mirrors it but is never the boundary. Resource-id routes resolve the owning workspace, so an id from another topic cannot be used as a shortcut.
+- 🕵️ **No workspace probing.** A missing membership and a missing workspace both return `404`; an existing membership without the required role returns `403`, so role names are only revealed to people already inside the topic.
+- 👑 **The owner cannot be locked out.** The creator is treated as owner even without a membership row, cannot be removed or demoted, and owner-only operations (member management, share links, deletion, workspace settings) are checked independently of the editor role.
+- 🔑 **Registration cannot escalate.** New accounts start with zero memberships, the endpoint is disabled by default, requires authentication to be enabled, validates email/password, hashes with scrypt and shares the login rate limiter; there is no self-service way to join a workspace except being added by its owner.
+- 🧾 **Membership changes are auditable through the returned DTOs** (email, role, created date) and removal is immediate; the UI exposes the current role on the topic header.
+
+### 🐛 Fixed
+
+- 🚪 **A shared topic used to be unusable by anyone but its creator.** Inline `workspaces.user_id` checks meant every read and write returned `404` for a member; those checks now resolve membership and role, so a shared topic behaves like a normal topic for readers and editors.
+- 👁️ **The UI had no concept of a non-owner.** There was no way to add a collaborator, no role display and no way to revoke access; the Members dialog and role-gated actions cover those gaps.
+- 🧪 **Multi-user behaviour is now covered end to end in the smoke suite** (a second account signs in, is added as reader, cannot upload/delete, is promoted to editor, can upload, still cannot delete the workspace, and loses access when removed), so the access boundary is exercised on every run.
+
+### 📝 Notes
+
+- 🧪 **Verification:** 266 unit tests, smoke **174/174** (including the ten new membership/role checks against the auth-mode instance), **6/6** Playwright suites (single-user paths still pass, roles resolve to owner), and **58** visual captures including the Members dialog and the role badge; `typecheck`, `lint`, `format:check`, `build` and `pnpm audit` are clean.
+- 🗄️ **Migration 0021** adds the role enum and `workspace_members` and backfills every existing workspace's creator as owner; no other table changes.
+- ⏳ **Deliberately deferred:** email invitations and notifications (accounts must already exist), per-conversation or per-artifact sharing, comments, an audit log of membership changes, SSO/OIDC, and workspace-level settings ownership (app settings remain per deployment). Memberships use the existing `workspaces.user_id` as the immutable creator; ownership transfer is not implemented.
+- 🧷 **Shared study state:** decks, cards, quizzes, notes and conversations are shared with the topic, so an editor's changes are visible to all members and a reader's reviews affect the shared deck schedule; per-member study state would need a schema change.
+
 ## [0.4.12] - 2026-10-25
 
 Learning a new subject now starts from a curated pack. The Topics gallery ships five first-party domain packs (Spanish A1, Python foundations, reading a painting, cell biology, music theory); installing one creates a complete topic with a plan, a starter deck, starter questions and a welcome conversation — all editable, because a pack is a starting point, not a separate product.

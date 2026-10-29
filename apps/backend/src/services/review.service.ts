@@ -3,6 +3,7 @@ import { and, asc, eq, getTableColumns, lte, sql } from 'drizzle-orm';
 import type { DueCard, FlashcardDTO, ReviewRating } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import {
   cardReviews,
   decks,
@@ -73,7 +74,7 @@ export async function listDueCards(params: {
     .where(
       and(
         eq(workspaces.id, params.workspaceId),
-        eq(workspaces.userId, params.userId),
+        workspaceAccessPredicate(params.userId),
       ),
     )
     .limit(1);
@@ -123,7 +124,7 @@ export async function submitCardReview(params: {
     .where(
       and(
         eq(flashcards.id, params.cardId),
-        eq(workspaces.userId, params.userId),
+        workspaceAccessPredicate(params.userId),
       ),
     )
     .limit(1);

@@ -10,6 +10,7 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../db/index.js';
+import { workspaceAccessPredicate } from '../services/access.service.js';
 import {
   flashcards,
   progressEvents,
@@ -19,6 +20,7 @@ import {
   workspaces,
 } from '../db/schema.js';
 import { protectedProcedure, t } from '../middleware/auth.js';
+import { assertWorkspaceAccessTrpc } from '../middleware/access.js';
 import { getOrCreateDefaultDeck } from '../services/deck.service.js';
 import { emptySchedule } from '../services/fsrs.service.js';
 import {
@@ -30,15 +32,9 @@ import { loadDocumentText } from '../services/source-text.service.js';
 async function assertWorkspaceOwnership(
   userId: string,
   workspaceId: string,
+  minRole: 'reader' | 'editor' | 'owner' = 'reader',
 ): Promise<void> {
-  const [workspace] = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.userId, userId)))
-    .limit(1);
-  if (!workspace) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Workspace not found' });
-  }
+  await assertWorkspaceAccessTrpc(userId, workspaceId, minRole);
 }
 
 function toQuizDTO(row: {
@@ -108,7 +104,10 @@ export const quizRouter = t.router({
         .from(quizzes)
         .innerJoin(workspaces, eq(workspaces.id, quizzes.workspaceId))
         .where(
-          and(eq(quizzes.id, input.quizId), eq(workspaces.userId, ctx.user.id)),
+          and(
+            eq(quizzes.id, input.quizId),
+            workspaceAccessPredicate(ctx.user.id),
+          ),
         )
         .limit(1);
       if (!quiz) {
@@ -152,7 +151,7 @@ export const quizRouter = t.router({
   generate: protectedProcedure
     .input(generateQuizInputSchema)
     .mutation(async ({ ctx, input }): Promise<QuizDTO> => {
-      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+      await assertWorkspaceOwnership(ctx.user.id, input.workspaceId, 'editor');
       const sourceText = input.documentId
         ? await loadDocumentText(input.workspaceId, input.documentId)
         : (input.text ?? '');
@@ -215,7 +214,10 @@ export const quizRouter = t.router({
         .from(quizzes)
         .innerJoin(workspaces, eq(workspaces.id, quizzes.workspaceId))
         .where(
-          and(eq(quizzes.id, input.quizId), eq(workspaces.userId, ctx.user.id)),
+          and(
+            eq(quizzes.id, input.quizId),
+            workspaceAccessPredicate(ctx.user.id),
+          ),
         )
         .limit(1);
       if (!quiz) {
@@ -350,16 +352,20 @@ export const quizRouter = t.router({
     .input(quizIdSchema)
     .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
       const [quiz] = await db
-        .select({ id: quizzes.id })
+        .select({ id: quizzes.id, workspaceId: quizzes.workspaceId })
         .from(quizzes)
         .innerJoin(workspaces, eq(workspaces.id, quizzes.workspaceId))
         .where(
-          and(eq(quizzes.id, input.quizId), eq(workspaces.userId, ctx.user.id)),
+          and(
+            eq(quizzes.id, input.quizId),
+            workspaceAccessPredicate(ctx.user.id),
+          ),
         )
         .limit(1);
       if (!quiz) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Quiz not found' });
       }
+      await assertWorkspaceOwnership(ctx.user.id, quiz.workspaceId, 'editor');
       await db.delete(quizzes).where(eq(quizzes.id, quiz.id));
       return { deleted: true };
     }),

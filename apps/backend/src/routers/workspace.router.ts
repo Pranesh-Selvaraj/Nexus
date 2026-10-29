@@ -1,5 +1,5 @@
 import { TRPCError } from '@trpc/server';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import type {
@@ -22,6 +22,8 @@ import {
   importWorkspaceArchive,
 } from '../services/workspace-archive.service.js';
 import { ApiError } from '../utils/errors.js';
+import { assertWorkspaceAccessTrpc } from '../middleware/access.js';
+import { ensureOwnerMembership } from '../services/member.service.js';
 import { storage } from '../services/storage/index.js';
 
 const importWorkspaceInputSchema = z.object({
@@ -35,6 +37,7 @@ interface WorkspaceRow {
   metadata: WorkspaceMetadata | null;
   created_at: Date;
   document_count: number;
+  role?: 'owner' | 'editor' | 'reader';
 }
 
 function toWorkspaceDTO(row: WorkspaceRow): WorkspaceDTO {
@@ -45,6 +48,7 @@ function toWorkspaceDTO(row: WorkspaceRow): WorkspaceDTO {
     documentCount: Number(row.document_count),
     createdAt: new Date(row.created_at).toISOString(),
     metadata: row.metadata ?? null,
+    role: row.role,
   };
 }
 
@@ -55,9 +59,16 @@ export const workspaceRouter = t.router({
         SELECT w.id, w.name, w.description, w.metadata, w.created_at,
                (SELECT COUNT(*)::int FROM documents d
                 WHERE d.workspace_id = w.id
-                  AND d.status <> 'deleted') AS document_count
+                  AND d.status <> 'deleted') AS document_count,
+               CASE WHEN w.user_id = ${ctx.user.id} THEN 'owner'
+                    ELSE (SELECT m.role FROM workspace_members m
+                          WHERE m.workspace_id = w.id AND m.user_id = ${ctx.user.id})
+               END AS role
         FROM workspaces w
-        WHERE w.user_id = ${ctx.user.id}
+        WHERE (w.user_id = ${ctx.user.id} OR EXISTS (
+          SELECT 1 FROM workspace_members m
+          WHERE m.workspace_id = w.id AND m.user_id = ${ctx.user.id}
+        ))
         ORDER BY w.created_at DESC
       `,
     );
@@ -79,6 +90,7 @@ export const workspaceRouter = t.router({
       if (!created) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
       }
+      await ensureOwnerMembership(created.id, ctx.user.id);
       return toWorkspaceDTO({
         id: created.id,
         name: created.name,
@@ -86,21 +98,18 @@ export const workspaceRouter = t.router({
         metadata: created.metadata ?? null,
         created_at: created.createdAt,
         document_count: 0,
+        role: 'owner',
       });
     }),
 
   update: protectedProcedure
     .input(updateWorkspaceInputSchema)
     .mutation(async ({ ctx, input }): Promise<WorkspaceDTO> => {
+      await assertWorkspaceAccessTrpc(ctx.user.id, input.workspaceId, 'owner');
       const [workspace] = await db
         .select()
         .from(workspaces)
-        .where(
-          and(
-            eq(workspaces.id, input.workspaceId),
-            eq(workspaces.userId, ctx.user.id),
-          ),
-        )
+        .where(eq(workspaces.id, input.workspaceId))
         .limit(1);
       if (!workspace) {
         throw new TRPCError({
@@ -138,20 +147,17 @@ export const workspaceRouter = t.router({
         metadata: updated.metadata ?? null,
         created_at: updated.createdAt,
         document_count: Number(docCount.count),
+        role: 'owner',
       });
     }),
 
   delete: protectedProcedure
     .input(workspaceIdSchema)
     .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
+      await assertWorkspaceAccessTrpc(ctx.user.id, input.workspaceId, 'owner');
       const [deleted] = await db
         .delete(workspaces)
-        .where(
-          and(
-            eq(workspaces.id, input.workspaceId),
-            eq(workspaces.userId, ctx.user.id),
-          ),
-        )
+        .where(eq(workspaces.id, input.workspaceId))
         .returning({ id: workspaces.id });
       if (!deleted) {
         throw new TRPCError({
