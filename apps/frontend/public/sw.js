@@ -6,13 +6,14 @@
  * its own due-card cache and offline review queue. Vite dev-server internals
  * are never cached, so editing the app cannot serve stale modules.
  */
-const VERSION = 'v1';
+const VERSION = 'v4';
 const SHELL_CACHE = `nexus-shell-${VERSION}`;
 const RUNTIME_CACHE = `nexus-runtime-${VERSION}`;
 const SHELL = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
+  '/icons/favicon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ];
