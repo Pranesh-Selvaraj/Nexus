@@ -6,6 +6,47 @@ Releases are listed newest first. Every release uses the same layout: a `## [X.Y
 
 ## [Unreleased]
 
+Nexus has an identity of its own. The mark is a **braid** — two strands woven with an over-and-under that alternates at each crossing — because the product takes many sources and weaves them into one grounded answer. The wordmark is lowercase **nexus** set tight and heavy in Inter Tight ExtraBold and closed by a single violet **point**. Every surface that carries the name now comes from one set of SVG masters: the sidebar, the mobile header, the login screen, the tab icon, the installable PWA, the repository page and the social card. The login screen was rebuilt at the same time so a self-hosted instance offers sign-in and registration plainly, tells a first-time visitor which account to use, and explains itself when registration is closed.
+
+### ✨ Added
+
+- 🧵 **The braid mark.** Two sampled-cosine strands on a 32-unit grid, a 3.45-unit round-capped stroke, crossing at two points with an **alternating** over/under: the front strand is cut at the first crossing, the back strand at the second. The gaps are geometry rather than a painted background, so the mark sits on any colour, and the silhouette survives 16 px because the strands merge into one woven band instead of dissolving.
+- 🔤 **A wordmark in outlines.** "nexus" in Inter Tight ExtraBold at −4.5 % tracking, converted to paths and committed, so no webfont is requested at runtime and no font can silently substitute. The braid is scaled so its ink matches the wordmark's x-height, which is why the lockup reads as one line rather than a symbol glued to a label.
+- 🟣 **The violet point.** A 20-unit circle sits 8 units after the last glyph, on the baseline, carrying the violet gradient. It is the smallest accent that still reads as deliberate, and it gives the interface one reusable accent colour that is not the mark.
+- 🧩 **Fourteen SVG masters** in `assets/brand/`: the mark in colour, brand and monochrome; horizontal and stacked lockups in light, inverse and one-ink cuts; the wordmark with its point; a rounded app tile; a favicon tile; a full-bleed maskable tile; and a 1280×640 social card.
+- 🛠️ **`pnpm brand:assets`.** Renders the raster assets from the masters with the Chromium the frontend's Playwright dependency already installs, validates every PNG's dimensions and colour type, assembles a real `/favicon.ico` from the 32 px PNG, copies the favicon master and fails when `manifest.webmanifest` references a missing file. Two runs produce byte-identical output.
+- 🖼️ **A complete tab-icon set.** An SVG favicon, a 32 px PNG fallback and a 32×32 ICO for browsers that request `/favicon.ico` directly, all cache-busted with `?v=` so an installed icon cannot outlive a rebrand.
+- 📖 **A brand kit** in `docs/brand/BRAND.md`: construction and clear space, minimum sizes, the violet and neutral palette with the approved gradients, lockup rules, icon and safe-zone rules, the do/don't list, voice and tone, regeneration steps and the Inter OFL attribution.
+- 🗄️ **ADR 0005** records the identity decision and the alternatives rejected while exploring — an "N" monogram with node terminals, hub-and-spoke graphs, a lens and an aperture, an orb, a card stack, a portal arch, a marker underline, a prism and a spark — each because it read as category furniture, lost detail below 48 px, or competed with the wordmark. `docs/decisions/README.md` indexes all five records.
+- 🔐 **A login screen that offers the whole surface.** When `ALLOW_REGISTRATION=true` it shows **Sign in / Create account** tabs; on a closed instance it names the local account and fills it in one click; password reveal, Caps Lock warning, an 8-character hint, busy states and specific errors replace the old single-button form.
+- 🧾 **`localEmail` on `/api/auth/config`.** The login screen learns which account to suggest, exposed only when authentication is on and registration is off (withheld when registration is open, `null` in no-auth mode).
+
+### 🔧 Changed
+
+- 🖥️ **The app wears the braid.** Sidebar (36×18), mobile header (32×16) and the login tile use the mark, sized by width because the braid is a wide mark; `NexusLogo` crops its viewBox to the braid's ink box so the UI does not waste 60 % of the height on padding.
+- 🏷️ **Page identity matches the product.** The title is "Nexus — grounded learning workspace" instead of "Nexus - AI RAG Workspace", the description and Open Graph/Twitter metadata describe the learning portal, and the PWA manifest carries the new name, icon set and versioned URLs.
+- 📚 **The README opens like a product page,** with a centred dark/light lockup, the tagline, badges, and a Documentation table that links the mission, brand kit, ADRs, security policy, contribution guide and changelog.
+- 🔑 **The sign-in surface is documented where people look.** `.env.example` has one "Sign-in and the admin account" block with `LOCAL_USER_EMAIL`, `AUTH_PASSWORD`, `AUTH_COOKIE_SECURE`, `SESSION_TTL_DAYS` and `ALLOW_REGISTRATION` as visible defaults, and states that there is no separate admin login — the local account is the instance owner.
+- 🧪 **The smoke suite asserts the login contract.** Two checks cover the closed-instance hint and its absence in no-auth mode, so a refactor cannot quietly leak or drop it.
+- 🧹 **The repository is cleaned of regenerable weight.** Turbo caches, build output, Playwright reports, runtime upload fixtures and ~90 MB of stale phase screenshots were removed, a redundant `.gitignore` entry dropped, and the contribution guide's smoke command corrected to the stub environment it actually needs.
+
+### 🐛 Fixed
+
+- 🖼️ **The install icon was a placeholder.** The PWA shipped a generic node triangle that contained nothing that said "Nexus"; the 192/512 icons are now rendered from the tile master, with a distinct maskable icon inside the 80 % safe circle and an opaque 180 px Apple touch icon.
+- 🌗 **There was no favicon and no tab-quality icon.** Browsers fell back to a blurred PNG scaled from 192 px; the app now serves an SVG favicon, a 32 px PNG and an ICO, and the tab icon no longer survives a rebrand by cache.
+- ♻️ **Existing installations would have kept the old icon.** The service worker prerendered both icons into a shell cache whose name never changed, so unchanged worker bytes meant a stale icon forever; the cache version is bumped (v4) so the new assets are fetched on the next visit.
+- 🔓 **The login page only ever offered one mode.** "Create account" was invisible unless `ALLOW_REGISTRATION=true`, nothing explained that registration was closed, and nothing told a first-time visitor which email to use; the page now shows both modes when available, names the local account when closed, and explains how an owner can open registration.
+- 💬 **Login errors were raw API strings.** They are now mapped to actionable copy (`401` → "That email and password do not match.", `429` → "Too many attempts — wait a minute and try again.", network → "Could not reach the server. Is the API running?"), and a rejected password is cleared instead of left in the field.
+- 🧪 **Nothing guarded the brand assets.** The PWA end-to-end spec now asserts a dedicated maskable icon is declared, every manifest icon is served, and the favicon is served as `image/svg+xml`.
+- 🧹 **The contribution guide's smoke command could not run as written** — it lacked the stub's `OPENAI_BASE_URL`/empty-key environment, so a fresh contributor got "No embedding provider configured"; it also now points at a clean database and a separate Redis database, because stale BullMQ jobs from earlier runs leave documents stuck in `processing`.
+
+### 📝 Notes
+
+- 🧪 **Verification:** typecheck, lint, format and build clean; 266 backend and 6 shared-types unit tests; 6/6 Playwright suites; 58 visual captures plus the login screen in its open, register, closed and error states, desktop and mobile; the integration smoke suite at 175/176 on a clean database with the auth contract checks passing. `pnpm audit` still reports one pre-existing moderate advisory in eslint's dependency tree (tracked in #115) — this change adds no dependencies.
+- ⚠️ **The GitHub social preview is a manual step.** Upload `assets/brand/nexus-social-card.png` under Settings → Social preview; GitHub exposes no API for it, and the repository avatar is manual too.
+- 🧷 **Two known issues were filed while working, not fixed here:** the `minimatch` advisory behind the failing audit gate (#115) and an environment-dependent `settings.update` smoke assertion (#116).
+- ⏳ **Deliberately deferred:** a `favicon.ico` redesign beyond the 32 px entry, raster lockup exports for tools that cannot render SVG, curated README screenshots, and any interface-wide typography change — the app keeps the system sans stack and only the logo is typeset.
+
 ## [0.4.13] - 2026-10-25
 
 Topics are now genuinely shared. Workspace memberships with reader/editor/owner roles replace "only the creator can touch this", every workspace-scoped query resolves the caller's membership before it runs, and the Members dialog lets an owner add people by email, change roles or revoke access. Account creation is opt-in, so a self-hosted deployment can stay single-user or open registration and build a small study group.
