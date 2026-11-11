@@ -4,7 +4,7 @@ All notable changes to Nexus are documented here. The format is based on [Keep a
 
 Releases are listed newest first. Every release uses the same layout: a `## [X.Y.Z] - YYYY-MM-DD` heading, an emoji on each section, and one emoji-prefixed, single-line entry per change. The release workflow extracts the section matching the pushed tag and publishes it verbatim as the GitHub Release body. Nexus is pre-1.0: the line continues in small, contained steps (`0.3.1 → 0.4.0 → … → 0.4.5`), and a feature-heavy release gets a patch bump rather than a new major.
 
-## [Unreleased]
+## [0.4.14] - 2026-11-11
 
 Nexus has an identity of its own. The mark is a **braid** — two strands woven with an over-and-under that alternates at each crossing — because the product takes many sources and weaves them into one grounded answer. The wordmark is lowercase **nexus** set tight and heavy in Inter Tight ExtraBold and closed by a single violet **point**. Every surface that carries the name now comes from one set of SVG masters: the sidebar, the mobile header, the login screen, the tab icon, the installable PWA, the repository page and the social card. The login screen was rebuilt at the same time so a self-hosted instance offers sign-in and registration plainly, tells a first-time visitor which account to use, and explains itself when registration is closed.
 

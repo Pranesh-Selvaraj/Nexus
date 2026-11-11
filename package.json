@@ -1,8 +1,8 @@
 {
   "name": "nexus",
-  "version": "0.4.13",
+  "version": "0.4.14",
   "private": true,
-  "description": "Nexus — self-hosted learning workspace that turns anything you read, watch or photograph into grounded, practiceable knowledge",
+  "description": "Nexus \u2014 self-hosted learning workspace that turns anything you read, watch or photograph into grounded, practiceable knowledge",
   "packageManager": "pnpm@11.21.0",
   "scripts": {
     "dev": "turbo run dev",
