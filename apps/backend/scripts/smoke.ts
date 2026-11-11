@@ -125,6 +125,21 @@ try {
   print('api healthz', healthy);
   if (!healthy) throw new Error('api did not start');
 
+  // This instance runs in no-auth mode: the login screen is never shown, so the
+  // config must not hand out a local-account hint either.
+  const openAuthConfig = (await (
+    await fetch(`${BASE}/api/auth/config`)
+  ).json()) as {
+    authEnabled?: boolean;
+    registrationEnabled?: boolean;
+    localEmail?: string | null;
+  };
+  print(
+    'auth config on the no-auth instance has no local account hint',
+    openAuthConfig.authEnabled === false && openAuthConfig.localEmail === null,
+    openAuthConfig,
+  );
+
   // dependency-aware health probe (Postgres + Redis)
   const healthz = await fetch(`${BASE}/healthz`);
   const healthzBody = (await healthz.json()) as {
@@ -2436,6 +2451,23 @@ try {
     await sleep(500);
   }
   print('auth api healthz', authHealthy);
+
+  // The auth config is what the login screen renders from: on this closed
+  // (registration-off) instance it names the local account as a hint.
+  const authConfig = (await (
+    await fetch(`${AUTH_BASE}/api/auth/config`)
+  ).json()) as {
+    authEnabled?: boolean;
+    registrationEnabled?: boolean;
+    localEmail?: string | null;
+  };
+  print(
+    'auth config exposes the local account on a closed instance',
+    authConfig.authEnabled === true &&
+      authConfig.registrationEnabled === false &&
+      authConfig.localEmail === 'local@nexus.dev',
+    authConfig,
+  );
 
   // unauthenticated requests are rejected everywhere
   const meAnon = await fetch(`${AUTH_BASE}/api/auth/me`);

@@ -233,9 +233,15 @@ async function main(): Promise<void> {
 
   /** Public auth capabilities so the login screen can offer registration. */
   app.get('/api/auth/config', (_req, res) => {
+    const registrationEnabled = process.env.ALLOW_REGISTRATION === 'true';
     res.json({
       authEnabled: authEnabled(),
-      registrationEnabled: process.env.ALLOW_REGISTRATION === 'true',
+      registrationEnabled,
+      // On a closed instance the login screen can point at the local account.
+      // That address is the documented default, never a credential, and it is
+      // withheld as soon as self-service registration is open.
+      localEmail:
+        authEnabled() && !registrationEnabled ? LOCAL_USER_EMAIL : null,
     });
   });
 
