@@ -1,16 +1,28 @@
-# Nexus
+<p align="center">
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/nexus-lockup-horizontal-inverse.svg">
+    <img src="assets/brand/nexus-lockup-horizontal.svg" width="420" alt="Nexus">
+  </picture>
+  <br>
+  <br>
+</p>
 
-> A self-hosted learning portal that turns anything you read, watch or photograph into grounded, practiceable knowledge.
+> **A self-hosted learning portal that turns anything you read, watch or photograph into grounded, practiceable knowledge.**
+>
+> Cited answers over your own sources, flashcards and quizzes from the same material, dictation and pronunciation practice, spaced repetition that schedules what is about to be forgotten — on infrastructure you control, with every document, conversation and card exportable.
 
 Nexus helps you learn anything — technology, languages, art, science, music, an exam, a codebase — from your own material. Bring books, slides, lectures, web pages, YouTube talks, photos and notes into a topic; ask questions that cite the exact passage or image; turn the same material into flashcards, quizzes, dictation and pronunciation practice; and let spaced repetition and a cross-topic dashboard show what is due, what was reviewed and what is actually sticking. It is self-hosted, provider-agnostic and exportable, so the knowledge and the learning data stay yours.
 
 The full statement of why Nexus exists — its mission, the learning-science basis, the feature-to-learning map, success criteria and non-goals — is in **[docs/MISSION.md](docs/MISSION.md)**.
 
-[![Release](https://img.shields.io/github/v/release/Pranesh-Selvaraj/Nexus?sort=semver)](https://github.com/Pranesh-Selvaraj/Nexus/releases)
-[![CI](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/codeql.yml/badge.svg)](https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/codeql.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+<p align="center">
+  <a href="https://github.com/Pranesh-Selvaraj/Nexus/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/Pranesh-Selvaraj/Nexus?sort=semver"></a>
+  <a href="https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/Pranesh-Selvaraj/Nexus/actions/workflows/codeql.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+  <a href="CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg"></a>
+</p>
 
 ---
 
@@ -25,6 +37,8 @@ The full statement of why Nexus exists — its mission, the learning-science bas
 - [Environment variables](#environment-variables)
 - [API access](#api-access)
 - [Project structure](#project-structure)
+- [Brand](#brand)
+- [Documentation](#documentation)
 - [CI/CD and security](#cicd-and-security)
 - [Contributing](#contributing)
 - [Security](#security)
@@ -222,7 +236,13 @@ docker compose -f docker-compose.prod.yml up -d --build                # rebuild
 
 ### Authentication in production
 
-Set `AUTH_PASSWORD` in `.env` **before** the first boot — the login screen appears automatically when auth is enabled. Behind TLS, also set `AUTH_COOKIE_SECURE=true`. See [SECURITY.md](SECURITY.md) for the full threat model.
+**There is no separate admin login.** The local account (`LOCAL_USER_EMAIL`, default `local@nexus.dev`) _is_ the instance owner: it owns the topics it creates and can manage members, share links and deletion. Set `AUTH_PASSWORD` in `.env` **before** the first boot — the login screen appears automatically when auth is enabled, and the password is hashed onto that account on boot. Behind TLS, also set `AUTH_COOKIE_SECURE=true`. See [SECURITY.md](SECURITY.md) for the full threat model.
+
+The login screen adapts to the deployment:
+
+- **Closed instance** (default, `ALLOW_REGISTRATION` unset): one account, the local user (`LOCAL_USER_EMAIL`, default `local@nexus.dev`). The screen says so and offers a one-click fill instead of leaving you to guess an email.
+- **Open instance** (`ALLOW_REGISTRATION=true`): the screen shows **Sign in / Create account** tabs; a new account starts with no topics until an owner adds it.
+- Without `AUTH_PASSWORD` there is no login screen at all — the app opens as the local user.
 
 ### Multi-arch images and GPU transcription
 
@@ -253,19 +273,20 @@ git tag -a v0.4.6 -m "Nexus v0.4.6" && git push origin v0.4.6
 
 ## Scripts
 
-| Command                                    | Description                                 |
-| ------------------------------------------ | ------------------------------------------- |
-| `pnpm dev`                                 | Run frontend, API, and worker in watch mode |
-| `pnpm build`                               | Type-check and build all packages           |
-| `pnpm typecheck`                           | Type-check all packages                     |
-| `pnpm db:up` / `pnpm db:down`              | Start / stop Postgres + Redis (Docker)      |
-| `pnpm --filter @nexus/backend db:migrate`  | Apply Drizzle migrations                    |
-| `pnpm --filter @nexus/backend db:generate` | Generate a new Drizzle migration            |
-| `pnpm --filter @nexus/backend dev:api`     | Run only the API in watch mode              |
-| `pnpm --filter @nexus/backend dev:worker`  | Run only the embedding worker in watch mode |
-| `pnpm --filter @nexus/backend cli --help`  | Nexus CLI (search/ask/upload/due/note)      |
-| `pnpm --filter @nexus/backend mcp`         | Start the MCP server on stdio               |
-| `pnpm --filter @nexus/backend backup`      | Write a `pg_dump` backup (see Backups)      |
+| Command                                    | Description                                    |
+| ------------------------------------------ | ---------------------------------------------- |
+| `pnpm dev`                                 | Run frontend, API, and worker in watch mode    |
+| `pnpm build`                               | Type-check and build all packages              |
+| `pnpm typecheck`                           | Type-check all packages                        |
+| `pnpm db:up` / `pnpm db:down`              | Start / stop Postgres + Redis (Docker)         |
+| `pnpm --filter @nexus/backend db:migrate`  | Apply Drizzle migrations                       |
+| `pnpm --filter @nexus/backend db:generate` | Generate a new Drizzle migration               |
+| `pnpm --filter @nexus/backend dev:api`     | Run only the API in watch mode                 |
+| `pnpm --filter @nexus/backend dev:worker`  | Run only the embedding worker in watch mode    |
+| `pnpm --filter @nexus/backend cli --help`  | Nexus CLI (search/ask/upload/due/note)         |
+| `pnpm --filter @nexus/backend mcp`         | Start the MCP server on stdio                  |
+| `pnpm --filter @nexus/backend backup`      | Write a `pg_dump` backup (see Backups)         |
+| `pnpm brand:assets`                        | Re-render icons and cards from the SVG masters |
 
 ## Environment variables
 
@@ -314,10 +335,11 @@ All variables live in `.env` (see `.env.example`). The backend auto-discovers `.
 | `AUDIO_RETENTION_DAYS`        | `7`                                           | Delete cached speech and retained recordings after this many days (`0` keeps them until the quota evicts)                                             |
 | `AUDIO_MAX_STORAGE_MB`        | `200`                                         | Per-user audio cache cap; the oldest assets are evicted first                                                                                         |
 | `MAX_AUDIO_MB`                | `25`                                          | Per-recording upload cap for dictation and pronunciation                                                                                              |
-| `LOCAL_USER_EMAIL`            | `local@nexus.dev`                             | Identity of the single local user                                                                                                                     |
+| `LOCAL_USER_EMAIL`            | `local@nexus.dev`                             | The local account — the instance owner (admin). Shown on the login screen when registration is closed                                                 |
 | `AUTH_PASSWORD`               | _(unset)_                                     | When set, login is required (httpOnly session cookie); unset = no-auth dev mode                                                                       |
 | `AUTH_COOKIE_SECURE`          | `false`                                       | `true` when serving over HTTPS (adds `Secure` to the session cookie)                                                                                  |
 | `SESSION_TTL_DAYS`            | `30`                                          | Session lifetime in days                                                                                                                              |
+| `ALLOW_REGISTRATION`          | `false`                                       | `true` adds **Create account** to the login screen (requires `AUTH_PASSWORD`); new accounts start with no topics                                      |
 | `PORT`                        | `3000`                                        | Backend HTTP/WS port                                                                                                                                  |
 | `UPLOAD_DIR`                  | `./uploads`                                   | Directory for uploaded documents                                                                                                                      |
 | `MAX_UPLOAD_MB`               | `25`                                          | Per-file upload size limit                                                                                                                            |
@@ -583,18 +605,46 @@ curl -H "Authorization: Bearer $METRICS_TOKEN" http://localhost:3000/metrics
 ```
 apps/
   backend/          Express + tRPC API, BullMQ worker, Drizzle schema/migrations
-  frontend/         React + Vite SPA (tRPC client, workspaces, upload, chat)
+  frontend/         React + Vite SPA (tRPC client, learning portal, chat)
 packages/
   shared-types/     Shared DTO types between apps
 extensions/
   browser/          Manifest V3 share target (save the current page)
+assets/
+  brand/            Logo, lockups, app tile and social card (SVG masters)
+scripts/
+  brand-assets.mjs  Renders the PWA icons and social card from the masters
 docs/
   MISSION.md        Mission, ambition, learning model and success criteria
-  decisions/        Architecture decision records (ingestion, retrieval, storage, UI)
+  brand/BRAND.md    Brand kit: mark, wordmark, colour, type, icon and voice rules
+  decisions/        Architecture decision records (ingestion, retrieval, storage, UI, brand)
 .github/
   workflows/        CI, CodeQL, release
   dependabot.yml    Automated dependency update PRs
 ```
+
+## Brand
+
+The logo is a **braid**: two strands woven with a visible over-and-under gap, because Nexus takes many sources and weaves them into one grounded answer. The wordmark is lowercase **nexus** set tight and heavy in Inter Tight ExtraBold, closed by a single violet **point** — the place where everything the strands carry comes together. The kit — mark construction, lockups, palette, typography, icon rules and voice — is documented in **[docs/brand/BRAND.md](docs/brand/BRAND.md)**, with the SVG masters in [`assets/brand/`](assets/brand) and a decision record in [ADR 0005](docs/decisions/0005-brand-identity.md).
+
+<p align="left">
+  <img src="assets/brand/nexus-tile.svg" width="64" height="64" alt="Nexus app icon">
+</p>
+
+The app icon is the tile (`assets/brand/nexus-tile.svg`); `pnpm brand:assets` renders the PWA icons at 192, 512, the maskable 512 and the 180 px Apple touch icon from it, and fails if `manifest.webmanifest` points at a file that does not exist. The wordmark ships as outlines, so no webfont is loaded at runtime, and every lockup also exists in a one-ink monochrome cut.
+
+Uses outside this repository: the GitHub repository social preview uses `assets/brand/nexus-social-card.png` (1280×640, upload it under **Settings → Social preview**; the API cannot set it). Forks are welcome to the mark under the MIT licence, but may not present themselves as Nexus.
+
+## Documentation
+
+| Document                                    | What it covers                                                                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [docs/MISSION.md](docs/MISSION.md)          | Why Nexus exists: the problem, the learning-science mapping, the feature-to-learning map, success criteria and non-goals            |
+| [docs/brand/BRAND.md](docs/brand/BRAND.md)  | The brand kit: mark construction and clear space, lockups, palette, typography, icon rules, voice and tone                          |
+| [docs/decisions/](docs/decisions/README.md) | Architecture decision records — ingestion and vision, retrieval at scale, storage, the learning-portal shell and the brand identity |
+| [SECURITY.md](SECURITY.md)                  | Supported versions, the threat model, hardening and how to report a vulnerability                                                   |
+| [CONTRIBUTING.md](CONTRIBUTING.md)          | Development setup, branching, review checklists, commit conventions and the test suites                                             |
+| [CHANGELOG.md](CHANGELOG.md)                | Release notes, one detailed section per tag (the published release body)                                                            |
 
 ## CI/CD and security
 
