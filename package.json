@@ -2,7 +2,7 @@
   "name": "nexus",
   "version": "0.4.13",
   "private": true,
-  "description": "Nexus - full-stack AI RAG workspace with hybrid search and queue-based indexing",
+  "description": "Nexus — self-hosted learning workspace that turns anything you read, watch or photograph into grounded, practiceable knowledge",
   "packageManager": "pnpm@11.21.0",
   "scripts": {
     "dev": "turbo run dev",
@@ -11,6 +11,7 @@
     "lint": "turbo run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "brand:assets": "node scripts/brand-assets.mjs",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "test": "turbo run test"
