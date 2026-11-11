@@ -134,6 +134,19 @@ Rules:
 - Keep DTOs shared in `packages/shared-types` when both apps use them.
 - Run `pnpm typecheck` and `pnpm lint` before pushing.
 
+### Brand assets
+
+The logo, lockups, app tile and social card are SVG masters in [`assets/brand/`](assets/brand); the PNGs the browser installs are generated from them:
+
+```bash
+pnpm brand:assets   # renders the PWA/apple icons, favicon.ico and the social card
+```
+
+- Edit the **masters**, never the PNGs, and run the script in the same commit.
+- The wordmark ships as outlines (Inter Tight ExtraBold) so no webfont is loaded; do not retype it.
+- If the identity changes, bump the `?v=` query on the icon links in `apps/frontend/index.html`, the version in `apps/frontend/public/manifest.webmanifest` and the service-worker `VERSION` — browsers cache favicons aggressively.
+- The rules for using the logo are in [`docs/brand/BRAND.md`](docs/brand/BRAND.md).
+
 ## Testing
 
 Automated checks run in CI on every PR: Vitest unit tests, the integration smoke suite, and a Playwright e2e happy path. Run them locally before pushing:
@@ -144,9 +157,17 @@ pnpm lint && pnpm format:check
 
 # Integration smoke (needs pnpm db:up): real API + worker + Postgres + Redis.
 # Without a key it verifies the 'failed' path; with the mock stub it verifies
-# the full 'ready' pipeline:
-pnpm --filter @nexus/backend mock:openai   # terminal 1 - deterministic stub on :3310
-SMOKE_EXPECT_READY=1 pnpm --filter @nexus/backend smoke   # terminal 2
+# the full 'ready' pipeline. The stub is keyless, so point the API at it and
+# keep the key empty:
+pnpm --filter @nexus/backend mock:openai            # terminal 1 - stub on :3310
+DATABASE_URL=postgres://nexus:nexus@localhost:5432/nexus \
+  REDIS_URL=redis://localhost:6379 \
+  OPENAI_BASE_URL=http://localhost:3310/v1 OPENAI_API_KEY= \
+  SMOKE_EXPECT_READY=1 pnpm --filter @nexus/backend smoke   # terminal 2
+
+# The suite shares Postgres and Redis with other runs: point it at a clean
+# database and a separate Redis DB (redis://localhost:6379/3) when a previous
+# run left stale queue entries behind.
 
 # Browser e2e (needs pnpm db:up): boots stub + API + worker + Vite itself
 pnpm --filter @nexus/frontend test:e2e

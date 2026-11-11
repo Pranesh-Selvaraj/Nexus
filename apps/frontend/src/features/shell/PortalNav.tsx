@@ -57,7 +57,7 @@ export function PortalNav({
           className="flex items-center gap-2 text-zinc-100"
           aria-label="Nexus home"
         >
-          <NexusLogo className="h-6 w-6 text-nexus-400" />
+          <NexusLogo className="h-4 w-9 text-nexus-400" />
           <span className="truncate text-sm font-semibold tracking-tight">
             {appName}
           </span>
