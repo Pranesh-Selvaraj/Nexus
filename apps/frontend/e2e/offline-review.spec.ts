@@ -21,12 +21,25 @@ test('pwa: installable shell and offline review that syncs', async ({
   expect(manifest.ok()).toBeTruthy();
   const manifestJson = (await manifest.json()) as {
     name?: string;
-    icons?: Array<{ src: string; sizes: string }>;
+    icons?: Array<{ src: string; sizes: string; purpose?: string }>;
   };
   expect(manifestJson.name).toContain('Nexus');
   expect(manifestJson.icons?.some((icon) => icon.sizes === '512x512')).toBe(
     true,
   );
+  // Brand assets: a dedicated maskable icon (not the "any" tile reused) and
+  // every declared icon actually served, so a renamed master cannot ship as a
+  // broken install.
+  expect(manifestJson.icons?.some((icon) => icon.purpose === 'maskable')).toBe(
+    true,
+  );
+  for (const icon of manifestJson.icons ?? []) {
+    const response = await page.request.get(icon.src);
+    expect(response.status(), `${icon.src} should be served`).toBe(200);
+  }
+  const favicon = await page.request.get('/icons/favicon.svg');
+  expect(favicon.ok()).toBeTruthy();
+  expect(favicon.headers()['content-type']).toContain('image/svg+xml');
   const swRegistered = await page.evaluate(async () => {
     if (!('serviceWorker' in navigator)) return false;
     const registration = await navigator.serviceWorker.getRegistration();

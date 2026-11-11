@@ -56,7 +56,9 @@ export default function App() {
   const publicConfig = trpc.config.public.useQuery(undefined);
   const appName = publicConfig.data?.appName || 'Nexus';
   useEffect(() => {
-    document.title = `${appName} - Learning portal`;
+    // Keep the runtime title identical to the static one in `index.html`; the
+    // em dash and the positioning line are part of the brand kit.
+    document.title = `${appName} — grounded learning workspace`;
   }, [appName]);
 
   useEffect(() => onUnauthorized(() => setGate({ status: 'anonymous' })), []);
@@ -162,7 +164,7 @@ export default function App() {
             ☰
           </button>
           <span className="flex items-center gap-1.5 text-sm font-semibold">
-            <NexusLogo className="h-4 w-4 text-nexus-400" />
+            <NexusLogo className="h-3.5 w-8 text-nexus-400" />
             {appName}
           </span>
         </div>
