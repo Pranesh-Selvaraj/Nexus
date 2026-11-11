@@ -231,8 +231,21 @@ async function main(): Promise<void> {
     message: { error: 'Too many login attempts, please retry later' },
   });
 
+  /**
+   * The unauthenticated login screen reads this once per visit; it is rate
+   * limited on its own bucket so a slow typist cannot lock themselves out of
+   * the login form, and so the endpoint cannot be used to probe a deployment.
+   */
+  const authConfigLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 60,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please retry in a minute' },
+  });
+
   /** Public auth capabilities so the login screen can offer registration. */
-  app.get('/api/auth/config', (_req, res) => {
+  app.get('/api/auth/config', authConfigLimiter, (_req, res) => {
     const registrationEnabled = process.env.ALLOW_REGISTRATION === 'true';
     res.json({
       authEnabled: authEnabled(),
