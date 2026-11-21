@@ -26,7 +26,7 @@ import {
   documents,
   messages,
   workspaces,
-} from '../../db/schema.js';
+} from '../../db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { generateConversationTitle, streamAnswer } from './llm.service.js';
 import type { ChatHistoryItem } from './llm.service.js';

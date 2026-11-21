@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { ingestUrlInputSchema } from '@nexus/shared-types';
 import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
 import { sanitizeForLog } from '../../shared/multer.js';
-import { ApiError } from '../../platform/errors.js';
+import { sendApiError } from '../../platform/errors.js';
 import { ingestUrlForWorkspace } from '../../modules/ingestion/url-ingest.service.js';
 import { friendlyErrorMessage } from '../../platform/errors.js';
 
@@ -46,10 +46,7 @@ export function ingestRoutes(): Router {
       });
       res.status(result.duplicate ? 200 : 201).json(result);
     } catch (err) {
-      if (err instanceof ApiError) {
-        res.status(err.status).json({ error: err.message });
-        return;
-      }
+      if (sendApiError(res, err)) return;
       console.error('[ingest] url failed:', sanitizeForLog(err));
       if (!res.headersSent) {
         res.status(502).json({

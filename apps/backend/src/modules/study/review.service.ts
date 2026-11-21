@@ -10,7 +10,7 @@ import {
   flashcards,
   progressEvents,
   workspaces,
-} from '../../db/schema.js';
+} from '../../db/schema/index.js';
 import { ApiError } from '../../platform/errors.js';
 import {
   previewIntervals,

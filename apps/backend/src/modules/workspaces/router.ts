@@ -15,7 +15,7 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
-import { documents, workspaces } from '../../db/schema.js';
+import { documents, workspaces } from '../../db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import {
   exportWorkspaceArchive,

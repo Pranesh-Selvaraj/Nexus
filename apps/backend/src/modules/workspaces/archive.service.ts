@@ -14,7 +14,7 @@ import {
   documents,
   messages,
   workspaces,
-} from '../../db/schema.js';
+} from '../../db/schema/index.js';
 import { enqueueDocumentEmbedding } from '../../platform/queue.js';
 import { ALLOWED_EXTENSIONS } from '../../shared/multer.js';
 import { storage } from '../../platform/storage/index.js';

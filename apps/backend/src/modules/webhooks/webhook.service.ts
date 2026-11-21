@@ -14,7 +14,7 @@ import type {
 import { WEBHOOK_EVENTS } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
-import { webhooks } from '../../db/schema.js';
+import { webhooks } from '../../db/schema/index.js';
 import { enqueueWebhookDelivery } from '../../platform/queue.js';
 import { ApiError } from '../../platform/errors.js';
 import {

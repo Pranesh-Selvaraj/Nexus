@@ -13,7 +13,7 @@ import {
 } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
-import { audioAssets, workspaces } from '../../db/schema.js';
+import { audioAssets, workspaces } from '../../db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { deleteAudioAsset, toAudioDTO } from './audio.service.js';
 import {

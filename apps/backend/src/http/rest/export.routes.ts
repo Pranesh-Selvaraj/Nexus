@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { workspaceIdSchema } from '@nexus/shared-types';
 import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
 import { sanitizeForLog } from '../../shared/multer.js';
-import { ApiError } from '../../platform/errors.js';
+import { sendApiError } from '../../platform/errors.js';
 import { buildWorkspaceZip } from '../../modules/workspaces/archive.service.js';
 
 /**
@@ -41,10 +41,7 @@ export function exportRoutes(): Router {
       res.setHeader('content-length', String(buffer.length));
       res.send(buffer);
     } catch (err) {
-      if (err instanceof ApiError) {
-        res.status(err.status).json({ error: err.message });
-        return;
-      }
+      if (sendApiError(res, err)) return;
       console.error('[export] zip failed:', sanitizeForLog(err));
       if (!res.headersSent) {
         res.status(500).json({ error: 'Export failed' });

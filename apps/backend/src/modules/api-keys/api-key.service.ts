@@ -12,7 +12,7 @@ import type {
 import { API_SCOPES } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
-import { apiKeys } from '../../db/schema.js';
+import { apiKeys } from '../../db/schema/index.js';
 
 /** Prefix of every Nexus API key, so leaked secrets are recognisable. */
 export const API_KEY_NAMESPACE = 'ndx_';

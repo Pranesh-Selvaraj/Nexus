@@ -2,7 +2,7 @@ import { TRPCError } from '@trpc/server';
 import { and, eq, sql } from 'drizzle-orm';
 
 import { db } from '../../db/index.js';
-import { documents } from '../../db/schema.js';
+import { documents } from '../../db/schema/index.js';
 
 /**
  * Concatenated indexed text of a document, capped for prompt use. Shared by

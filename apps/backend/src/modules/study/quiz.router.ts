@@ -18,7 +18,7 @@ import {
   quizQuestions,
   quizzes,
   workspaces,
-} from '../../db/schema.js';
+} from '../../db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { assertWorkspaceAccessTrpc } from '../workspaces/access.trpc.js';
 import { getOrCreateDefaultDeck } from './deck.service.js';

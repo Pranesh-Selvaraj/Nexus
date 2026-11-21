@@ -4,7 +4,7 @@ import { Worker } from 'bullmq';
 import { eq, lt, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
-import { chunks, documents, sessions, workspaces } from '../db/schema.js';
+import { chunks, documents, sessions, workspaces } from '../db/schema/index.js';
 import type { EmbeddingJobData, WebhookJobData } from '../platform/queue.js';
 import {
   MAINTENANCE_JOB,

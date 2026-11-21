@@ -9,7 +9,7 @@ import { CEFR_LEVELS } from '@nexus/shared-types';
 import { sql } from 'drizzle-orm';
 
 import { db } from '../../db/index.js';
-import { cefrEstimates, progressEvents } from '../../db/schema.js';
+import { cefrEstimates, progressEvents } from '../../db/schema/index.js';
 import { getSetting } from '../settings/settings.service.js';
 import { dictationAccuracy, dictationDiff } from '../retrieval/text-utils.js';
 

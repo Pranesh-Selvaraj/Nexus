@@ -9,7 +9,7 @@ import {
   messages,
   notes,
   workspaces,
-} from '../../db/schema.js';
+} from '../../db/schema/index.js';
 import { DOMAIN_PACKS, findPack, toDomainPack } from './content.js';
 import { ApiError } from '../../platform/errors.js';
 import { ensureOwnerMembership } from '../workspaces/member.service.js';

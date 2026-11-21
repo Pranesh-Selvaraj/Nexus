@@ -6,7 +6,11 @@ import type { DocumentDTO } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
 import { assertWorkspaceAccess } from './access.service.js';
-import { documents, workspaceShareLinks, workspaces } from '../../db/schema.js';
+import {
+  documents,
+  workspaceShareLinks,
+  workspaces,
+} from '../../db/schema/index.js';
 import { ApiError } from '../../platform/errors.js';
 import { toDocumentDTO } from '../../shared/dto.js';
 

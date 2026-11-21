@@ -10,7 +10,7 @@ import {
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';
-import { documents, workspaces } from '../../db/schema.js';
+import { documents, workspaces } from '../../db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { mimeForFormat } from '../ingestion/magic.js';
 import { ocrAvailable, ocrImage } from '../ingestion/ocr.js';

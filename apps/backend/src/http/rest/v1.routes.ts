@@ -13,16 +13,16 @@ import {
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../../modules/workspaces/access.service.js';
-import { documents, notes, workspaces } from '../../db/schema.js';
+import { documents, notes, workspaces } from '../../db/schema/index.js';
 import {
   authenticateApiKey,
   requireApiKey,
 } from '../../platform/auth/api-key.js';
 import {
-  ApiError,
   answerQuestion,
   searchWorkspace,
 } from '../../modules/chat/api.service.js';
+import { ApiError, sendApiError } from '../../platform/errors.js';
 import { assertWorkspaceAccess } from '../../modules/workspaces/access.service.js';
 import { toDocumentDTO } from '../../shared/dto.js';
 import { upload } from '../../shared/multer.js';
@@ -47,10 +47,7 @@ function identityOf(req: Request): { userId: string } {
 
 /** Maps a service error onto the wire; unknown failures stay 500s. */
 function sendError(res: Response, err: unknown): void {
-  if (err instanceof ApiError) {
-    res.status(err.status).json({ error: err.message });
-    return;
-  }
+  if (sendApiError(res, err)) return;
   if (err instanceof z.ZodError) {
     res.status(400).json({ error: 'Invalid request', issues: err.issues });
     return;

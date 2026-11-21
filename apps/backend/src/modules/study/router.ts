@@ -22,7 +22,7 @@ import {
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';
 import { ApiError } from '../../platform/errors.js';
-import { decks, flashcards, workspaces } from '../../db/schema.js';
+import { decks, flashcards, workspaces } from '../../db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { assertWorkspaceAccessTrpc } from '../workspaces/access.trpc.js';
 import { getOrCreateDefaultDeck } from './deck.service.js';

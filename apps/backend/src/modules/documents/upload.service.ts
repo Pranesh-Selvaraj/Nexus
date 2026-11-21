@@ -8,7 +8,7 @@ import { workspaceIdSchema } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
 import { assertWorkspaceAccess } from '../workspaces/access.service.js';
-import { documents, workspaces } from '../../db/schema.js';
+import { documents, workspaces } from '../../db/schema/index.js';
 import { enqueueDocumentEmbedding } from '../../platform/queue.js';
 import { toDocumentDTO } from '../../shared/dto.js';
 import { ApiError } from '../../platform/errors.js';

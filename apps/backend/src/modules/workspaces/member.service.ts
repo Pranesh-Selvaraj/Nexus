@@ -7,7 +7,7 @@ import type {
 } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
-import { users, workspaceMembers, workspaces } from '../../db/schema.js';
+import { users, workspaceMembers, workspaces } from '../../db/schema/index.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertWorkspaceAccess } from './access.service.js';
 

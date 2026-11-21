@@ -9,7 +9,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { WebSocketServer } from 'ws';
 
 import { db, pool } from './db/index.js';
-import { sessions, users, workspaces } from './db/schema.js';
+import { sessions, users, workspaces } from './db/schema/index.js';
 import { createApp } from './http/app.js';
 import { createWSSContext, LOCAL_USER_EMAIL } from './platform/auth/context.js';
 import { config } from './platform/config.js';

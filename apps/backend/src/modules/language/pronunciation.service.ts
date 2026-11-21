@@ -2,7 +2,10 @@ import type { MinimalPair, PronunciationScore } from '@nexus/shared-types';
 import { desc, eq } from 'drizzle-orm';
 
 import { db } from '../../db/index.js';
-import { progressEvents, pronunciationAttempts } from '../../db/schema.js';
+import {
+  progressEvents,
+  pronunciationAttempts,
+} from '../../db/schema/index.js';
 import { alignPronunciation } from '../retrieval/text-utils.js';
 
 export interface ScorePronunciationInput {

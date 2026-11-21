@@ -3,7 +3,7 @@ import { config } from '../../platform/config.js';
 import rateLimit from 'express-rate-limit';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { users } from '../../db/schema.js';
+import { users } from '../../db/schema/index.js';
 import {
   authEnabled,
   LOCAL_USER_EMAIL,

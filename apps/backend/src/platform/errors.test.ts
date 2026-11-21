@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { friendlyErrorMessage } from './errors.js';
+import { ApiError, sendApiError, friendlyErrorMessage } from './errors.js';
 
 describe('friendlyErrorMessage', () => {
   it('strips HTML from provider 404 pages', () => {
@@ -42,5 +42,32 @@ describe('friendlyErrorMessage', () => {
       cause: { code: 'ECONNRESET' },
     });
     expect(friendlyErrorMessage(err)).toBe('Connection error. (ECONNRESET)');
+  });
+});
+
+describe('sendApiError', () => {
+  const fakeRes = () => {
+    const calls: { status?: number; body?: unknown } = {};
+    return {
+      calls,
+      res: {
+        status(code: number) {
+          calls.status = code;
+          return { json: (body: unknown) => void (calls.body = body) };
+        },
+      },
+    };
+  };
+
+  it('maps an ApiError onto its status and body', () => {
+    const { res, calls } = fakeRes();
+    expect(sendApiError(res, new ApiError('Not found', 404))).toBe(true);
+    expect(calls).toEqual({ status: 404, body: { error: 'Not found' } });
+  });
+
+  it('declines everything else so the caller owns the fallback', () => {
+    const { res, calls } = fakeRes();
+    expect(sendApiError(res, new Error('boom'))).toBe(false);
+    expect(calls).toEqual({});
   });
 });

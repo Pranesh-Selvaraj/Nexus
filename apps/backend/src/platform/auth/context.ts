@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import type { UserDTO } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
-import { users } from '../../db/schema.js';
+import { users } from '../../db/schema/index.js';
 import { getUserBySessionToken, SESSION_COOKIE } from './service.js';
 import { authEnabled as isAuthEnabled, config } from '../config.js';
 

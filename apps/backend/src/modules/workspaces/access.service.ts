@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { WorkspaceRole } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
-import { workspaces } from '../../db/schema.js';
+import { workspaces } from '../../db/schema/index.js';
 import { ApiError } from '../../platform/errors.js';
 
 export const ROLE_RANK: Record<WorkspaceRole, number> = {

@@ -5,6 +5,29 @@ const MAX_MESSAGE_LENGTH = 300;
  * map `status` onto the response and the tRPC layer maps it onto a TRPCError,
  * so a rule enforced in a service is never re-implemented per transport.
  */
+/** The single REST error body shape: `{ error: message }`. */
+export interface ApiErrorBody {
+  error: string;
+}
+
+export const errorBody = (message: string): ApiErrorBody => ({
+  error: message,
+});
+
+/**
+ * Map an error thrown by a service onto a REST response. Returns true when the
+ * error was an `ApiError` (already handled); false means the caller owns the
+ * fallback (log + status) because only it knows the right wording and code.
+ */
+export function sendApiError(
+  res: { status: (code: number) => { json: (body: ApiErrorBody) => void } },
+  err: unknown,
+): boolean {
+  if (!(err instanceof ApiError)) return false;
+  res.status(err.status).json(errorBody(err.message));
+  return true;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

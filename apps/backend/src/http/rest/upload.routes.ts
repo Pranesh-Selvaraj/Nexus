@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 
 import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
 import { sanitizeForLog, upload } from '../../shared/multer.js';
-import { ApiError } from '../../platform/errors.js';
+import { sendApiError } from '../../platform/errors.js';
 import { getSettingNumber } from '../../modules/settings/settings.service.js';
 import { ingestUpload } from '../../modules/documents/upload.service.js';
 
@@ -69,10 +69,7 @@ export function uploadRoutes(): Router {
         });
         res.status(result.duplicate ? 200 : 201).json(result);
       } catch (err) {
-        if (err instanceof ApiError) {
-          res.status(err.status).json({ error: err.message });
-          return;
-        }
+        if (sendApiError(res, err)) return;
         console.error('[upload] failed:', sanitizeForLog(err));
         if (!res.headersSent) {
           res.status(500).json({ error: 'Upload failed' });

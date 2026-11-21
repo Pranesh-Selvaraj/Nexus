@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { ttsRequestSchema, workspaceIdSchema } from '@nexus/shared-types';
 import { db } from '../../db/index.js';
-import { documents, workspaces } from '../../db/schema.js';
+import { documents, workspaces } from '../../db/schema/index.js';
 import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
 import { storage } from '../../platform/storage/index.js';
 import { audioUpload, sanitizeForLog } from '../../shared/multer.js';

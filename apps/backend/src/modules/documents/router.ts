@@ -13,7 +13,7 @@ import type {
 } from '@nexus/shared-types';
 
 import { db } from '../../db/index.js';
-import { chunks, documents, workspaces } from '../../db/schema.js';
+import { chunks, documents, workspaces } from '../../db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { assertWorkspaceAccessTrpc } from '../workspaces/access.trpc.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';
