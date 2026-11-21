@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 
 import { NexusLogo } from '../../components/NexusLogo';
+import { Button } from '../../ui/Button';
+import { Field } from '../../ui/Field';
+import { Panel } from '../../ui/Panel';
 import { fetchAuthConfig, login, register } from '../../lib/auth';
 import type { AuthConfig } from '../../lib/auth';
 
@@ -118,7 +121,7 @@ export function LoginScreen({ onAuthed }: Props) {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 shadow-2xl shadow-black/40 backdrop-blur">
+        <Panel className="p-6">
           {config.registrationEnabled && (
             <div
               role="tablist"
@@ -151,40 +154,34 @@ export function LoginScreen({ onAuthed }: Props) {
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             {registering && (
-              <div>
-                <label htmlFor="name" className={labelClass}>
-                  Your name <span className="text-zinc-600">(optional)</span>
-                </label>
-                <input
-                  id="name"
-                  autoComplete="name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  disabled={busy}
-                  className={fieldClass}
-                  placeholder="Alex"
-                />
-              </div>
+              <Field
+                id="name"
+                label={
+                  <>
+                    Your name <span className="text-zinc-600">(optional)</span>
+                  </>
+                }
+                autoComplete="name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                disabled={busy}
+                placeholder="Alex"
+              />
             )}
 
-            <div>
-              <label htmlFor="email" className={labelClass}>
-                Email
-              </label>
-              <input
-                id="email"
-                ref={emailRef}
-                type="email"
-                required
-                autoComplete="username"
-                spellCheck={false}
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                disabled={busy}
-                className={fieldClass}
-                placeholder="you@example.com"
-              />
-            </div>
+            <Field
+              id="email"
+              label="Email"
+              inputRef={emailRef}
+              type="email"
+              required
+              autoComplete="username"
+              spellCheck={false}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              disabled={busy}
+              placeholder="you@example.com"
+            />
 
             <div>
               <div className="flex items-baseline justify-between">
@@ -242,18 +239,12 @@ export function LoginScreen({ onAuthed }: Props) {
               </p>
             )}
 
-            <button
+            <Button
               type="submit"
-              disabled={busy || !email || !password}
-              aria-busy={busy}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-nexus-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-nexus-500 disabled:opacity-40"
+              loading={busy}
+              disabled={!email || !password}
+              className="w-full"
             >
-              {busy && (
-                <span
-                  aria-hidden
-                  className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
-                />
-              )}
               {busy
                 ? registering
                   ? 'Creating account…'
@@ -261,7 +252,7 @@ export function LoginScreen({ onAuthed }: Props) {
                 : registering
                   ? 'Create account'
                   : 'Sign in'}
-            </button>
+            </Button>
           </form>
 
           <div className="mt-5 space-y-2 border-t border-zinc-800/70 pt-4 text-center text-[11px] leading-relaxed text-zinc-500">
@@ -302,7 +293,7 @@ export function LoginScreen({ onAuthed }: Props) {
               </p>
             )}
           </div>
-        </div>
+        </Panel>
 
         <p className="mt-6 text-center text-[11px] text-zinc-600">
           Self-hosted · your sources, your data
