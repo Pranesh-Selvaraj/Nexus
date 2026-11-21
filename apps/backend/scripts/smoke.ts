@@ -64,21 +64,17 @@ const child = spawn('pnpm', ['exec', 'tsx', 'src/index.ts'], {
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 
-const worker = spawn(
-  'pnpm',
-  ['exec', 'tsx', 'src/workers/embedding.worker.ts'],
-  {
-    cwd: new URL('..', import.meta.url).pathname,
-    // Same settings key and local-target override as the API: deliveries are
-    // signed (decrypt the stored secret) and re-validated in the worker.
-    env: {
-      ...process.env,
-      SETTINGS_SECRET: 'smoke-settings-secret',
-      WEBHOOK_ALLOW_PRIVATE_HOSTS: 'true',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
+const worker = spawn('pnpm', ['exec', 'tsx', 'src/entrypoints/worker.ts'], {
+  cwd: new URL('..', import.meta.url).pathname,
+  // Same settings key and local-target override as the API: deliveries are
+  // signed (decrypt the stored secret) and re-validated in the worker.
+  env: {
+    ...process.env,
+    SETTINGS_SECRET: 'smoke-settings-secret',
+    WEBHOOK_ALLOW_PRIVATE_HOSTS: 'true',
   },
-);
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
 
 let stdout = '';
 child.stdout.on('data', (d) => (stdout += d.toString()));

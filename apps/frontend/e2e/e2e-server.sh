@@ -27,7 +27,7 @@ export PORT="$API_PORT"
 MOCK_PID=$!
 (cd "$ROOT/apps/backend" && pnpm exec tsx src/index.ts >/tmp/nexus-e2e-api.log 2>&1) &
 API_PID=$!
-(cd "$ROOT/apps/backend" && pnpm exec tsx src/workers/embedding.worker.ts >/tmp/nexus-e2e-worker.log 2>&1) &
+(cd "$ROOT/apps/backend" && pnpm exec tsx src/entrypoints/worker.ts >/tmp/nexus-e2e-worker.log 2>&1) &
 WORKER_PID=$!
 
 cleanup() {

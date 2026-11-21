@@ -7,12 +7,12 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dev": "concurrently -n api,worker -c cyan,magenta \"tsx watch src/index.ts\" \"tsx watch src/workers/embedding.worker.ts\"",
+    "dev": "concurrently -n api,worker -c cyan,magenta \"tsx watch src/index.ts\" \"tsx watch src/entrypoints/worker.ts\"",
     "dev:api": "tsx watch src/index.ts",
-    "dev:worker": "tsx watch src/workers/embedding.worker.ts",
+    "dev:worker": "tsx watch src/entrypoints/worker.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "tsx src/index.ts",
-    "start:worker": "tsx src/workers/embedding.worker.ts",
+    "start:worker": "tsx src/entrypoints/worker.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src scripts",
     "db:generate": "drizzle-kit generate",
