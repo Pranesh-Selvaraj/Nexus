@@ -9,9 +9,9 @@
  *
  * Restore with the documented drill in README.md (`pg_restore`).
  */
-import '../src/platform/env.js';
+import '../platform/env.js';
 
-import { runBackup } from '../src/modules/workspaces/backup.service.js';
+import { runBackup } from '../modules/workspaces/backup.service.js';
 
 try {
   const result = await runBackup();

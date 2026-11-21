@@ -23,7 +23,7 @@ VITE_PORT="${VITE_PORT:-5173}"
 export API_PORT="${API_PORT:-3000}"
 export PORT="$API_PORT"
 
-(cd "$ROOT/apps/backend" && pnpm exec tsx scripts/mock-openai.ts >/tmp/nexus-e2e-mock.log 2>&1) &
+(cd "$ROOT/apps/backend" && pnpm exec tsx tools/mock-openai.ts >/tmp/nexus-e2e-mock.log 2>&1) &
 MOCK_PID=$!
 (cd "$ROOT/apps/backend" && pnpm exec tsx src/index.ts >/tmp/nexus-e2e-api.log 2>&1) &
 API_PID=$!

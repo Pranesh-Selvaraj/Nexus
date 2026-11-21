@@ -187,7 +187,7 @@ try {
     method: 'POST',
     body: fd,
   });
-  const upBody = await up.json();
+  const upBody = (await up.json()) as { document?: { status?: string } };
   print(
     'upload txt',
     up.status === 201 && upBody?.document?.status === 'processing',
@@ -1382,7 +1382,9 @@ try {
     );
     const upEpub = await uploadTo(
       ingestWsId,
-      new File([epub], 'smoke-book.epub', { type: 'application/epub+zip' }),
+      new File([new Uint8Array(epub)], 'smoke-book.epub', {
+        type: 'application/epub+zip',
+      }),
     );
     const epubDoc = upEpub.body?.document;
     print(
@@ -1394,7 +1396,9 @@ try {
     // Same bytes twice: the second upload returns the existing document.
     const upEpubAgain = await uploadTo(
       ingestWsId,
-      new File([epub], 'copied-book.epub', { type: 'application/epub+zip' }),
+      new File([new Uint8Array(epub)], 'copied-book.epub', {
+        type: 'application/epub+zip',
+      }),
     );
     print(
       'duplicate upload returns the existing document',
@@ -1428,7 +1432,7 @@ try {
     );
     const upBomb = await uploadTo(
       ingestWsId,
-      new File([bomb], 'bomb.zip', { type: 'application/zip' }),
+      new File([new Uint8Array(bomb)], 'bomb.zip', { type: 'application/zip' }),
     );
     print(
       'zip bomb rejected before indexing',

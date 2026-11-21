@@ -51,6 +51,7 @@ function requireWorkspace(): string {
 async function api(
   route: string,
   init: { method?: string; body?: unknown } = {},
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the CLI transport wrapper: each command parses a different REST payload.
 ): Promise<any> {
   if (!apiKey) {
     throw new Error(
@@ -139,7 +140,9 @@ async function main(): Promise<void> {
         body: { workspaceId: requireWorkspace(), question },
       });
       console.log(result.answer);
-      const cited = (result.sources ?? []).filter((s: any) => s.cited);
+      const cited = (result.sources ?? []).filter(
+        (s: { cited?: boolean }) => s.cited,
+      );
       if (cited.length > 0) {
         console.log('\nSources:');
         for (const source of cited) {
@@ -170,7 +173,11 @@ async function main(): Promise<void> {
         headers: { authorization: `Bearer ${apiKey}` },
         body: form,
       });
-      const body = (await res.json()) as any;
+      const body = (await res.json()) as {
+        error?: string;
+        duplicate?: boolean;
+        document: { id: string; fileType: string };
+      };
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
       console.log(
         `${body.duplicate ? 'already indexed' : 'uploaded'} ${body.document.id} ` +
