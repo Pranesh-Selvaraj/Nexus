@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 import { ApiKeysCard } from './ApiKeysCard';
 import { JobsCard } from './JobsCard';
 import { StorageCard } from './StorageCard';

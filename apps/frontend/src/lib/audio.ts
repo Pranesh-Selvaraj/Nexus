@@ -2,7 +2,7 @@ import type {
   TranscriptionResult,
   TtsRequest,
   TtsResult,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 // ---------------------------------------------------------------------------
 // Audio HTTP client (cookie-authenticated, same-origin)

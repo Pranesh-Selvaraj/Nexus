@@ -5,10 +5,10 @@ import {
   API_SCOPE_LABELS,
   type ApiKeyDTO,
   type ApiScope,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 const DEFAULT_SCOPES: ApiScope[] = ['search', 'ask', 'documents:read'];
 

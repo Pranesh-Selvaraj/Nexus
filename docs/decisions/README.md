@@ -8,6 +8,7 @@ Each record captures one decision: the context that forced it, the choice, the a
 | [0002](0002-approximate-retrieval-at-scale.md) | Approximate retrieval at scale — per-dimension pgvector HNSW indexes, chunk-level workspace isolation and a measured load envelope instead of exact scans                                                          | Accepted | `v0.4.8`   |
 | [0003](0003-document-storage-abstraction.md)   | Document storage abstraction — a narrow `StorageDriver` (local disk or S3-compatible) behind `materialize`, so every parser keeps reading local files                                                              | Accepted | `v0.4.9`   |
 | [0004](0004-learning-portal-shell.md)          | Learning-portal shell — Home aggregates every topic, Topics is the primary object and a topic has Learn / Practice / Voice / Language modes instead of tabs                                                        | Accepted | `v0.4.11`  |
+| [0006](0006-modular-monolith.md)               | Modular monolith — module boundaries, naming legend, one config source and thin REST surfaces                                                                                                                      | Accepted | unreleased |
 | [0005](0005-brand-identity.md)                 | Brand identity — the braid mark, a lowercase Inter Tight wordmark shipped as outlines, one violet point, and SVG masters with generated rasters                                                                    | Accepted | unreleased |
 
 ## Writing a record

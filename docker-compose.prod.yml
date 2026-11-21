@@ -61,7 +61,7 @@ services:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
-    command: ['node', 'dist/apps/backend/src/workers/embedding.worker.js']
+    command: ['node', 'dist/apps/backend/src/entrypoints/worker.js']
     restart: unless-stopped
     env_file: .env
     environment:

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { VoiceConfig } from '@nexus/shared-types';
+import type { VoiceConfig } from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
 import { audioUrl, requestSpeech } from '../../lib/audio';
 import { speakSentences, speechSynthesisSupported } from '../../lib/speech';
-import { trpc } from '../../lib/trpc';
-import { MicButton } from './MicButton';
+import { trpc } from '../../platform/trpc';
+import { MicControl } from './MicControl';
 
 interface Props {
   workspaceId: string;
@@ -278,7 +278,7 @@ export function VoiceChatPanel({ workspaceId, config, onOpenChat }: Props) {
 
       <div className="border-t border-zinc-800 p-4">
         <div className="mx-auto flex max-w-3xl items-center justify-center gap-4">
-          <MicButton
+          <MicControl
             workspaceId={workspaceId}
             config={config}
             onTranscript={handleTranscript}

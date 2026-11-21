@@ -4,15 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "dev": "vite",
+    "lint": "eslint src",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "test:e2e": "playwright test",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nexus/shared-types": "workspace:*",
+    "@nexus/contracts": "workspace:*",
     "@tanstack/react-query": "^5.101.4",
     "@trpc/client": "^11.18.0",
     "@trpc/react-query": "^11.18.0",
@@ -33,12 +34,20 @@
     "@nexus/backend": "workspace:*",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.13",
     "@types/node": "^26.2.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^5.2.0",
+    "jsdom": "^27.4.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.3",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -1,4 +1,4 @@
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

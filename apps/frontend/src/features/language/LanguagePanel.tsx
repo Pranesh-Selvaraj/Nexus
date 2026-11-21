@@ -4,10 +4,10 @@ import type {
   DictationScore,
   VoiceConfig,
   VocabularyState,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 import { ReadAloudPlayer } from '../voice/ReadAloudPlayer';
 import { PronunciationPanel } from '../voice/PronunciationPanel';
 

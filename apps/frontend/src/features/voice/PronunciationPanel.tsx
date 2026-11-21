@@ -1,11 +1,11 @@
 import { useState } from 'react';
 
-import type { PronunciationScore, VoiceConfig } from '@nexus/shared-types';
+import type { PronunciationScore, VoiceConfig } from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 import { ReadAloudPlayer } from './ReadAloudPlayer';
-import { MicButton } from './MicButton';
+import { MicControl } from './MicControl';
 
 interface Props {
   workspaceId: string;
@@ -100,7 +100,7 @@ export function PronunciationPanel({ workspaceId, config }: Props) {
         )}
 
         <div className="mt-4 flex items-center gap-3">
-          <MicButton
+          <MicControl
             workspaceId={workspaceId}
             config={config}
             onTranscript={handleTranscript}

@@ -273,20 +273,21 @@ git tag -a v0.4.6 -m "Nexus v0.4.6" && git push origin v0.4.6
 
 ## Scripts
 
-| Command                                    | Description                                    |
-| ------------------------------------------ | ---------------------------------------------- |
-| `pnpm dev`                                 | Run frontend, API, and worker in watch mode    |
-| `pnpm build`                               | Type-check and build all packages              |
-| `pnpm typecheck`                           | Type-check all packages                        |
-| `pnpm db:up` / `pnpm db:down`              | Start / stop Postgres + Redis (Docker)         |
-| `pnpm --filter @nexus/backend db:migrate`  | Apply Drizzle migrations                       |
-| `pnpm --filter @nexus/backend db:generate` | Generate a new Drizzle migration               |
-| `pnpm --filter @nexus/backend dev:api`     | Run only the API in watch mode                 |
-| `pnpm --filter @nexus/backend dev:worker`  | Run only the embedding worker in watch mode    |
-| `pnpm --filter @nexus/backend cli --help`  | Nexus CLI (search/ask/upload/due/note)         |
-| `pnpm --filter @nexus/backend mcp`         | Start the MCP server on stdio                  |
-| `pnpm --filter @nexus/backend backup`      | Write a `pg_dump` backup (see Backups)         |
-| `pnpm brand:assets`                        | Re-render icons and cards from the SVG masters |
+| Command                                    | Description                                                |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| `pnpm dev`                                 | Run frontend, API, and worker in watch mode                |
+| `pnpm build`                               | Type-check and build all packages                          |
+| `pnpm typecheck`                           | Type-check all packages                                    |
+| `pnpm db:up` / `pnpm db:down`              | Start / stop Postgres + Redis (Docker)                     |
+| `pnpm --filter @nexus/backend db:migrate`  | Apply Drizzle migrations                                   |
+| `pnpm --filter @nexus/backend db:generate` | Generate a new Drizzle migration                           |
+| `pnpm --filter @nexus/backend dev:api`     | Run only the API in watch mode                             |
+| `pnpm --filter @nexus/backend dev:worker`  | Run only the embedding worker in watch mode                |
+| `pnpm --filter @nexus/backend cli --help`  | Nexus CLI (search/ask/upload/due/note)                     |
+| `pnpm --filter @nexus/backend mcp`         | Start the MCP server on stdio                              |
+| `pnpm --filter @nexus/backend backup`      | Write a `pg_dump` backup (see Backups)                     |
+| `pnpm release:prepare <version>`           | Verify the changelog section and bump all package versions |
+| `pnpm brand:assets`                        | Re-render icons and cards from the SVG masters             |
 
 ## Environment variables
 
@@ -637,14 +638,17 @@ Uses outside this repository: the GitHub repository social preview uses `assets/
 
 ## Documentation
 
-| Document                                    | What it covers                                                                                                                      |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [docs/MISSION.md](docs/MISSION.md)          | Why Nexus exists: the problem, the learning-science mapping, the feature-to-learning map, success criteria and non-goals            |
-| [docs/brand/BRAND.md](docs/brand/BRAND.md)  | The brand kit: mark construction and clear space, lockups, palette, typography, icon rules, voice and tone                          |
-| [docs/decisions/](docs/decisions/README.md) | Architecture decision records — ingestion and vision, retrieval at scale, storage, the learning-portal shell and the brand identity |
-| [SECURITY.md](SECURITY.md)                  | Supported versions, the threat model, hardening and how to report a vulnerability                                                   |
-| [CONTRIBUTING.md](CONTRIBUTING.md)          | Development setup, branching, review checklists, commit conventions and the test suites                                             |
-| [CHANGELOG.md](CHANGELOG.md)                | Release notes, one detailed section per tag (the published release body)                                                            |
+| Document                                          | What it covers                                                                                                                      |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [docs/MISSION.md](docs/MISSION.md)                | Why Nexus exists: the problem, the learning-science mapping, the feature-to-learning map, success criteria and non-goals            |
+| [docs/brand/BRAND.md](docs/brand/BRAND.md)        | The brand kit: mark construction and clear space, lockups, palette, typography, icon rules, voice and tone                          |
+| [docs/decisions/](docs/decisions/README.md)       | Architecture decision records — ingestion and vision, retrieval at scale, storage, the learning-portal shell and the brand identity |
+| [docs/architecture/](docs/architecture/README.md) | Processes, module map, request paths and the recipe for adding a feature                                                            |
+| [docs/runbooks/](docs/runbooks/README.md)         | Restore a backup, rotate secrets, unstick the queue, read health and metrics                                                        |
+| [docs/api/](docs/api/README.md)                   | REST v1: scopes, endpoints and examples                                                                                             |
+| [SECURITY.md](SECURITY.md)                        | Supported versions, the threat model, hardening and how to report a vulnerability                                                   |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                | Development setup, branching, review checklists, commit conventions and the test suites                                             |
+| [CHANGELOG.md](CHANGELOG.md)                      | Release notes, one detailed section per tag (the published release body)                                                            |
 
 ## CI/CD and security
 

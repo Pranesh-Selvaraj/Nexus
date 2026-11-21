@@ -2,14 +2,14 @@ import { useState } from 'react';
 
 import { ChatPanel } from '../chat/ChatPanel';
 import { LanguagePanel } from '../language/LanguagePanel';
-import { MembersDialog } from '../share/MembersDialog';
-import { ShareDialog } from '../share/ShareDialog';
+import { MembersDialog } from '../sharing/MembersDialog';
+import { ShareDialog } from '../sharing/ShareDialog';
 import { StudyPanel } from '../study/StudyPanel';
-import { DocumentList } from '../upload/DocumentList';
-import { UploadDropzone } from '../upload/UploadDropzone';
+import { DocumentList } from '../documents/DocumentList';
+import { UploadDropzone } from '../documents/UploadDropzone';
 import { VoiceChatPanel } from '../voice/VoiceChatPanel';
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 type Tab = 'learn' | 'practice' | 'voice' | 'language';
 

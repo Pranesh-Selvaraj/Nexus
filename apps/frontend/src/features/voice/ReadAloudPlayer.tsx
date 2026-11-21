@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import type { TtsResult, TtsVoice, VoiceConfig } from '@nexus/shared-types';
-import { TTS_VOICES } from '@nexus/shared-types';
+import type { TtsResult, TtsVoice, VoiceConfig } from '@nexus/contracts';
+import { TTS_VOICES } from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
 import { audioUrl, requestSpeech } from '../../lib/audio';

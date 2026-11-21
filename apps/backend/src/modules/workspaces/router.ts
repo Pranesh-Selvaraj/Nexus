@@ -1,0 +1,212 @@
+import { TRPCError } from '@trpc/server';
+import { eq, sql } from 'drizzle-orm';
+import { z } from 'zod';
+
+import type {
+  WorkspaceArchive,
+  WorkspaceDTO,
+  WorkspaceMetadata,
+} from '@nexus/contracts';
+import {
+  createWorkspaceInputSchema,
+  updateWorkspaceInputSchema,
+  workspaceArchiveSchema,
+  workspaceIdSchema,
+} from '@nexus/contracts';
+
+import { db } from '../../platform/db/index.js';
+import { documents, workspaces } from '../../platform/db/schema/index.js';
+import { protectedProcedure, t } from '../../platform/auth/context.js';
+import {
+  exportWorkspaceArchive,
+  importWorkspaceArchive,
+} from './archive.service.js';
+import { ApiError } from '../../platform/errors.js';
+import { assertWorkspaceAccessTrpc } from './access.trpc.js';
+import { ensureOwnerMembership } from './member.service.js';
+import { storage } from '../../platform/storage/index.js';
+
+const importWorkspaceInputSchema = z.object({
+  archive: workspaceArchiveSchema,
+});
+
+interface WorkspaceRow {
+  id: string;
+  name: string;
+  description: string | null;
+  metadata: WorkspaceMetadata | null;
+  created_at: Date;
+  document_count: number;
+  role?: 'owner' | 'editor' | 'reader';
+}
+
+function toWorkspaceDTO(row: WorkspaceRow): WorkspaceDTO {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    documentCount: Number(row.document_count),
+    createdAt: new Date(row.created_at).toISOString(),
+    metadata: row.metadata ?? null,
+    role: row.role,
+  };
+}
+
+export const workspaceRouter = t.router({
+  list: protectedProcedure.query(async ({ ctx }): Promise<WorkspaceDTO[]> => {
+    const result = await db.execute(
+      sql`
+        SELECT w.id, w.name, w.description, w.metadata, w.created_at,
+               (SELECT COUNT(*)::int FROM documents d
+                WHERE d.workspace_id = w.id
+                  AND d.status <> 'deleted') AS document_count,
+               CASE WHEN w.user_id = ${ctx.user.id} THEN 'owner'
+                    ELSE (SELECT m.role FROM workspace_members m
+                          WHERE m.workspace_id = w.id AND m.user_id = ${ctx.user.id})
+               END AS role
+        FROM workspaces w
+        WHERE (w.user_id = ${ctx.user.id} OR EXISTS (
+          SELECT 1 FROM workspace_members m
+          WHERE m.workspace_id = w.id AND m.user_id = ${ctx.user.id}
+        ))
+        ORDER BY w.created_at DESC
+      `,
+    );
+    const rows = (result as unknown as { rows: WorkspaceRow[] }).rows;
+    return rows.map(toWorkspaceDTO);
+  }),
+
+  create: protectedProcedure
+    .input(createWorkspaceInputSchema)
+    .mutation(async ({ ctx, input }): Promise<WorkspaceDTO> => {
+      const [created] = await db
+        .insert(workspaces)
+        .values({
+          userId: ctx.user.id,
+          name: input.name.trim(),
+          description: input.description?.trim() || null,
+        })
+        .returning();
+      if (!created) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+      }
+      await ensureOwnerMembership(created.id, ctx.user.id);
+      return toWorkspaceDTO({
+        id: created.id,
+        name: created.name,
+        description: created.description,
+        metadata: created.metadata ?? null,
+        created_at: created.createdAt,
+        document_count: 0,
+        role: 'owner',
+      });
+    }),
+
+  update: protectedProcedure
+    .input(updateWorkspaceInputSchema)
+    .mutation(async ({ ctx, input }): Promise<WorkspaceDTO> => {
+      await assertWorkspaceAccessTrpc(ctx.user.id, input.workspaceId, 'owner');
+      const [workspace] = await db
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, input.workspaceId))
+        .limit(1);
+      if (!workspace) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Workspace not found',
+        });
+      }
+
+      const [updated] = await db
+        .update(workspaces)
+        .set({
+          name: input.name ? input.name.trim() : workspace.name,
+          description:
+            input.description !== undefined
+              ? input.description.trim() || null
+              : workspace.description,
+        })
+        .where(eq(workspaces.id, workspace.id))
+        .returning();
+      if (!updated) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+      }
+
+      const [docCount] = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(documents)
+        .where(eq(documents.workspaceId, updated.id));
+      if (!docCount) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+      }
+      return toWorkspaceDTO({
+        id: updated.id,
+        name: updated.name,
+        description: updated.description,
+        metadata: updated.metadata ?? null,
+        created_at: updated.createdAt,
+        document_count: Number(docCount.count),
+        role: 'owner',
+      });
+    }),
+
+  delete: protectedProcedure
+    .input(workspaceIdSchema)
+    .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
+      await assertWorkspaceAccessTrpc(ctx.user.id, input.workspaceId, 'owner');
+      const [deleted] = await db
+        .delete(workspaces)
+        .where(eq(workspaces.id, input.workspaceId))
+        .returning({ id: workspaces.id });
+      if (!deleted) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Workspace not found',
+        });
+      }
+
+      // Remove the workspace's uploaded files (the DB rows cascade, but the
+      // stored objects do not).
+      await storage.deletePrefix(deleted.id).catch(() => undefined);
+      return { deleted: true };
+    }),
+
+  /**
+   * Full workspace backup: metadata, uploaded file contents (base64) and
+   * the complete chat history. Restore with `import`.
+   */
+  export: protectedProcedure
+    .input(workspaceIdSchema)
+    .query(async ({ ctx, input }): Promise<WorkspaceArchive> => {
+      return exportWorkspaceArchive(ctx.user.id, input.workspaceId).catch(
+        (err: unknown) => {
+          if (err instanceof ApiError) {
+            throw new TRPCError({
+              code: err.status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST',
+              message: err.message,
+            });
+          }
+          throw err;
+        },
+      );
+    }),
+
+  /**
+   * Restore an exported workspace (documents are re-indexed). Kept for API
+   * clients; the UI uses the streaming `/api/workspace/import` endpoint so
+   * large archives are not limited by the JSON body cap.
+   */
+  import: protectedProcedure
+    .input(importWorkspaceInputSchema)
+    .mutation(async ({ ctx, input }): Promise<WorkspaceDTO> => {
+      try {
+        return await importWorkspaceArchive(ctx.user.id, input.archive);
+      } catch (err) {
+        if (err instanceof Error) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message });
+        }
+        throw err;
+      }
+    }),
+});

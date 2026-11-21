@@ -71,5 +71,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 # The worker runs the same image with a different command:
-#   node dist/apps/backend/src/workers/embedding.worker.js
+#   node dist/apps/backend/src/entrypoints/worker.js
 CMD ["node", "dist/apps/backend/src/index.js"]

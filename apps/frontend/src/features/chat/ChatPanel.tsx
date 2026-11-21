@@ -1,61 +1,28 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 
 import {
-  isImageFileType,
   VISION_MODES,
-  type ChatHistoryMessage,
-  type MessageDTO,
   type RetrievalDebug,
   type Source,
-  type Usage,
   type VisionMode,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
+import { Markdown, MarkdownFallback } from '../../components/LazyMarkdown';
 import { useToast } from '../../components/Toast';
 import { documentImageUrl } from '../../lib/document-format';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 import { ReadAloudPlayer } from '../voice/ReadAloudPlayer';
-import { MicButton } from '../voice/MicButton';
+import { MicControl } from '../voice/MicControl';
 
-// KaTeX + syntax highlighting are large; keep them out of the workspace chunk
-// and load the renderer the first time an answer is displayed.
-const Markdown = lazy(() =>
-  import('../../components/Markdown').then((m) => ({ default: m.Markdown })),
-);
-
-/** Plain-text stand-in while the renderer chunk loads. */
-function MarkdownFallback({ content }: { content: string }) {
-  return <span className="whitespace-pre-wrap">{content}</span>;
-}
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  sources?: Source[];
-  /** Image documents attached to a user turn (vision chat). */
-  attachments?: { imageDocumentIds: string[] } | null;
-  usage?: Usage | null;
-  feedback?: 'up' | 'down' | null;
-  retrieval?: RetrievalDebug | null;
-  error?: boolean;
-  stopped?: boolean;
-}
+import { PlusIcon, SendIcon, StopIcon, TrashIcon, ImageIcon } from './icons';
+import { RetrievalInspector } from './RetrievalInspector';
+import { SourcesPanel } from './SourcesPanel';
+import { formatRelative, toLocalMessage } from './utils';
+import type { Message, PendingQuestion } from './types';
 
 interface Props {
   workspaceId: string;
-}
-
-interface PendingQuestion {
-  workspaceId: string;
-  message: string;
-  conversationId?: string;
-  history: ChatHistoryMessage[];
-  regenerate?: boolean;
-  persona?: string;
-  imageDocumentIds?: string[];
-  visionMode?: VisionMode;
 }
 
 /** Tokens are flushed to state at most this often while streaming. */
@@ -841,7 +808,7 @@ export function ChatPanel({ workspaceId }: Props) {
                             {message.attachments?.imageDocumentIds.length ? (
                               <div className="mb-2 flex flex-wrap gap-1.5">
                                 {message.attachments.imageDocumentIds.map(
-                                  (imageId) => (
+                                  (imageId: string) => (
                                     <a
                                       key={imageId}
                                       href={documentImageUrl(imageId)}
@@ -1102,7 +1069,7 @@ export function ChatPanel({ workspaceId }: Props) {
                     <ImageIcon className="h-4 w-4" />
                   </button>
                 )}
-                <MicButton
+                <MicControl
                   workspaceId={workspaceId}
                   config={voiceConfig.data}
                   disabled={streaming}
@@ -1236,335 +1203,4 @@ export function ChatPanel({ workspaceId }: Props) {
   );
 }
 
-function toLocalMessage(message: MessageDTO): Message {
-  return {
-    id: message.id,
-    role: message.role,
-    content: message.content,
-    sources: message.sources ?? undefined,
-    attachments: message.attachments ?? undefined,
-    usage: message.usage,
-    feedback: message.feedback ?? null,
-    retrieval: message.retrievalDebug ?? null,
-    error: message.kind === 'error',
-  };
-}
-
-function formatRelative(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function pct(value: number | undefined): string {
-  return value == null ? '—' : `${Math.round(value * 100)}%`;
-}
-
-function SourcesPanel({
-  sources,
-  onInspect,
-}: {
-  sources: Source[];
-  onInspect?: () => void;
-}) {
-  return (
-    <div className="mt-3 border-t border-zinc-800 pt-2">
-      <div className="mb-1.5 flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          Sources
-        </p>
-        {onInspect && (
-          <button
-            onClick={onInspect}
-            className="text-[10px] text-nexus-300 hover:underline"
-          >
-            Why these sources?
-          </button>
-        )}
-      </div>
-      <div className="space-y-1">
-        {sources.map((source, i) => (
-          <details
-            key={source.id}
-            className="group rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5 py-1.5"
-          >
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-zinc-300">
-              <span className="shrink-0 font-mono text-nexus-400">{i + 1}</span>
-              {source.cited && (
-                <span
-                  title="Cited in the answer"
-                  className="shrink-0 text-emerald-400"
-                >
-                  ✓
-                </span>
-              )}
-              <span className="shrink-0 text-zinc-600">·</span>
-              <span className="min-w-0 flex-1 truncate">{source.title}</span>
-              {source.page != null && (
-                <span className="shrink-0 text-zinc-600">
-                  p.{source.page}
-                  {source.pageEnd != null && source.pageEnd !== source.page
-                    ? `–${source.pageEnd}`
-                    : ''}
-                </span>
-              )}
-              <span className="shrink-0 text-zinc-600">
-                {Math.round(source.similarity * 100)}%
-              </span>
-            </summary>
-            {source.headingPath && source.headingPath.length > 0 && (
-              <p className="mt-1 text-[10px] uppercase tracking-wide text-zinc-600">
-                {source.headingPath.join(' › ')}
-              </p>
-            )}
-            {isImageFileType(source.fileType) && (
-              <div className="mt-1.5 flex items-start gap-2">
-                <img
-                  src={documentImageUrl(source.documentId)}
-                  alt=""
-                  className="h-16 w-16 shrink-0 rounded border border-zinc-800 object-cover"
-                />
-                <p className="text-[10px] text-zinc-600">
-                  {source.attached
-                    ? `Attached image - its indexed description is source ${i + 1}`
-                    : `Image source ${i + 1}`}
-                </p>
-              </div>
-            )}
-            <p className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-zinc-500 group-open:line-clamp-none line-clamp-4">
-              {source.content}
-            </p>
-            {(source.vectorScore != null ||
-              source.keywordScore != null ||
-              source.fusedScore != null) && (
-              <p className="mt-1 text-[10px] text-zinc-600">
-                vector {pct(source.vectorScore)} · keyword{' '}
-                {pct(source.keywordScore)} · fused {pct(source.fusedScore)}
-              </p>
-            )}
-          </details>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /** Modal explaining how the sources for an answer were selected. */
-function RetrievalInspector({
-  debug,
-  onClose,
-}: {
-  debug: RetrievalDebug;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Retrieval inspector"
-      onClick={onClose}
-    >
-      <div
-        className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 p-5"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="mb-3 flex items-start justify-between">
-          <div>
-            <h2 className="text-base font-semibold">Retrieval inspector</h2>
-            <p className="text-xs text-zinc-500">
-              How this answer's sources were selected.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close inspector"
-            className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-          >
-            ✕
-          </button>
-        </div>
-
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
-          <Stat label="Profile" value={debug.profile} />
-          <Stat
-            label="Rewritten query"
-            value={debug.rewritten ? 'yes' : 'no'}
-          />
-          <Stat label="Reranked" value={debug.reranked ? 'yes' : 'no'} />
-          <Stat
-            label="Vector candidates"
-            value={String(debug.vectorCandidates)}
-          />
-          <Stat
-            label="Keyword candidates"
-            value={String(debug.keywordCandidates)}
-          />
-          <Stat
-            label="Context budget"
-            value={`${debug.usedTokens} / ${debug.tokenBudget} tokens`}
-          />
-          <Stat label="Min vector score" value={String(debug.minScore)} />
-        </dl>
-
-        {debug.rewritten && (
-          <p className="mt-3 rounded-lg bg-zinc-950/60 px-3 py-2 text-xs text-zinc-400">
-            <span className="text-zinc-500">Original:</span>{' '}
-            {debug.originalQuery}
-            <br />
-            <span className="text-zinc-500">Searched for:</span>{' '}
-            {debug.searchQuery}
-          </p>
-        )}
-
-        <div className="mt-4">
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-            Candidates ({debug.candidates.length})
-          </p>
-          <div className="space-y-1">
-            {debug.candidates.map((candidate) => (
-              <div
-                key={candidate.id}
-                className={`rounded-lg border px-3 py-2 text-xs ${
-                  candidate.selected
-                    ? 'border-nexus-700/60 bg-nexus-950/20'
-                    : 'border-zinc-800 bg-zinc-950/40'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-zinc-500">
-                    #{candidate.rank}
-                    {candidate.rerankedRank != null &&
-                    candidate.rerankedRank !== candidate.rank
-                      ? ` → ${candidate.rerankedRank}`
-                      : ''}
-                  </span>
-                  {candidate.selected && (
-                    <span className="rounded bg-nexus-600/30 px-1.5 text-[10px] text-nexus-200">
-                      selected
-                    </span>
-                  )}
-                  <span className="truncate text-zinc-300">
-                    {candidate.title}
-                  </span>
-                  {candidate.page != null && (
-                    <span className="text-zinc-600">p.{candidate.page}</span>
-                  )}
-                  <span className="ml-auto shrink-0 text-zinc-500">
-                    v {pct(candidate.vectorScore)} · k{' '}
-                    {pct(candidate.keywordScore)} · f{' '}
-                    {pct(candidate.fusedScore)}
-                  </span>
-                </div>
-                <p className="mt-1 line-clamp-2 text-zinc-500">
-                  {candidate.contentPreview}
-                </p>
-              </div>
-            ))}
-            {debug.candidates.length === 0 && (
-              <p className="text-xs text-zinc-600">
-                No candidates were retrieved for this question.
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-zinc-500">{label}</dt>
-      <dd className="text-zinc-300">{value}</dd>
-    </div>
-  );
-}
-
-function PlusIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className={className}
-    >
-      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TrashIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className={className}
-    >
-      <path
-        d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function SendIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className={className}
-    >
-      <path
-        d="m22 2-7 20-4-9-9-4z"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M22 2 11 13" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ImageIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <circle cx="8.5" cy="9.5" r="1.5" />
-      <path d="m4 17 5-5 4 4 3-3 4 4" />
-    </svg>
-  );
-}
-
-function StopIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
-      <rect x="6" y="6" width="12" height="12" rx="2" />
-    </svg>
-  );
-}

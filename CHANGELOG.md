@@ -4,6 +4,47 @@ All notable changes to Nexus are documented here. The format is based on [Keep a
 
 Releases are listed newest first. Every release uses the same layout: a `## [X.Y.Z] - YYYY-MM-DD` heading, an emoji on each section, and one emoji-prefixed, single-line entry per change. The release workflow extracts the section matching the pushed tag and publishes it verbatim as the GitHub Release body. Nexus is pre-1.0: the line continues in small, contained steps (`0.3.1 → 0.4.0 → … → 0.4.5`), and a feature-heavy release gets a patch bump rather than a new major.
 
+## [Unreleased]
+
+The codebase is now organised by feature instead of by layer. The backend boots from a 12-line entrypoint instead of a 1025-line file, every feature lives in one module folder, the environment is validated once at boot, and the 1435-line contract package is split by domain. The frontend keeps its two biggest components from owning a third of the code, and the repository has a written architecture, runbooks and an enforced boundary rule. No user-facing behaviour changed: same routes, same payloads, same database schema, same screens.
+
+### 🔧 Changed
+
+- 🧱 **The composition root is split.** `index.ts` (1025 lines) became a 12-line entrypoint; `main.ts` owns process concerns (database wait, migrations, local account, servers, shutdown), `http/app.ts` builds the Express application without I/O, and eight `http/rest/*.routes.ts` files carry the REST surfaces (auth, upload, ingest, media, archive, share, export, ops). The app can now be constructed in a test without opening a socket.
+- 🧩 **The backend is a modular monolith.** 152 files moved: fourteen modules (`workspaces`, `documents`, `ingestion`, `retrieval`, `chat`, `study`, `language`, `voice`, `vision`, `settings`, `api-keys`, `webhooks`, `dashboard`, `pack`) each hold their router, services, tests and parsers; `platform/` holds config, auth, storage, queue, observability and errors; `shared/` holds DTO mapping, upload paths, multer and sanitising. The old flat `services/`, `routers/`, `middleware/`, `utils/`, `queues/`, `routes/`, `types/` and `domain-packs/` directories are gone.
+- ⚙️ **Configuration is validated once.** `platform/config.ts` parses the environment with zod, applies defaults, exposes typed `config`, and refuses to boot with every invalid key listed. `AUTH_PASSWORD`, `ALLOW_REGISTRATION`, `AUTH_COOKIE_SECURE`, `LOCAL_USER_EMAIL`, `PORT` and `FRONTEND_ORIGIN` are read from it; five unit tests pin the defaults and the failure messages.
+- 🗃️ **The database schema is split by module.** The 829-line `db/schema.ts` became `db/schema/{auth,workspaces,documents,chat,study,language,voice,settings,enums,types}.ts` re-exported from a barrel, and the whole data layer moved to `platform/db/`. `drizzle-kit generate` reports no schema changes, so migrations and snapshots are untouched.
+- 🧾 **One REST error contract.** `platform/errors.ts` defines the `{ error }` body, `ApiError` and `sendApiError(res, err)`, replacing four hand-rolled copies of the mapping; wording and statuses are unchanged.
+- 🧠 **The worker is named as an entrypoint.** `src/workers/embedding.worker.ts` became `src/entrypoints/worker.ts` beside the API entrypoint, with scripts, smoke suite, e2e server, compose command and Dockerfile following.
+- 🖥️ **Two frontend god-components are gone.** `ChatPanel` went from 1570 to 1206 lines with `types`, `utils`, `icons`, `SourcesPanel` and `RetrievalInspector` extracted; `StudyPanel` went from 1289 to 130 lines with `Dashboard`, `ReviewSession`, `Decks`, `Quizzes` (and `QuizRunner`), `Artifacts`, `Notes` and `constants` extracted. One shared lazy Markdown wrapper replaces the two copies.
+- 🧭 **The frontend has an app shell and a platform layer.** `src/app/` holds `App` and `main` (and `index.html` points at it), `src/platform/` holds the tRPC client, session invalidation and the offline queue, and `use-review-sync` moved into the study feature. `upload/` became `documents/` and `share/` became `sharing/`.
+- 🧰 **Presentation primitives exist.** `src/ui/{Button,Field,Panel}` carry the loading state, hint/error/`aria-invalid` and the card surface; the login screen uses them, and its local field classes and duplicated submit markup are gone.
+- 📦 **The contract package is split and renamed.** `packages/shared-types` (`@nexus/shared-types`, 1435 lines in one file) is now `packages/contracts` (`@nexus/contracts`) with eighteen domain files behind a 19-line barrel; cross-domain references are explicit imports.
+- 🏷️ **Naming follows one legend.** `LoginScreen` → `LoginPage`, `PortalNav` → `Sidebar`, `MicButton` → `MicControl`, and the `packs` namespace became `pack`, so module, folder and tRPC namespace share one singular domain noun.
+- 🛠️ **The CLI is separated from the harness.** `src/cli/{cli,mcp,backup,storage-selftest}.ts` are typechecked, linted and compiled into the image; `tools/{smoke,load-test,mock-openai}.ts` stay development-only.
+
+### ✨ Added
+
+- 📐 **ADR 0006** records the modular-monolith boundaries, the naming legend, the entrypoints and the single configuration source; the ADR index links it.
+- 🚧 **Boundaries are enforced by lint.** A module cannot import another module's router or tests, and `src/ui` cannot import `src/features`. A probe import is rejected in CI.
+- 🧪 **A frontend component-test harness.** Vitest + Testing Library (jsdom, jest-dom, user-event) with 12 tests covering the button, the field, chat formatting and the login flow (tabs, success, mapped 401 with cleared password, closed-instance hint). `pnpm test` now runs 291 tests across three packages.
+- 📚 **Architecture, runbook and API documentation.** `docs/architecture/` (processes, module map, every request path, feature recipe), `docs/runbooks/` (restore, rotate each secret, stuck queue, health), `docs/api/` (REST v1 scopes, routes, curl examples) — linked from the README.
+- 🚀 **`pnpm release:prepare <version>`** verifies the changelog section, bumps all four package versions, supports `--dry-run`, and prints the tag commands without committing or pushing.
+- 🧾 **CONTRIBUTING documents branch prefixes** (`feat/ fix/ refactor/ docs/ chore/ ci/ release/`) and the full commit-type vocabulary, and every package declares `engines.node >= 22`.
+
+### 🐛 Fixed
+
+- 🧭 **A feature used to span two layers.** Adding a capability meant touching `routers/`, `services/`, `middleware/` and sometimes `utils/`; it is now one module folder, with the boundary written down and linted.
+- 🧱 **A typo in an environment variable failed at request time.** It now fails the boot with a list of invalid keys; an empty `AUTH_PASSWORD` still means "auth disabled".
+- 🧪 **The UI had no tests below Playwright.** The login flow, the primitives and the chat formatting helpers are covered by unit tests, so a regression fails in seconds rather than in a browser run.
+- 🔁 **The release version could drift.** Four `package.json` files were bumped by hand and a tag could be pushed without its changelog section; the release script now refuses both.
+- 🧹 **The smoke harness was never typechecked and the CLI was never built.** The CLI is compiled and typechecked with the API; the harness remains intentionally excluded and is documented as such.
+
+### 📝 Notes
+
+- 🧪 **Verification:** typecheck, lint, formatting, 291 unit tests, forced build, 6/6 Playwright suites and the integration smoke suite at **176/176** on a clean database with a dedicated Redis, after every commit. `drizzle-kit generate` reports no schema changes; the public tRPC and REST surfaces are unchanged.
+- ⏳ **Deliberately not included:** OpenAPI generation from the contract schemas (the API doc is the canonical route list until then), typing the JS smoke harness, and merging `quiz`/`artifacts`/`notes` into the `study` namespace (they are documented as sanctioned sub-namespaces).
+
 ## [0.4.14] - 2026-11-11
 
 Nexus has an identity of its own. The mark is a **braid** — two strands woven with an over-and-under that alternates at each crossing — because the product takes many sources and weaves them into one grounded answer. The wordmark is lowercase **nexus** set tight and heavy in Inter Tight ExtraBold and closed by a single violet **point**. Every surface that carries the name now comes from one set of SVG masters: the sidebar, the mobile header, the login screen, the tab icon, the installable PWA, the repository page and the social card. The login screen was rebuilt at the same time so a self-hosted instance offers sign-in and registration plainly, tells a first-time visitor which account to use, and explains itself when registration is closed.

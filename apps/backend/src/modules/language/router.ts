@@ -1,0 +1,130 @@
+import { and, eq } from 'drizzle-orm';
+import { TRPCError } from '@trpc/server';
+
+import type {
+  CefrProfile,
+  DictationScore,
+  MineVocabularyResult,
+  VocabularyItemDTO,
+} from '@nexus/contracts';
+import {
+  deleteVocabularyInputSchema,
+  dictationScoreInputSchema,
+  listVocabularyInputSchema,
+  mineVocabularyInputSchema,
+  updateVocabularyInputSchema,
+  workspaceIdSchema,
+} from '@nexus/contracts';
+
+import { db } from '../../platform/db/index.js';
+import { workspaceAccessPredicate } from '../workspaces/access.service.js';
+import { vocabularyItems, workspaces } from '../../platform/db/schema/index.js';
+import { protectedProcedure, t } from '../../platform/auth/context.js';
+import { assertWorkspaceAccessTrpc } from '../workspaces/access.trpc.js';
+import { estimateCefr, scoreDictation } from './language.service.js';
+import {
+  deleteVocabulary,
+  listVocabulary,
+  mineAndStore,
+  updateVocabulary,
+} from './vocabulary.service.js';
+
+async function assertWorkspaceOwnership(
+  userId: string,
+  workspaceId: string,
+  minRole: 'reader' | 'editor' | 'owner' = 'reader',
+): Promise<void> {
+  await assertWorkspaceAccessTrpc(userId, workspaceId, minRole);
+}
+
+async function assertVocabularyOwnership(
+  userId: string,
+  vocabularyId: string,
+): Promise<typeof vocabularyItems.$inferSelect> {
+  const [row] = await db
+    .select({ item: vocabularyItems })
+    .from(vocabularyItems)
+    .innerJoin(workspaces, eq(workspaces.id, vocabularyItems.workspaceId))
+    .where(
+      and(
+        eq(vocabularyItems.id, vocabularyId),
+        workspaceAccessPredicate(userId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Vocabulary item not found',
+    });
+  }
+  return row.item;
+}
+
+export const languageRouter = t.router({
+  vocabulary: t.router({
+    list: protectedProcedure
+      .input(listVocabularyInputSchema)
+      .query(async ({ ctx, input }): Promise<VocabularyItemDTO[]> => {
+        await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+        return listVocabulary(input.workspaceId, {
+          state: input.state,
+          query: input.query,
+        });
+      }),
+
+    /** Mine terms from a passage and create a card per new term. */
+    mine: protectedProcedure
+      .input(mineVocabularyInputSchema)
+      .mutation(async ({ ctx, input }): Promise<MineVocabularyResult> => {
+        await assertWorkspaceOwnership(
+          ctx.user.id,
+          input.workspaceId,
+          'editor',
+        );
+        return mineAndStore(input);
+      }),
+
+    update: protectedProcedure
+      .input(updateVocabularyInputSchema)
+      .mutation(async ({ ctx, input }): Promise<VocabularyItemDTO> => {
+        await assertVocabularyOwnership(ctx.user.id, input.vocabularyId);
+        return updateVocabulary(input.vocabularyId, {
+          state: input.state,
+          translation: input.translation,
+        });
+      }),
+
+    delete: protectedProcedure
+      .input(deleteVocabularyInputSchema)
+      .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
+        await assertVocabularyOwnership(ctx.user.id, input.vocabularyId);
+        return { deleted: await deleteVocabulary(input.vocabularyId) };
+      }),
+  }),
+
+  cefr: t.router({
+    /** Recompute and return the CEFR estimate per skill. */
+    get: protectedProcedure
+      .input(workspaceIdSchema)
+      .query(async ({ ctx, input }): Promise<CefrProfile> => {
+        await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+        return estimateCefr(input.workspaceId);
+      }),
+  }),
+
+  dictation: t.router({
+    score: protectedProcedure
+      .input(dictationScoreInputSchema)
+      .mutation(async ({ ctx, input }): Promise<DictationScore> => {
+        await assertWorkspaceOwnership(ctx.user.id, input.workspaceId);
+        return scoreDictation({
+          userId: ctx.user.id,
+          workspaceId: input.workspaceId,
+          target: input.target,
+          typed: input.typed,
+          language: input.language,
+        });
+      }),
+  }),
+});

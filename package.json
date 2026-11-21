@@ -5,16 +5,17 @@
   "description": "Nexus \u2014 self-hosted learning workspace that turns anything you read, watch or photograph into grounded, practiceable knowledge",
   "packageManager": "pnpm@11.21.0",
   "scripts": {
-    "dev": "turbo run dev",
+    "brand:assets": "node scripts/brand-assets.mjs",
     "build": "turbo run build",
-    "typecheck": "turbo run typecheck",
-    "lint": "turbo run lint",
+    "db:down": "docker compose down",
+    "db:up": "docker compose up -d",
+    "dev": "turbo run dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "brand:assets": "node scripts/brand-assets.mjs",
-    "db:up": "docker compose up -d",
-    "db:down": "docker compose down",
-    "test": "turbo run test"
+    "lint": "turbo run lint",
+    "release:prepare": "node scripts/release-prepare.mjs",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -29,5 +30,8 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "engines": {
+    "node": ">=22"
+  }
 }

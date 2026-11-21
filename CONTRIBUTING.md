@@ -51,6 +51,22 @@ Verify your setup works by opening http://localhost:5173 and creating a workspac
 
 > 🐳 Using a different database? Update `DATABASE_URL` in `.env` accordingly. Never commit `.env`.
 
+## Branch naming
+
+Short-lived branches cut from the latest `main`, one per change set:
+
+| Prefix      | Use                                                     |
+| ----------- | ------------------------------------------------------- |
+| `feat/`     | a new capability (`feat/workspace-export`)              |
+| `fix/`      | a defect (`fix/upload-timeout`)                         |
+| `refactor/` | structure without behaviour change (`refactor/modules`) |
+| `docs/`     | documentation or brand assets                           |
+| `chore/`    | dependencies, tooling, metadata                         |
+| `ci/`       | workflows and pipelines                                 |
+| `release/`  | the version-bump commit before a tag                    |
+
+Commit types follow the same vocabulary, plus `test:` for test-only changes and `perf:` for measured improvements. `refactor:`, `perf:`, `ci:` and `build:` are valid Conventional Commit types and should be used instead of stretching `feat:`/`chore:`.
+
 ## Branching strategy
 
 - The default branch is `main`. It is **protected**.
