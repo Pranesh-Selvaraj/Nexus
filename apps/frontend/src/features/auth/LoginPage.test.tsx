@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { fetchAuthConfig, login, register } from '../../lib/auth';
-import { LoginScreen } from './LoginScreen';
+import { LoginPage } from './LoginPage';
 
 vi.mock('../../lib/auth', () => ({
   fetchAuthConfig: vi.fn(),
@@ -27,9 +27,9 @@ beforeEach(() => {
   mocked.login.mockResolvedValue({ ok: true, status: 200 });
 });
 
-describe('LoginScreen', () => {
+describe('LoginPage', () => {
   it('offers sign-in and registration when the instance allows it', async () => {
-    render(<LoginScreen onAuthed={() => {}} />);
+    render(<LoginPage onAuthed={() => {}} />);
 
     expect(
       await screen.findByRole('tab', { name: 'Create account' }),
@@ -39,7 +39,7 @@ describe('LoginScreen', () => {
 
   it('signs in and reports success to the caller', async () => {
     const onAuthed = vi.fn();
-    render(<LoginScreen onAuthed={onAuthed} />);
+    render(<LoginPage onAuthed={onAuthed} />);
     await screen.findByRole('tab', { name: 'Create account' });
 
     await userEvent.type(screen.getByLabelText('Email'), 'local@nexus.dev');
@@ -56,7 +56,7 @@ describe('LoginScreen', () => {
       status: 401,
       error: 'That email and password do not match.',
     });
-    render(<LoginScreen onAuthed={() => {}} />);
+    render(<LoginPage onAuthed={() => {}} />);
     await screen.findByRole('tab', { name: 'Create account' });
 
     await userEvent.type(screen.getByLabelText('Email'), 'local@nexus.dev');
@@ -75,7 +75,7 @@ describe('LoginScreen', () => {
       registrationEnabled: false,
       localEmail: 'local@nexus.dev',
     });
-    render(<LoginScreen onAuthed={() => {}} />);
+    render(<LoginPage onAuthed={() => {}} />);
 
     const useLocal = await screen.findByRole('button', {
       name: /Use local@nexus\.dev/,

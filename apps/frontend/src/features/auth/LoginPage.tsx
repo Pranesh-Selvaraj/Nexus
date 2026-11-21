@@ -31,7 +31,7 @@ const labelClass = 'mb-1 block text-xs font-medium text-zinc-400';
  * when the API exposes it, offers the local account in one click instead of
  * leaving the visitor to guess an email.
  */
-export function LoginScreen({ onAuthed }: Props) {
+export function LoginPage({ onAuthed }: Props) {
   const [config, setConfig] = useState<AuthConfig>(FALLBACK_CONFIG);
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState('');

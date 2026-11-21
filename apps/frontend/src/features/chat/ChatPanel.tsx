@@ -13,7 +13,7 @@ import { useToast } from '../../components/Toast';
 import { documentImageUrl } from '../../lib/document-format';
 import { trpc } from '../../platform/trpc';
 import { ReadAloudPlayer } from '../voice/ReadAloudPlayer';
-import { MicButton } from '../voice/MicButton';
+import { MicControl } from '../voice/MicControl';
 
 import { PlusIcon, SendIcon, StopIcon, TrashIcon, ImageIcon } from './icons';
 import { RetrievalInspector } from './RetrievalInspector';
@@ -1069,7 +1069,7 @@ export function ChatPanel({ workspaceId }: Props) {
                     <ImageIcon className="h-4 w-4" />
                   </button>
                 )}
-                <MicButton
+                <MicControl
                   workspaceId={workspaceId}
                   config={voiceConfig.data}
                   disabled={streaming}

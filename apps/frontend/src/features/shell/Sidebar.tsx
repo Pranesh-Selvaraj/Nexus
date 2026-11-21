@@ -20,7 +20,7 @@ interface Props {
 }
 
 /** Navigation for the learning portal: Home, Topics, quick topic access. */
-export function PortalNav({
+export function Sidebar({
   appName,
   user,
   page,

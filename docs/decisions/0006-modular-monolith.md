@@ -37,7 +37,7 @@ src/
 - **Module name = tRPC namespace = domain noun**, singular where the resource is singular (`workspace`, `document`, `chat`).
 - **A module's primary router is `router.ts`**; additional namespaces in the same module are `<namespace>.router.ts` (e.g. `study/quiz.router.ts` serves `quiz.*`).
 - **Services are `<thing>.service.ts`**, one responsibility per file; tests are colocated as `<file>.test.ts`.
-- **Frontend screens** are `*Page` (routable), `*Panel` (a mode root), `*Dialog`, `*Card`, `*List`; primitives in `src/ui/` carry no suffix.
+- **Frontend screens** are `*Page` (routable), `*Panel` (a mode root), `*Dialog`, `*Card`, `*List`; primitives in `src/ui/` carry no suffix; shell/navigation parts are plain nouns (`Sidebar`) and a control that would collide with a `ui/` primitive is `*Control` (`MicControl`).
 - **Two process entrypoints only**: `src/index.ts` (API) and `src/entrypoints/worker.ts`.
 
 **Why:** the question "where does this live?" should be answerable from the name; the question "is this routable?" from the filename suffix.

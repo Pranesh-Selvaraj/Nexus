@@ -6,7 +6,7 @@ import { NexusLogo } from '../components/NexusLogo';
 import { fetchMe } from '../lib/auth';
 import { onUnauthorized } from '../platform/session';
 import { trpc } from '../platform/trpc';
-import { PortalNav, type PortalPage } from '../features/shell/PortalNav';
+import { Sidebar, type PortalPage } from '../features/shell/Sidebar';
 
 const HomePage = lazy(() =>
   import('../features/home/HomePage').then((m) => ({ default: m.HomePage })),
@@ -26,9 +26,9 @@ const SettingsPanel = lazy(() =>
     default: m.SettingsPanel,
   })),
 );
-const LoginScreen = lazy(() =>
-  import('../features/auth/LoginScreen').then((m) => ({
-    default: m.LoginScreen,
+const LoginPage = lazy(() =>
+  import('../features/auth/LoginPage').then((m) => ({
+    default: m.LoginPage,
   })),
 );
 const SharedWorkspacePage = lazy(() =>
@@ -95,7 +95,7 @@ export default function App() {
   if (gate.status === 'anonymous') {
     return (
       <Suspense fallback={<BootSplash />}>
-        <LoginScreen
+        <LoginPage
           onAuthed={async () => {
             const user = await fetchMe();
             setGate(
@@ -140,7 +140,7 @@ export default function App() {
   return (
     <div className="flex h-full bg-zinc-950 text-zinc-100">
       <div className="hidden md:flex">
-        <PortalNav {...navProps} />
+        <Sidebar {...navProps} />
       </div>
 
       {sidebarOpen && (
@@ -151,7 +151,7 @@ export default function App() {
             aria-hidden
           />
           <div className="relative flex h-full">
-            <PortalNav {...navProps} onClose={() => setSidebarOpen(false)} />
+            <Sidebar {...navProps} onClose={() => setSidebarOpen(false)} />
           </div>
         </div>
       )}

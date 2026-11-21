@@ -32,7 +32,7 @@ const AUTO_STOP_SILENCE_MS = 3000;
  * push-to-talk. Uses the browser Speech API when selected and available, and
  * falls back to recording + server transcription otherwise.
  */
-export function MicButton({
+export function MicControl({
   workspaceId,
   config,
   onTranscript,
