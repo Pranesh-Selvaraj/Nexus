@@ -4,7 +4,7 @@ import type { UserDTO } from '@nexus/shared-types';
 
 import { NexusLogo } from '../../components/NexusLogo';
 import { logout } from '../../lib/auth';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 export type PortalPage = 'home' | 'topics' | 'topic' | 'settings';
 

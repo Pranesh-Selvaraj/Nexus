@@ -7,8 +7,8 @@ import {
   cachedDueCards,
   isNetworkError,
   queueReview,
-} from '../../lib/offline';
-import { trpc } from '../../lib/trpc';
+} from '../../platform/offline';
+import { trpc } from '../../platform/trpc';
 
 export function ReviewSession({
   workspaceId,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { useReviewSync } from '../../lib/use-review-sync';
+import { useReviewSync } from './hooks/useReviewSync';
 
 import { Artifacts } from './Artifacts';
 import { Dashboard } from './Dashboard';

@@ -11,7 +11,7 @@ import {
 import { Markdown, MarkdownFallback } from '../../components/LazyMarkdown';
 import { useToast } from '../../components/Toast';
 import { documentImageUrl } from '../../lib/document-format';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 import { ReadAloudPlayer } from '../voice/ReadAloudPlayer';
 import { MicButton } from '../voice/MicButton';
 

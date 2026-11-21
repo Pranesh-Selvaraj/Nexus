@@ -3,7 +3,7 @@ import { lazy, Suspense, useState } from 'react';
 import type { DocumentDTO } from '@nexus/shared-types';
 import { VISION_MODES, type VisionMode } from '@nexus/shared-types';
 
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 import { documentImageUrl, formatLabel } from '../../lib/document-format';
 
 // The renderer pulls in KaTeX + highlighting; keep it in its own chunk.

@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { onQueueChange, pendingReviews, removeQueuedReview } from './offline';
-import { trpc } from './trpc';
+import {
+  onQueueChange,
+  pendingReviews,
+  removeQueuedReview,
+} from '../../../platform/offline';
+import { trpc } from '../../../platform/trpc';
 
 /**
  * Flush ratings taken offline once the browser is online again, and expose the

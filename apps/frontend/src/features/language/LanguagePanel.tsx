@@ -7,7 +7,7 @@ import type {
 } from '@nexus/shared-types';
 
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 import { ReadAloudPlayer } from '../voice/ReadAloudPlayer';
 import { PronunciationPanel } from '../voice/PronunciationPanel';
 

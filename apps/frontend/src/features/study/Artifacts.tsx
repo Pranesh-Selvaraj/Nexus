@@ -3,7 +3,7 @@ import { ARTIFACT_KIND_LABELS } from './constants';
 import { Suspense, useState } from 'react';
 import type { ArtifactKind } from '@nexus/shared-types';
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 export function Artifacts({ workspaceId }: { workspaceId: string }) {
   const utils = trpc.useUtils();

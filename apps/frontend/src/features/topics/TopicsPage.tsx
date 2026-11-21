@@ -4,7 +4,7 @@ import type { FormEvent } from 'react';
 import type { WorkspaceArchive } from '@nexus/shared-types';
 
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 interface Props {
   onOpenTopic: (topicId: string) => void;

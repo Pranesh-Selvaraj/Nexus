@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { PronunciationScore, VoiceConfig } from '@nexus/shared-types';
 
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 import { ReadAloudPlayer } from './ReadAloudPlayer';
 import { MicButton } from './MicButton';
 

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 /**
  * Formats accepted by the picker. The server decides the real type from the

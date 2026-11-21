@@ -1,4 +1,4 @@
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 export function Dashboard({
   workspaceId,

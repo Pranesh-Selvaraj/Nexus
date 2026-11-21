@@ -7,7 +7,7 @@ import {
 } from '@nexus/shared-types';
 
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 const EVENT_LABELS: Record<WebhookEvent, string> = {
   'document.indexed': 'Document indexed',

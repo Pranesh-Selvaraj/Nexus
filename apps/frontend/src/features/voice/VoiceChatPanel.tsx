@@ -5,7 +5,7 @@ import type { VoiceConfig } from '@nexus/shared-types';
 import { useToast } from '../../components/Toast';
 import { audioUrl, requestSpeech } from '../../lib/audio';
 import { speakSentences, speechSynthesisSupported } from '../../lib/speech';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 import { MicButton } from './MicButton';
 
 interface Props {

@@ -2,7 +2,7 @@ import { QUIZ_KIND_LABELS } from './constants';
 import { useState } from 'react';
 import type { QuizKind, QuizResult } from '@nexus/shared-types';
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 export function Quizzes({
   workspaceId,

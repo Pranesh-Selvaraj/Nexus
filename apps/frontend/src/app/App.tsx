@@ -2,35 +2,37 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 
 import type { UserDTO } from '@nexus/shared-types';
 
-import { NexusLogo } from './components/NexusLogo';
-import { fetchMe } from './lib/auth';
-import { onUnauthorized } from './lib/session';
-import { trpc } from './lib/trpc';
-import { PortalNav, type PortalPage } from './features/shell/PortalNav';
+import { NexusLogo } from '../components/NexusLogo';
+import { fetchMe } from '../lib/auth';
+import { onUnauthorized } from '../platform/session';
+import { trpc } from '../platform/trpc';
+import { PortalNav, type PortalPage } from '../features/shell/PortalNav';
 
 const HomePage = lazy(() =>
-  import('./features/home/HomePage').then((m) => ({ default: m.HomePage })),
+  import('../features/home/HomePage').then((m) => ({ default: m.HomePage })),
 );
 const TopicsPage = lazy(() =>
-  import('./features/topics/TopicsPage').then((m) => ({
+  import('../features/topics/TopicsPage').then((m) => ({
     default: m.TopicsPage,
   })),
 );
 const TopicPage = lazy(() =>
-  import('./features/topics/TopicPage').then((m) => ({ default: m.TopicPage })),
+  import('../features/topics/TopicPage').then((m) => ({
+    default: m.TopicPage,
+  })),
 );
 const SettingsPanel = lazy(() =>
-  import('./features/settings/SettingsPanel').then((m) => ({
+  import('../features/settings/SettingsPanel').then((m) => ({
     default: m.SettingsPanel,
   })),
 );
 const LoginScreen = lazy(() =>
-  import('./features/auth/LoginScreen').then((m) => ({
+  import('../features/auth/LoginScreen').then((m) => ({
     default: m.LoginScreen,
   })),
 );
 const SharedWorkspacePage = lazy(() =>
-  import('./features/share/SharedWorkspacePage').then((m) => ({
+  import('../features/share/SharedWorkspacePage').then((m) => ({
     default: m.SharedWorkspacePage,
   })),
 );

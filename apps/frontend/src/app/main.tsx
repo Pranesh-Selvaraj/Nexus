@@ -8,11 +8,11 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 
 import App from './App';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { ToastProvider } from './components/Toast';
-import { createTrpcClient, trpc } from './lib/trpc';
-import { emitUnauthorized, isUnauthorizedError } from './lib/session';
-import './styles/globals.css';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { ToastProvider } from '../components/Toast';
+import { createTrpcClient, trpc } from '../platform/trpc';
+import { emitUnauthorized, isUnauthorizedError } from '../platform/session';
+import '../styles/globals.css';
 
 /** Session expiry anywhere in the app routes back to the login screen. */
 function handleGlobalError(error: unknown): void {

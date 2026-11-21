@@ -9,7 +9,7 @@ import { DocumentList } from '../upload/DocumentList';
 import { UploadDropzone } from '../upload/UploadDropzone';
 import { VoiceChatPanel } from '../voice/VoiceChatPanel';
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 type Tab = 'learn' | 'practice' | 'voice' | 'language';
 

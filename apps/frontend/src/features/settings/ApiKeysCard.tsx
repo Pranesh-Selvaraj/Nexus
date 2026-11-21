@@ -8,7 +8,7 @@ import {
 } from '@nexus/shared-types';
 
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 const DEFAULT_SCOPES: ApiScope[] = ['search', 'ask', 'documents:read'];
 

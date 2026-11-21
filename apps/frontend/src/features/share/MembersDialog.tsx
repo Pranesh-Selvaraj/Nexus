@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { useToast } from '../../components/Toast';
-import { trpc } from '../../lib/trpc';
+import { trpc } from '../../platform/trpc';
 
 interface Props {
   workspaceId: string;
