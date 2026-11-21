@@ -7,7 +7,7 @@ import { documentRouter } from '../modules/documents/router.js';
 import { languageRouter } from '../modules/language/router.js';
 import { membersRouter } from '../modules/workspaces/members.router.js';
 import { notesRouter } from '../modules/study/notes.router.js';
-import { packsRouter } from '../modules/packs/router.js';
+import { packRouter } from '../modules/pack/router.js';
 import { quizRouter } from '../modules/study/quiz.router.js';
 import { settingsRouter } from '../modules/settings/router.js';
 import { shareRouter } from '../modules/workspaces/share.router.js';
@@ -43,7 +43,7 @@ export const appRouter = t.router({
   share: shareRouter,
   dashboard: dashboardRouter,
   members: membersRouter,
-  packs: packsRouter,
+  pack: packRouter,
   workspace: workspaceRouter,
   document: documentRouter,
   chat: chatRouter,

@@ -11,7 +11,7 @@ import { installPack, listPacks } from './domain-pack.service.js';
  * Domain packs (L-14): curated topic starters with a plan, starter prompts
  * and a deck. Installing creates a normal, fully editable topic.
  */
-export const packsRouter = t.router({
+export const packRouter = t.router({
   list: protectedProcedure.query(async ({ ctx }): Promise<PacksOverview> =>
     listPacks(ctx.user.id),
   ),

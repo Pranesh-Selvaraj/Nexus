@@ -2252,10 +2252,10 @@ try {
     print('an unknown share token is 404', unknownShare.status === 404);
 
     // --- domain packs (L-14) --------------------------------------------
-    const packs = await fetchJson('/trpc/packs.list', { method: 'GET' });
+    const packs = await fetchJson('/trpc/pack.list', { method: 'GET' });
     const packList = (packs.body?.result?.data?.packs ?? []) as any[];
     print(
-      'packs.list exposes the built-in domain packs',
+      'pack.list exposes the built-in domain packs',
       packList.length >= 5 &&
         packList.every(
           (pack) =>
@@ -2266,7 +2266,7 @@ try {
       { packs: packList.length },
     );
 
-    const packInstall = await fetchJson('/trpc/packs.install', {
+    const packInstall = await fetchJson('/trpc/pack.install', {
       method: 'POST',
       body: JSON.stringify({ packId: 'tech-python-foundations' }),
     });

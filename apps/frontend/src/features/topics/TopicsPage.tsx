@@ -20,7 +20,7 @@ export function TopicsPage({ onOpenTopic, autoCreate = false }: Props) {
   const utils = trpc.useUtils();
   const toast = useToast();
   const overview = trpc.dashboard.overview.useQuery(undefined);
-  const packs = trpc.packs.list.useQuery(undefined);
+  const packs = trpc.pack.list.useQuery(undefined);
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(autoCreate);
   const [name, setName] = useState('');
@@ -28,11 +28,11 @@ export function TopicsPage({ onOpenTopic, autoCreate = false }: Props) {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
 
-  const installPack = trpc.packs.install.useMutation({
+  const installPack = trpc.pack.install.useMutation({
     onSuccess: async (workspace) => {
       await utils.workspace.list.invalidate();
       await utils.dashboard.overview.invalidate();
-      await utils.packs.list.invalidate();
+      await utils.pack.list.invalidate();
       toast.push({
         kind: 'success',
         message: 'Pack installed — your plan is ready',
