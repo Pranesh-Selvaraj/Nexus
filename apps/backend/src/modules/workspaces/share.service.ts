@@ -4,13 +4,13 @@ import { and, desc, eq, isNull, or, gt } from 'drizzle-orm';
 
 import type { DocumentDTO } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
+import { db } from '../../platform/db/index.js';
 import { assertWorkspaceAccess } from './access.service.js';
 import {
   documents,
   workspaceShareLinks,
   workspaces,
-} from '../../db/schema/index.js';
+} from '../../platform/db/schema/index.js';
 import { ApiError } from '../../platform/errors.js';
 import { toDocumentDTO } from '../../shared/dto.js';
 

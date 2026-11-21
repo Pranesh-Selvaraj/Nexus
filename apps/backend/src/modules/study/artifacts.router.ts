@@ -8,9 +8,9 @@ import {
   workspaceIdSchema,
 } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
+import { db } from '../../platform/db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';
-import { artifacts, workspaces } from '../../db/schema/index.js';
+import { artifacts, workspaces } from '../../platform/db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { assertWorkspaceAccessTrpc } from '../workspaces/access.trpc.js';
 import { ARTIFACT_META, generateArtifact } from './artifact.service.js';

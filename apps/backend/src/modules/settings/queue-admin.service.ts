@@ -1,7 +1,7 @@
 import { eq, inArray } from 'drizzle-orm';
 
-import { db } from '../../db/index.js';
-import { documents } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { documents } from '../../platform/db/schema/index.js';
 import { embeddingQueue } from '../../platform/queue.js';
 import { ApiError } from '../../platform/errors.js';
 

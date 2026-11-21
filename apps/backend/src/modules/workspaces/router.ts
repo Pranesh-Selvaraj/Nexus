@@ -14,8 +14,8 @@ import {
   workspaceIdSchema,
 } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
-import { documents, workspaces } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { documents, workspaces } from '../../platform/db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import {
   exportWorkspaceArchive,

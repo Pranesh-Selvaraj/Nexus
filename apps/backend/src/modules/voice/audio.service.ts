@@ -6,8 +6,8 @@ import { and, asc, eq, isNotNull, lt, sql } from 'drizzle-orm';
 
 import type { AudioAssetDTO, AudioKind } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
-import { audioAssets } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { audioAssets } from '../../platform/db/schema/index.js';
 import { getSettingNumber } from '../settings/settings.service.js';
 import { UPLOAD_DIR } from '../../shared/paths.js';
 

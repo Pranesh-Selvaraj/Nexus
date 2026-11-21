@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { config } from '../../platform/config.js';
 import rateLimit from 'express-rate-limit';
 import { eq } from 'drizzle-orm';
-import { db } from '../../db/index.js';
-import { users } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { users } from '../../platform/db/schema/index.js';
 import {
   authEnabled,
   LOCAL_USER_EMAIL,

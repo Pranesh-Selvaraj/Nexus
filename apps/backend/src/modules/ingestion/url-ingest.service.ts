@@ -4,9 +4,9 @@ import { and, eq, ne } from 'drizzle-orm';
 
 import type { IngestUrlResult } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
+import { db } from '../../platform/db/index.js';
 import { assertWorkspaceAccess } from '../workspaces/access.service.js';
-import { documents, workspaces } from '../../db/schema/index.js';
+import { documents, workspaces } from '../../platform/db/schema/index.js';
 import { enqueueDocumentEmbedding } from '../../platform/queue.js';
 import { toDocumentDTO } from '../../shared/dto.js';
 import { ApiError } from '../../platform/errors.js';

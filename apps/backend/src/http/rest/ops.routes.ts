@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { pool } from '../../db/index.js';
+import { pool } from '../../platform/db/index.js';
 import { redisConnection } from '../../platform/queue.js';
 import { metricsHandler } from '../../platform/observability/metrics.js';
 

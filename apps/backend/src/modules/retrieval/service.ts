@@ -8,7 +8,7 @@ import type {
   RetrievalProfile,
 } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
+import { db } from '../../platform/db/index.js';
 import {
   assertChatConfigured,
   embedTextCached,

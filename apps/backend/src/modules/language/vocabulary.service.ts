@@ -6,8 +6,8 @@ import type {
 } from '@nexus/contracts';
 import { and, desc, eq, ilike, or } from 'drizzle-orm';
 
-import { db } from '../../db/index.js';
-import { flashcards, vocabularyItems } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { flashcards, vocabularyItems } from '../../platform/db/schema/index.js';
 import { getOrCreateDefaultDeck } from '../study/deck.service.js';
 import { assertChatConfigured } from '../ingestion/embedding.service.js';
 import { emptySchedule } from '../study/fsrs.service.js';

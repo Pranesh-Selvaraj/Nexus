@@ -2,7 +2,7 @@ import { and, asc, eq, getTableColumns, lte, sql } from 'drizzle-orm';
 
 import type { DueCard, FlashcardDTO, ReviewRating } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
+import { db } from '../../platform/db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';
 import {
   cardReviews,
@@ -10,7 +10,7 @@ import {
   flashcards,
   progressEvents,
   workspaces,
-} from '../../db/schema/index.js';
+} from '../../platform/db/schema/index.js';
 import { ApiError } from '../../platform/errors.js';
 import {
   previewIntervals,

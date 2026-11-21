@@ -8,8 +8,11 @@ import type {
 import { CEFR_LEVELS } from '@nexus/contracts';
 import { sql } from 'drizzle-orm';
 
-import { db } from '../../db/index.js';
-import { cefrEstimates, progressEvents } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import {
+  cefrEstimates,
+  progressEvents,
+} from '../../platform/db/schema/index.js';
 import { getSetting } from '../settings/settings.service.js';
 import { dictationAccuracy, dictationDiff } from '../retrieval/text-utils.js';
 

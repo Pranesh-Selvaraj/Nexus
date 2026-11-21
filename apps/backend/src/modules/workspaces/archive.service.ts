@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 
 import type { WorkspaceArchive, WorkspaceDTO } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
+import { db } from '../../platform/db/index.js';
 import { assertWorkspaceAccess } from './access.service.js';
 import { ensureOwnerMembership } from './member.service.js';
 import { ApiError } from '../../platform/errors.js';
@@ -14,7 +14,7 @@ import {
   documents,
   messages,
   workspaces,
-} from '../../db/schema/index.js';
+} from '../../platform/db/schema/index.js';
 import { enqueueDocumentEmbedding } from '../../platform/queue.js';
 import { ALLOWED_EXTENSIONS } from '../../shared/multer.js';
 import { storage } from '../../platform/storage/index.js';

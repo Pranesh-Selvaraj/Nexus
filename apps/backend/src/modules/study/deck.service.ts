@@ -1,7 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm';
 
-import { db } from '../../db/index.js';
-import { decks } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { decks } from '../../platform/db/schema/index.js';
 
 /** The workspace's default deck, created on first use. */
 export async function getOrCreateDefaultDeck(

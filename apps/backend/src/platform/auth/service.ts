@@ -9,8 +9,8 @@ import { promisify } from 'node:util';
 
 import { eq } from 'drizzle-orm';
 
-import { db } from '../../db/index.js';
-import { sessions, users } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { sessions, users } from '../../platform/db/schema/index.js';
 import { getSettingNumber } from '../../modules/settings/settings.service.js';
 
 const scryptAsync = promisify(scrypt) as (

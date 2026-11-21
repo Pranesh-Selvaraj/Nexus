@@ -1,7 +1,7 @@
 import { and, eq, lt, sql } from 'drizzle-orm';
 
-import { db } from '../../db/index.js';
-import { documents, workspaces } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { documents, workspaces } from '../../platform/db/schema/index.js';
 import { ApiError } from '../../platform/errors.js';
 import { getSettingNumber } from '../settings/settings.service.js';
 import { storage } from '../../platform/storage/index.js';

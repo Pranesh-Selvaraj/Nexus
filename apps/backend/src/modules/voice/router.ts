@@ -12,8 +12,8 @@ import {
   workspaceIdSchema,
 } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
-import { audioAssets, workspaces } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { audioAssets, workspaces } from '../../platform/db/schema/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { deleteAudioAsset, toAudioDTO } from './audio.service.js';
 import {

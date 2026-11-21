@@ -6,7 +6,7 @@ import type {
   DashboardTopic,
 } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
+import { db } from '../../platform/db/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 
 interface TopicRow {

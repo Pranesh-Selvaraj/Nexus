@@ -11,9 +11,13 @@ import {
   searchQuerySchema,
 } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
+import { db } from '../../platform/db/index.js';
 import { workspaceAccessPredicate } from '../../modules/workspaces/access.service.js';
-import { documents, notes, workspaces } from '../../db/schema/index.js';
+import {
+  documents,
+  notes,
+  workspaces,
+} from '../../platform/db/schema/index.js';
 import {
   authenticateApiKey,
   requireApiKey,

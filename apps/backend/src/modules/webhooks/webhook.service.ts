@@ -13,8 +13,8 @@ import type {
 } from '@nexus/contracts';
 import { WEBHOOK_EVENTS } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
-import { webhooks } from '../../db/schema/index.js';
+import { db } from '../../platform/db/index.js';
+import { webhooks } from '../../platform/db/schema/index.js';
 import { enqueueWebhookDelivery } from '../../platform/queue.js';
 import { ApiError } from '../../platform/errors.js';
 import {

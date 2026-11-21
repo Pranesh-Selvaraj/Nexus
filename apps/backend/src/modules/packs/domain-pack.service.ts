@@ -1,6 +1,6 @@
 import type { PacksOverview, WorkspaceDTO } from '@nexus/contracts';
 
-import { db } from '../../db/index.js';
+import { db } from '../../platform/db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';
 import {
   conversations,
@@ -9,7 +9,7 @@ import {
   messages,
   notes,
   workspaces,
-} from '../../db/schema/index.js';
+} from '../../platform/db/schema/index.js';
 import { DOMAIN_PACKS, findPack, toDomainPack } from './content.js';
 import { ApiError } from '../../platform/errors.js';
 import { ensureOwnerMembership } from '../workspaces/member.service.js';

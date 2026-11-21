@@ -6,7 +6,7 @@ const dbMock = vi.hoisted(() => ({
   select: vi.fn(),
 }));
 
-vi.mock('../../db/index.js', () => ({ db: dbMock }));
+vi.mock('../../platform/db/index.js', () => ({ db: dbMock }));
 
 import {
   getSetting,
