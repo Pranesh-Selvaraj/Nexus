@@ -1,6 +1,6 @@
 import type OpenAI from 'openai';
 
-import type { VisionMode } from '@nexus/shared-types';
+import type { VisionMode } from '@nexus/contracts';
 
 import { assertChatConfigured } from '../ingestion/embedding.service.js';
 import { VISION_INSTRUCTIONS } from '../ingestion/vision.service.js';

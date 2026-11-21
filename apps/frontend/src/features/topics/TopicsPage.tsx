@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
-import type { WorkspaceArchive } from '@nexus/shared-types';
+import type { WorkspaceArchive } from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
 import { trpc } from '../../platform/trpc';

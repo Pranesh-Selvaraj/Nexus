@@ -1,4 +1,4 @@
-import type { DomainPack } from '@nexus/shared-types';
+import type { DomainPack } from '@nexus/contracts';
 
 export interface PackCard {
   front: string;

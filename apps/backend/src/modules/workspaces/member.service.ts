@@ -4,7 +4,7 @@ import type {
   AddWorkspaceMemberInput,
   WorkspaceMemberDTO,
   WorkspaceRole,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { users, workspaceMembers, workspaces } from '../../db/schema/index.js';

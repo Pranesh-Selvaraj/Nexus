@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { ApiScope, WebhookEvent } from '@nexus/shared-types';
+import type { ApiScope, WebhookEvent } from '@nexus/contracts';
 import { users } from './auth.js';
 import { workspaces } from './workspaces.js';
 

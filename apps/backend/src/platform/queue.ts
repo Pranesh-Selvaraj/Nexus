@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { Queue } from 'bullmq';
 
-import type { WebhookPayload } from '@nexus/shared-types';
+import type { WebhookPayload } from '@nexus/contracts';
 
 export interface EmbeddingJobData {
   documentId: string;

@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 
 import { and, desc, eq, isNull, or, gt } from 'drizzle-orm';
 
-import type { DocumentDTO } from '@nexus/shared-types';
+import type { DocumentDTO } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { assertWorkspaceAccess } from './access.service.js';

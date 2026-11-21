@@ -9,7 +9,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { DocumentStructure } from '@nexus/shared-types';
+import type { DocumentStructure } from '@nexus/contracts';
 import { messages } from './chat.js';
 import { documentStatusEnum } from './enums.js';
 import { tsvector, vectorDim } from './types.js';

@@ -1,7 +1,7 @@
 import { createEmptyCard, fsrs, Rating, State } from 'ts-fsrs';
 import type { Card, Grade } from 'ts-fsrs';
 
-import type { ReviewRating } from '@nexus/shared-types';
+import type { ReviewRating } from '@nexus/contracts';
 
 /**
  * Serializable FSRS scheduling state, matching the flashcards columns. The

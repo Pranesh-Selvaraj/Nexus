@@ -1,4 +1,4 @@
-import type { DueCard, ReviewRating } from '@nexus/shared-types';
+import type { DueCard, ReviewRating } from '@nexus/contracts';
 
 /**
  * Offline review support (P-8). Two small pieces of local state:

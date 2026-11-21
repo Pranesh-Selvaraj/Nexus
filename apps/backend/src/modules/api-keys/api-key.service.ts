@@ -8,8 +8,8 @@ import type {
   ApiScope,
   CreateApiKeyInput,
   CreatedApiKey,
-} from '@nexus/shared-types';
-import { API_SCOPES } from '@nexus/shared-types';
+} from '@nexus/contracts';
+import { API_SCOPES } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { apiKeys } from '../../db/schema/index.js';

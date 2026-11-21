@@ -1,13 +1,13 @@
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, sql } from 'drizzle-orm';
 
-import type { QuizDTO, QuizDetail, QuizResult } from '@nexus/shared-types';
+import type { QuizDTO, QuizDetail, QuizResult } from '@nexus/contracts';
 import {
   generateQuizInputSchema,
   quizIdSchema,
   submitQuizInputSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';

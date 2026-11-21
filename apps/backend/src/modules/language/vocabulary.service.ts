@@ -3,7 +3,7 @@ import type {
   MineVocabularyResult,
   VocabularyItemDTO,
   VocabularyState,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import { and, desc, eq, ilike, or } from 'drizzle-orm';
 
 import { db } from '../../db/index.js';

@@ -1,6 +1,6 @@
 import { performance } from 'node:perf_hooks';
 
-import type { AskResult, SearchResult, Source } from '@nexus/shared-types';
+import type { AskResult, SearchResult, Source } from '@nexus/contracts';
 
 import { assertWorkspaceAccess } from '../workspaces/access.service.js';
 import { ApiError } from '../../platform/errors.js';

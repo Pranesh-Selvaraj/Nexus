@@ -5,12 +5,12 @@ import {
   documentIdSchema,
   listDocumentsInputSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import type {
   DocumentDTO,
   DocumentStructure,
   RetrievalStatus,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { chunks, documents, workspaces } from '../../db/schema/index.js';

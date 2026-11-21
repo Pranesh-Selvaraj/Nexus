@@ -1,5 +1,5 @@
-import type { TtsResult, TtsVoice } from '@nexus/shared-types';
-import { TTS_VOICES } from '@nexus/shared-types';
+import type { TtsResult, TtsVoice } from '@nexus/contracts';
+import { TTS_VOICES } from '@nexus/contracts';
 
 import { audioCacheKey, getCachedAudio, storeAudio } from './audio.service.js';
 import { getOpenAIClient, getProviderConfig } from '../chat/openai-client.js';

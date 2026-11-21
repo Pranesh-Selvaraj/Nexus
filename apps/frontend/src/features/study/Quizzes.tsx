@@ -1,6 +1,6 @@
 import { QUIZ_KIND_LABELS } from './constants';
 import { useState } from 'react';
-import type { QuizKind, QuizResult } from '@nexus/shared-types';
+import type { QuizKind, QuizResult } from '@nexus/contracts';
 import { useToast } from '../../components/Toast';
 import { trpc } from '../../platform/trpc';
 

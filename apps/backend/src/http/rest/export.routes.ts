@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { workspaceIdSchema } from '@nexus/shared-types';
+import { workspaceIdSchema } from '@nexus/contracts';
 import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
 import { sanitizeForLog } from '../../shared/multer.js';
 import { sendApiError } from '../../platform/errors.js';

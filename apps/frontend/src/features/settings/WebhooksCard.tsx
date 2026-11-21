@@ -4,7 +4,7 @@ import {
   WEBHOOK_EVENTS,
   type WebhookDTO,
   type WebhookEvent,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
 import { trpc } from '../../platform/trpc';

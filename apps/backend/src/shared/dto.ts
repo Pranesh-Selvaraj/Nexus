@@ -1,4 +1,4 @@
-import type { DocumentDTO } from '@nexus/shared-types';
+import type { DocumentDTO } from '@nexus/contracts';
 
 import type { documents } from '../db/schema/index.js';
 

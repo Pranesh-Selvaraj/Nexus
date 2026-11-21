@@ -1,6 +1,6 @@
 import { and, asc, eq, getTableColumns, lte, sql } from 'drizzle-orm';
 
-import type { DueCard, FlashcardDTO, ReviewRating } from '@nexus/shared-types';
+import type { DueCard, FlashcardDTO, ReviewRating } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';

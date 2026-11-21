@@ -4,7 +4,7 @@ import { createReadStream } from 'node:fs';
 import rateLimit from 'express-rate-limit';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { ttsRequestSchema, workspaceIdSchema } from '@nexus/shared-types';
+import { ttsRequestSchema, workspaceIdSchema } from '@nexus/contracts';
 import { db } from '../../db/index.js';
 import { documents, workspaces } from '../../db/schema/index.js';
 import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';

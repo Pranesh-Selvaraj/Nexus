@@ -1,6 +1,6 @@
 import { TRPCError } from '@trpc/server';
 
-import type { WorkspaceRole } from '@nexus/shared-types';
+import type { WorkspaceRole } from '@nexus/contracts';
 
 import { assertWorkspaceAccess } from './access.service.js';
 import { ApiError } from '../../platform/errors.js';

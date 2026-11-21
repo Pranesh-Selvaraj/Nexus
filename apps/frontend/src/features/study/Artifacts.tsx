@@ -1,7 +1,7 @@
 import { Markdown } from '../../components/LazyMarkdown';
 import { ARTIFACT_KIND_LABELS } from './constants';
 import { Suspense, useState } from 'react';
-import type { ArtifactKind } from '@nexus/shared-types';
+import type { ArtifactKind } from '@nexus/contracts';
 import { useToast } from '../../components/Toast';
 import { trpc } from '../../platform/trpc';
 

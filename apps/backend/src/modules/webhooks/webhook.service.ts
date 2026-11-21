@@ -10,8 +10,8 @@ import type {
   WebhookDTO,
   WebhookEvent,
   WebhookPayload,
-} from '@nexus/shared-types';
-import { WEBHOOK_EVENTS } from '@nexus/shared-types';
+} from '@nexus/contracts';
+import { WEBHOOK_EVENTS } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { webhooks } from '../../db/schema/index.js';

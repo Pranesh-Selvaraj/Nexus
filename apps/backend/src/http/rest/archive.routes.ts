@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { workspaceArchiveSchema } from '@nexus/shared-types';
+import { workspaceArchiveSchema } from '@nexus/contracts';
 import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
 import { archiveUpload, sanitizeForLog } from '../../shared/multer.js';
 import { importWorkspaceArchive } from '../../modules/workspaces/archive.service.js';

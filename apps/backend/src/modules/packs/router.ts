@@ -1,7 +1,7 @@
 import { TRPCError } from '@trpc/server';
 
-import type { PacksOverview, WorkspaceDTO } from '@nexus/shared-types';
-import { installPackInputSchema } from '@nexus/shared-types';
+import type { PacksOverview, WorkspaceDTO } from '@nexus/contracts';
+import { installPackInputSchema } from '@nexus/contracts';
 
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { ApiError } from '../../platform/errors.js';

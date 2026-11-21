@@ -34,7 +34,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['packages/shared-types/**/*.ts'],
+    files: ['packages/contracts/**/*.ts'],
     languageOptions: {
       globals: globals.node,
     },

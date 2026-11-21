@@ -1,4 +1,4 @@
-import type { RetrievalDebug } from '@nexus/shared-types';
+import type { RetrievalDebug } from '@nexus/contracts';
 
 import { Stat } from './SourcesPanel';
 import { pct } from './utils';

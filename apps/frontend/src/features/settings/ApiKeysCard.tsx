@@ -5,7 +5,7 @@ import {
   API_SCOPE_LABELS,
   type ApiKeyDTO,
   type ApiScope,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
 import { trpc } from '../../platform/trpc';

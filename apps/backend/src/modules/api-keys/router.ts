@@ -1,8 +1,8 @@
-import type { ApiKeyDTO, CreatedApiKey } from '@nexus/shared-types';
+import type { ApiKeyDTO, CreatedApiKey } from '@nexus/contracts';
 import {
   createApiKeyInputSchema,
   revokeApiKeyInputSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { createApiKey, listApiKeys, revokeApiKey } from './api-key.service.js';

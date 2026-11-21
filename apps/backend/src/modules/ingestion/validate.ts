@@ -10,7 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 
-import type { FileFormat } from '@nexus/shared-types';
+import type { FileFormat } from '@nexus/contracts';
 
 import {
   detectFile,

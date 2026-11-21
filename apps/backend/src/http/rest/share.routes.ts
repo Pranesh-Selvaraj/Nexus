@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { shareAskInputSchema } from '@nexus/shared-types';
+import { shareAskInputSchema } from '@nexus/contracts';
 import { sanitizeForLog } from '../../shared/multer.js';
 import { answerQuestion } from '../../modules/chat/api.service.js';
 import {

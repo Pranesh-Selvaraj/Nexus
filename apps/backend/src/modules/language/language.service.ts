@@ -4,8 +4,8 @@ import type {
   CefrSkill,
   DictationScore,
   LanguageSkill,
-} from '@nexus/shared-types';
-import { CEFR_LEVELS } from '@nexus/shared-types';
+} from '@nexus/contracts';
+import { CEFR_LEVELS } from '@nexus/contracts';
 import { sql } from 'drizzle-orm';
 
 import { db } from '../../db/index.js';

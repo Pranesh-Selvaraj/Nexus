@@ -18,8 +18,8 @@ import type {
   DocumentStructure,
   VisionConfig,
   VisionMode,
-} from '@nexus/shared-types';
-import { VISION_MODES } from '@nexus/shared-types';
+} from '@nexus/contracts';
+import { VISION_MODES } from '@nexus/contracts';
 
 import {
   defaultProviderHeaders,

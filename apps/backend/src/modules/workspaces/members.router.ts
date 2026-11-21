@@ -1,12 +1,12 @@
 import { TRPCError } from '@trpc/server';
 
-import type { WorkspaceMemberDTO } from '@nexus/shared-types';
+import type { WorkspaceMemberDTO } from '@nexus/contracts';
 import {
   addWorkspaceMemberInputSchema,
   removeWorkspaceMemberInputSchema,
   updateWorkspaceMemberInputSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { protectedProcedure, t } from '../../platform/auth/context.js';
 import { ApiError } from '../../platform/errors.js';

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 
-import type { DocumentDTO } from '@nexus/shared-types';
-import { VISION_MODES, type VisionMode } from '@nexus/shared-types';
+import type { DocumentDTO } from '@nexus/contracts';
+import { VISION_MODES, type VisionMode } from '@nexus/contracts';
 
 import { trpc } from '../../platform/trpc';
 import { documentImageUrl, formatLabel } from '../../lib/document-format';

@@ -6,7 +6,7 @@ import {
   type RetrievalDebug,
   type Source,
   type VisionMode,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { Markdown, MarkdownFallback } from '../../components/LazyMarkdown';
 import { useToast } from '../../components/Toast';

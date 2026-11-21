@@ -6,7 +6,7 @@ import type {
   DueCard,
   FlashcardDTO,
   StudyProgress,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import {
   cardIdSchema,
   createCardInputSchema,
@@ -17,7 +17,7 @@ import {
   reviewCardInputSchema,
   updateCardInputSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';

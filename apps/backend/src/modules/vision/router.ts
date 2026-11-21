@@ -6,7 +6,7 @@ import {
   isImageFileType,
   type AnalyzeImageResult,
   type VisionConfig,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';

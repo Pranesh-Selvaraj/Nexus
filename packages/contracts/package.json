@@ -1,5 +1,5 @@
 {
-  "name": "@nexus/shared-types",
+  "name": "@nexus/contracts",
   "version": "0.4.14",
   "private": true,
   "type": "module",

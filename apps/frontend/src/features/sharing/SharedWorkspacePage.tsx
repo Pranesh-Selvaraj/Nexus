@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import type { ShareAskResult, SharedWorkspace } from '@nexus/shared-types';
+import type { ShareAskResult, SharedWorkspace } from '@nexus/contracts';
 
 /**
  * Public, read-only view of a shared workspace (L-13). Reached at

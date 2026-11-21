@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { and, asc, eq, isNotNull, lt, sql } from 'drizzle-orm';
 
-import type { AudioAssetDTO, AudioKind } from '@nexus/shared-types';
+import type { AudioAssetDTO, AudioKind } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { audioAssets } from '../../db/schema/index.js';

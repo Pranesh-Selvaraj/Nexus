@@ -1,4 +1,4 @@
-import type { DocumentStructure, FileFormat } from '@nexus/shared-types';
+import type { DocumentStructure, FileFormat } from '@nexus/contracts';
 
 import type { SourcePage } from '../chunking.service.js';
 import { countWords, readingMinutes } from '../readability.js';

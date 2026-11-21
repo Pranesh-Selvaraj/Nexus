@@ -10,13 +10,13 @@ import {
   type PersonaDTO,
   type RetrievalDebug,
   type Source,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import {
   chatFeedbackInputSchema,
   chatStreamInputSchema,
   conversationIdSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';

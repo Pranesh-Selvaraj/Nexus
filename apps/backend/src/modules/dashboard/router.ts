@@ -4,7 +4,7 @@ import type {
   DashboardOverview,
   DashboardRecentDocument,
   DashboardTopic,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { protectedProcedure, t } from '../../platform/auth/context.js';

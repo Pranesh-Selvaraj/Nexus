@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 
-import type { WorkspaceRole } from '@nexus/shared-types';
+import type { WorkspaceRole } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaces } from '../../db/schema/index.js';

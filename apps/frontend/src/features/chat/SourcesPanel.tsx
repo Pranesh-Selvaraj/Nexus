@@ -1,6 +1,6 @@
-import type { Source } from '@nexus/shared-types';
+import type { Source } from '@nexus/contracts';
 import { pct } from './utils';
-import { isImageFileType } from '@nexus/shared-types';
+import { isImageFileType } from '@nexus/contracts';
 import { documentImageUrl } from '../../lib/document-format';
 
 export function SourcesPanel({

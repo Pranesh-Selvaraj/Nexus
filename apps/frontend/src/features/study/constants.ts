@@ -1,4 +1,4 @@
-import type { ArtifactKind, QuizKind, ReviewRating } from '@nexus/shared-types';
+import type { ArtifactKind, QuizKind, ReviewRating } from '@nexus/contracts';
 
 export const RATING_BUTTONS: {
   rating: ReviewRating;

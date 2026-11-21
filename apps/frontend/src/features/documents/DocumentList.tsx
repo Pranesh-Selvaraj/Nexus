@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { DocumentDTO } from '@nexus/shared-types';
+import type { DocumentDTO } from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
 import { trpc } from '../../platform/trpc';

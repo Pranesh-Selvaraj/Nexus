@@ -6,8 +6,8 @@
  * the short labels the library cards show, so the format badge, reading time
  * and provenance chips stay consistent everywhere.
  */
-import type { DocumentDTO, DocumentStructure } from '@nexus/shared-types';
-import { isImageFileType, isMediaFileType } from '@nexus/shared-types';
+import type { DocumentDTO, DocumentStructure } from '@nexus/contracts';
+import { isImageFileType, isMediaFileType } from '@nexus/contracts';
 
 const FORMAT_LABELS: Record<string, string> = {
   pdf: 'PDF',

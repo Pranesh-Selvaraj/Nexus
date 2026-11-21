@@ -7,7 +7,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { RetrievalDebug, Source } from '@nexus/shared-types';
+import type { RetrievalDebug, Source } from '@nexus/contracts';
 import { messageKindEnum, messageRoleEnum } from './enums.js';
 import { workspaces } from './workspaces.js';
 

@@ -5,12 +5,12 @@ import type {
   MinimalPair,
   PronunciationScore,
   VoiceConfig,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import {
   scorePronunciationInputSchema,
   TTS_VOICES,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { audioAssets, workspaces } from '../../db/schema/index.js';

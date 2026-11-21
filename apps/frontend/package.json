@@ -12,7 +12,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@nexus/shared-types": "workspace:*",
+    "@nexus/contracts": "workspace:*",
     "@tanstack/react-query": "^5.101.4",
     "@trpc/client": "^11.18.0",
     "@trpc/react-query": "^11.18.0",

@@ -4,7 +4,7 @@ import type {
   Source,
   Usage,
   VisionMode,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 export interface Message {
   id: string;

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 
-import type { TranscriptionResult } from '@nexus/shared-types';
+import type { TranscriptionResult } from '@nexus/contracts';
 
 import {
   defaultProviderHeaders,

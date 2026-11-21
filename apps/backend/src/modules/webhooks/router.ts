@@ -2,12 +2,12 @@ import type {
   CreatedWebhook,
   UpdateWebhookInput,
   WebhookDTO,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import {
   createWebhookInputSchema,
   updateWebhookInputSchema,
   webhookIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import { TRPCError } from '@trpc/server';
 
 import { protectedProcedure, t } from '../../platform/auth/context.js';

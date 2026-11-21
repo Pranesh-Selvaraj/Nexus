@@ -1,12 +1,12 @@
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq } from 'drizzle-orm';
 
-import type { ArtifactDTO } from '@nexus/shared-types';
+import type { ArtifactDTO } from '@nexus/contracts';
 import {
   artifactIdSchema,
   generateArtifactInputSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';

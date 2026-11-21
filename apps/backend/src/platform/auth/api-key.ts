@@ -1,6 +1,6 @@
 import type { Request, RequestHandler, Response } from 'express';
 
-import type { ApiScope } from '@nexus/shared-types';
+import type { ApiScope } from '@nexus/contracts';
 
 import {
   hasScope,

@@ -1,7 +1,7 @@
 import { TRPCError } from '@trpc/server';
 import { and, desc, eq } from 'drizzle-orm';
 
-import type { HighlightDTO, NoteDTO } from '@nexus/shared-types';
+import type { HighlightDTO, NoteDTO } from '@nexus/contracts';
 import {
   createHighlightInputSchema,
   createNoteInputSchema,
@@ -10,7 +10,7 @@ import {
   updateHighlightInputSchema,
   updateNoteInputSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';

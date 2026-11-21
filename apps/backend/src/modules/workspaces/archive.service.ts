@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import JSZip from 'jszip';
 import { eq } from 'drizzle-orm';
 
-import type { WorkspaceArchive, WorkspaceDTO } from '@nexus/shared-types';
+import type { WorkspaceArchive, WorkspaceDTO } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { assertWorkspaceAccess } from './access.service.js';

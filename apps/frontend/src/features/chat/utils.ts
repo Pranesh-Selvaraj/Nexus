@@ -1,4 +1,4 @@
-import type { MessageDTO } from '@nexus/shared-types';
+import type { MessageDTO } from '@nexus/contracts';
 import type { Message } from './types';
 export function toLocalMessage(message: MessageDTO): Message {
   return {

@@ -9,7 +9,7 @@
  */
 import JSZip from 'jszip';
 
-import type { FileCategory, FileFormat } from '@nexus/shared-types';
+import type { FileCategory, FileFormat } from '@nexus/contracts';
 
 import { ingestionLimits } from './limits.js';
 

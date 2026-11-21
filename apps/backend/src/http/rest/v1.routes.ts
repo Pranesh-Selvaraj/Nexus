@@ -9,7 +9,7 @@ import {
   ingestUrlInputSchema,
   reviewCardInputSchema,
   searchQuerySchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../../modules/workspaces/access.service.js';

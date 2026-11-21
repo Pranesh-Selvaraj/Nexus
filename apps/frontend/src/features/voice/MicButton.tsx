@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 
-import type { VoiceConfig } from '@nexus/shared-types';
+import type { VoiceConfig } from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
 import {

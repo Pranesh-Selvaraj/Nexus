@@ -6,13 +6,13 @@ import type {
   WorkspaceArchive,
   WorkspaceDTO,
   WorkspaceMetadata,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import {
   createWorkspaceInputSchema,
   updateWorkspaceInputSchema,
   workspaceArchiveSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { documents, workspaces } from '../../db/schema/index.js';

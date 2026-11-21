@@ -1,6 +1,6 @@
 import { RATING_BUTTONS } from './constants';
 import { useEffect, useState } from 'react';
-import type { DueCard, ReviewRating } from '@nexus/shared-types';
+import type { DueCard, ReviewRating } from '@nexus/contracts';
 import { useToast } from '../../components/Toast';
 import {
   cacheDueCards,

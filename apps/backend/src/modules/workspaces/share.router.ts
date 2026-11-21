@@ -1,9 +1,9 @@
-import type { CreatedShareLink, ShareLinkDTO } from '@nexus/shared-types';
+import type { CreatedShareLink, ShareLinkDTO } from '@nexus/contracts';
 import {
   createShareLinkInputSchema,
   shareLinkIdSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import { TRPCError } from '@trpc/server';
 
 import { protectedProcedure, t } from '../../platform/auth/context.js';

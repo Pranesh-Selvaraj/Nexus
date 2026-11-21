@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { UserDTO } from '@nexus/shared-types';
+import type { UserDTO } from '@nexus/contracts';
 
 import { NexusLogo } from '../../components/NexusLogo';
 import { logout } from '../../lib/auth';

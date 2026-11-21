@@ -8,7 +8,7 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { WorkspaceMetadata } from '@nexus/shared-types';
+import type { WorkspaceMetadata } from '@nexus/contracts';
 import { users } from './auth.js';
 import { workspaceRoleEnum } from './enums.js';
 

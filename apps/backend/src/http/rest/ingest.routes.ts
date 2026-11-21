@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { ingestUrlInputSchema } from '@nexus/shared-types';
+import { ingestUrlInputSchema } from '@nexus/contracts';
 import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
 import { sanitizeForLog } from '../../shared/multer.js';
 import { sendApiError } from '../../platform/errors.js';

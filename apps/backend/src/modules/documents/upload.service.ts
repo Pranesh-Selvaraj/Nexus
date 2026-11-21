@@ -3,8 +3,8 @@ import path from 'node:path';
 
 import { and, eq, ne } from 'drizzle-orm';
 
-import type { DocumentDTO } from '@nexus/shared-types';
-import { workspaceIdSchema } from '@nexus/shared-types';
+import type { DocumentDTO } from '@nexus/contracts';
+import { workspaceIdSchema } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { assertWorkspaceAccess } from '../workspaces/access.service.js';

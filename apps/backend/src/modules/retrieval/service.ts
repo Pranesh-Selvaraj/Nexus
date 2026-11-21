@@ -6,7 +6,7 @@ import type {
   RetrievalCandidate,
   RetrievalDebug,
   RetrievalProfile,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import {

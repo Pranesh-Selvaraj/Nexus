@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { PronunciationScore, VoiceConfig } from '@nexus/shared-types';
+import type { PronunciationScore, VoiceConfig } from '@nexus/contracts';
 
 import { useToast } from '../../components/Toast';
 import { trpc } from '../../platform/trpc';

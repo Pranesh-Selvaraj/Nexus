@@ -1,4 +1,4 @@
-import type { MinimalPair, PronunciationScore } from '@nexus/shared-types';
+import type { MinimalPair, PronunciationScore } from '@nexus/contracts';
 import { desc, eq } from 'drizzle-orm';
 
 import { db } from '../../db/index.js';

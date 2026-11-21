@@ -7,7 +7,7 @@
  * Nothing is re-fetched at indexing time, so the document is stable and the
  * network request happened once, behind the SSRF guard.
  */
-import type { DocumentStructure } from '@nexus/shared-types';
+import type { DocumentStructure } from '@nexus/contracts';
 
 import { readingMinutes } from './readability.js';
 import { fetchArticle, type FetchOptions } from './url-fetch.js';

@@ -8,7 +8,7 @@
  */
 import { readFile } from 'node:fs/promises';
 
-import type { FileFormat } from '@nexus/shared-types';
+import type { FileFormat } from '@nexus/contracts';
 
 import { ingestionLimits } from './limits.js';
 import { parseArchive } from './parsers/archive.js';

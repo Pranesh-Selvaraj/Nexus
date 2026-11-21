@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { and, eq, ne } from 'drizzle-orm';
 
-import type { IngestUrlResult } from '@nexus/shared-types';
+import type { IngestUrlResult } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { assertWorkspaceAccess } from '../workspaces/access.service.js';

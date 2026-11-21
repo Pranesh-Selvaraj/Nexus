@@ -6,7 +6,7 @@ import type {
   DictationScore,
   MineVocabularyResult,
   VocabularyItemDTO,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 import {
   deleteVocabularyInputSchema,
   dictationScoreInputSchema,
@@ -14,7 +14,7 @@ import {
   mineVocabularyInputSchema,
   updateVocabularyInputSchema,
   workspaceIdSchema,
-} from '@nexus/shared-types';
+} from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { workspaceAccessPredicate } from '../workspaces/access.service.js';

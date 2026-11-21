@@ -1,4 +1,4 @@
-import type { QuizKind } from '@nexus/shared-types';
+import type { QuizKind } from '@nexus/contracts';
 
 import { assertChatConfigured } from '../ingestion/embedding.service.js';
 import { getOpenAIClient, sessionHeaders } from '../chat/openai-client.js';

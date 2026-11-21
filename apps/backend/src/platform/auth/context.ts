@@ -1,7 +1,7 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import { eq } from 'drizzle-orm';
 
-import type { UserDTO } from '@nexus/shared-types';
+import type { UserDTO } from '@nexus/contracts';
 
 import { db } from '../../db/index.js';
 import { users } from '../../db/schema/index.js';
