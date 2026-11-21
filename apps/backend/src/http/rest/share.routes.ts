@@ -2,13 +2,13 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { shareAskInputSchema } from '@nexus/shared-types';
-import { sanitizeForLog } from '../../utils/multer.config.js';
-import { answerQuestion } from '../../services/api.service.js';
+import { sanitizeForLog } from '../../shared/multer.js';
+import { answerQuestion } from '../../modules/chat/api.service.js';
 import {
   resolveShareToken,
   sharedWorkspaceView,
-} from '../../services/share.service.js';
-import { friendlyErrorMessage } from '../../utils/errors.js';
+} from '../../modules/workspaces/share.service.js';
+import { friendlyErrorMessage } from '../../platform/errors.js';
 
 /**
  * REST surface: share. Handlers keep their original bodies; only the router

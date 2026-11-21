@@ -1,4 +1,4 @@
-import './utils/env.js';
+import './platform/env.js';
 
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
@@ -11,11 +11,11 @@ import { WebSocketServer } from 'ws';
 import { db, pool } from './db/index.js';
 import { sessions, users, workspaces } from './db/schema.js';
 import { createApp } from './http/app.js';
-import { createWSSContext, LOCAL_USER_EMAIL } from './middleware/auth.js';
+import { createWSSContext, LOCAL_USER_EMAIL } from './platform/auth/context.js';
 import { config } from './platform/config.js';
-import { appRouter } from './routers/_app.js';
-import { hashPassword, verifyPassword } from './services/auth.service.js';
-import { storage } from './services/storage/index.js';
+import { appRouter } from './http/trpc.js';
+import { hashPassword, verifyPassword } from './platform/auth/service.js';
+import { storage } from './platform/storage/index.js';
 
 const MIGRATIONS_DIR = fileURLToPath(new URL('../drizzle', import.meta.url));
 const WS_PATH = '/ws';

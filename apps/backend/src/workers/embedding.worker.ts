@@ -1,37 +1,37 @@
-import '../utils/env.js';
+import '../platform/env.js';
 
 import { Worker } from 'bullmq';
 import { eq, lt, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.js';
 import { chunks, documents, sessions, workspaces } from '../db/schema.js';
-import type { EmbeddingJobData, WebhookJobData } from '../queues/index.js';
+import type { EmbeddingJobData, WebhookJobData } from '../platform/queue.js';
 import {
   MAINTENANCE_JOB,
   redisConnection,
   scheduleMaintenance,
-} from '../queues/index.js';
+} from '../platform/queue.js';
 import {
   buildEmbeddingText,
   splitIntoChunks,
-} from '../services/chunking.service.js';
-import { parseStoredFile } from '../services/ingestion/registry.js';
+} from '../modules/ingestion/chunking.service.js';
+import { parseStoredFile } from '../modules/ingestion/registry.js';
 import {
   EMBEDDING_VERSION,
   embedTexts,
   getEffectiveEmbeddingModel,
   getEmbeddingDimensions,
-} from '../services/embedding.service.js';
-import { safeFtsLanguage } from '../services/retrieval-language.js';
-import { purgeExpiredAudio } from '../services/audio.service.js';
-import { purgeExpiredTrash } from '../services/storage.service.js';
-import { runBackup } from '../services/backup.service.js';
+} from '../modules/ingestion/embedding.service.js';
+import { safeFtsLanguage } from '../modules/retrieval/language.js';
+import { purgeExpiredAudio } from '../modules/voice/audio.service.js';
+import { purgeExpiredTrash } from '../modules/documents/storage.service.js';
+import { runBackup } from '../modules/workspaces/backup.service.js';
 import {
   deliverWebhook,
   emitWebhookEvent,
-} from '../services/webhook.service.js';
-import { sanitizeForLog } from '../utils/sanitize.js';
-import { storage } from '../services/storage/index.js';
+} from '../modules/webhooks/webhook.service.js';
+import { sanitizeForLog } from '../shared/sanitize.js';
+import { storage } from '../platform/storage/index.js';
 
 async function processDocument(documentId: string): Promise<void> {
   const [doc] = await db

@@ -7,23 +7,20 @@ import { z } from 'zod';
 import { ttsRequestSchema, workspaceIdSchema } from '@nexus/shared-types';
 import { db } from '../../db/index.js';
 import { documents, workspaces } from '../../db/schema.js';
-import { readSessionCookie, resolveUser } from '../../middleware/auth.js';
-import { storage } from '../../services/storage/index.js';
-import { audioUpload, sanitizeForLog } from '../../utils/multer.config.js';
-import {
-  isImageFormat,
-  mimeForFormat,
-} from '../../services/ingestion/magic.js';
-import { workspaceAccessPredicate } from '../../services/access.service.js';
+import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
+import { storage } from '../../platform/storage/index.js';
+import { audioUpload, sanitizeForLog } from '../../shared/multer.js';
+import { isImageFormat, mimeForFormat } from '../../modules/ingestion/magic.js';
+import { workspaceAccessPredicate } from '../../modules/workspaces/access.service.js';
 import {
   audioFilePath,
   getOwnedAudio,
   parseRange,
   safeAudioMimeType,
-} from '../../services/audio.service.js';
-import { transcribeAudio } from '../../services/stt.service.js';
-import { synthesizeSpeech } from '../../services/tts.service.js';
-import { friendlyErrorMessage } from '../../utils/errors.js';
+} from '../../modules/voice/audio.service.js';
+import { transcribeAudio } from '../../modules/voice/stt.service.js';
+import { synthesizeSpeech } from '../../modules/voice/tts.service.js';
+import { friendlyErrorMessage } from '../../platform/errors.js';
 
 /**
  * REST surface: media. Handlers keep their original bodies; only the router

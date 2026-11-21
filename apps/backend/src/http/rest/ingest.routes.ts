@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { ingestUrlInputSchema } from '@nexus/shared-types';
-import { readSessionCookie, resolveUser } from '../../middleware/auth.js';
-import { sanitizeForLog } from '../../utils/multer.config.js';
-import { ApiError } from '../../utils/errors.js';
-import { ingestUrlForWorkspace } from '../../services/url-ingest.service.js';
-import { friendlyErrorMessage } from '../../utils/errors.js';
+import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
+import { sanitizeForLog } from '../../shared/multer.js';
+import { ApiError } from '../../platform/errors.js';
+import { ingestUrlForWorkspace } from '../../modules/ingestion/url-ingest.service.js';
+import { friendlyErrorMessage } from '../../platform/errors.js';
 
 /**
  * REST surface: ingest. Handlers keep their original bodies; only the router

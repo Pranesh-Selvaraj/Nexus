@@ -13,7 +13,7 @@
  * Options: --chunks, --queries, --dims, --keep, --workspace <uuid>.
  * Requires DATABASE_URL (and pgvector with HNSW support).
  */
-import '../src/utils/env.js';
+import '../src/platform/env.js';
 
 import { performance } from 'node:perf_hooks';
 

@@ -3,12 +3,12 @@ import { createServer, type Server } from 'node:http';
 import { createHmac } from 'node:crypto';
 import JSZip from 'jszip';
 
-import '../src/utils/env.js';
+import '../src/platform/env.js';
 import {
   buildEpub,
   TINY_PNG,
   zipBuffer,
-} from '../src/services/ingestion/fixtures.test-utils.js';
+} from '../src/modules/ingestion/fixtures.test-utils.js';
 
 const API_PORT = 3100;
 const BASE = `http://localhost:${API_PORT}`;
@@ -2586,7 +2586,7 @@ try {
       connectionString: process.env.DATABASE_URL,
     });
     await client.connect();
-    const { hashPassword } = await import('../src/services/auth.service.js');
+    const { hashPassword } = await import('../src/platform/auth/service.js');
     await client.query(`DELETE FROM users WHERE email = $1`, [
       'member@nexus.dev',
     ]);
@@ -2884,7 +2884,7 @@ async function seedChunksAndQuery() {
     );
 
     const { retrieveForChat } =
-      await import('../src/services/retrieval.service.js');
+      await import('../src/modules/retrieval/service.js');
     const result = await retrieveForChat({
       workspaceId: seedWorkspaceId,
       query: 'vector',

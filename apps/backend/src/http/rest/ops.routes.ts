@@ -1,8 +1,8 @@
 import { Router } from 'express';
 
 import { pool } from '../../db/index.js';
-import { redisConnection } from '../../queues/index.js';
-import { metricsHandler } from '../../services/observability/metrics.js';
+import { redisConnection } from '../../platform/queue.js';
+import { metricsHandler } from '../../platform/observability/metrics.js';
 
 interface DependencyStatus {
   db: boolean;

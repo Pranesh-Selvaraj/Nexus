@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { workspaceArchiveSchema } from '@nexus/shared-types';
-import { readSessionCookie, resolveUser } from '../../middleware/auth.js';
-import { archiveUpload, sanitizeForLog } from '../../utils/multer.config.js';
-import { importWorkspaceArchive } from '../../services/workspace-archive.service.js';
+import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
+import { archiveUpload, sanitizeForLog } from '../../shared/multer.js';
+import { importWorkspaceArchive } from '../../modules/workspaces/archive.service.js';
 
 /**
  * REST surface: archive. Handlers keep their original bodies; only the router

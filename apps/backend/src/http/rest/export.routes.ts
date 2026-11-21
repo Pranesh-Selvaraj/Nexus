@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { workspaceIdSchema } from '@nexus/shared-types';
-import { readSessionCookie, resolveUser } from '../../middleware/auth.js';
-import { sanitizeForLog } from '../../utils/multer.config.js';
-import { ApiError } from '../../utils/errors.js';
-import { buildWorkspaceZip } from '../../services/workspace-archive.service.js';
+import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
+import { sanitizeForLog } from '../../shared/multer.js';
+import { ApiError } from '../../platform/errors.js';
+import { buildWorkspaceZip } from '../../modules/workspaces/archive.service.js';
 
 /**
  * REST surface: export. Handlers keep their original bodies; only the router

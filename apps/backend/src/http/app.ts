@@ -2,12 +2,12 @@ import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import cors from 'cors';
 import express from 'express';
 
-import { createExpressContext } from '../middleware/auth.js';
+import { createExpressContext } from '../platform/auth/context.js';
 import { config } from '../platform/config.js';
-import { apiV1Router } from '../routes/api-v1.js';
-import { appRouter } from '../routers/_app.js';
-import { requestLogger } from '../services/observability/logger.js';
-import { metricsMiddleware } from '../services/observability/metrics.js';
+import { apiV1Router } from './rest/v1.routes.js';
+import { appRouter } from './trpc.js';
+import { requestLogger } from '../platform/observability/logger.js';
+import { metricsMiddleware } from '../platform/observability/metrics.js';
 import { archiveRoutes } from './rest/archive.routes.js';
 import { authRoutes } from './rest/auth.routes.js';
 import { exportRoutes } from './rest/export.routes.js';

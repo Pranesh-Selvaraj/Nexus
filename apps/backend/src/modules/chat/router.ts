@@ -1,0 +1,691 @@
+import { performance } from 'node:perf_hooks';
+
+import { TRPCError } from '@trpc/server';
+import { observable } from '@trpc/server/observable';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+
+import {
+  isImageFileType,
+  type ChatEvent,
+  type PersonaDTO,
+  type RetrievalDebug,
+  type Source,
+} from '@nexus/shared-types';
+import {
+  chatFeedbackInputSchema,
+  chatStreamInputSchema,
+  conversationIdSchema,
+  workspaceIdSchema,
+} from '@nexus/shared-types';
+
+import { db } from '../../db/index.js';
+import { workspaceAccessPredicate } from '../workspaces/access.service.js';
+import { assertWorkspaceAccessTrpc } from '../workspaces/access.trpc.js';
+import {
+  conversations,
+  documents,
+  messages,
+  workspaces,
+} from '../../db/schema.js';
+import { protectedProcedure, t } from '../../platform/auth/context.js';
+import { generateConversationTitle, streamAnswer } from './llm.service.js';
+import type { ChatHistoryItem } from './llm.service.js';
+import { PERSONAS } from './personas.js';
+import { retrieveForChat, validateCitations } from '../retrieval/service.js';
+import { chatTtft, chatTokens } from '../../platform/observability/metrics.js';
+import { getSetting, getSettingNumber } from '../settings/settings.service.js';
+import {
+  assertAnalyzableImage,
+  toDataUrl,
+  visionAvailable,
+} from '../ingestion/vision.service.js';
+import { mimeForFormat } from '../ingestion/magic.js';
+import { storage } from '../../platform/storage/index.js';
+import { friendlyErrorMessage } from '../../platform/errors.js';
+
+function toConversationDTO(row: {
+  id: string;
+  workspaceId: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+  message_count: number;
+}) {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    title: row.title,
+    messageCount: Number(row.message_count),
+    createdAt: new Date(row.createdAt).toISOString(),
+    updatedAt: new Date(row.updatedAt).toISOString(),
+  };
+}
+
+/**
+ * Ensures the conversation exists and belongs to the authenticated user
+ * (mirrors assertWorkspaceOwnership in document.router.ts). Joins through
+ * workspaces so ownership is derived from the workspace, not duplicated on
+ * the conversation row.
+ */
+async function assertConversationOwnership(
+  userId: string,
+  conversationId: string,
+  minRole: 'reader' | 'editor' | 'owner' = 'reader',
+): Promise<void> {
+  const [row] = await db
+    .select({ id: conversations.id, workspaceId: conversations.workspaceId })
+    .from(conversations)
+    .innerJoin(workspaces, eq(workspaces.id, conversations.workspaceId))
+    .where(
+      and(
+        eq(conversations.id, conversationId),
+        workspaceAccessPredicate(userId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Conversation not found',
+    });
+  }
+  await assertWorkspaceAccessTrpc(userId, row.workspaceId, minRole);
+}
+
+interface AttachedImage {
+  documentId: string;
+  title: string;
+  dataUrl: string;
+}
+
+/**
+ * Load the image documents attached to a turn: ownership (through the
+ * workspace), readiness, image format, size cap and MIME allowlist are all
+ * enforced here, then each image is encoded as a data URL for the provider.
+ * The bytes never touch the client.
+ */
+async function loadAttachedImages(
+  workspaceId: string,
+  ids: string[],
+): Promise<AttachedImage[]> {
+  const unique = [...new Set(ids)].filter(Boolean).slice(0, 4);
+  if (unique.length === 0) return [];
+  if (!(await visionAvailable())) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message:
+        'Vision is not configured. Enable vision and set a vision-capable model in Settings before attaching images.',
+    });
+  }
+
+  const rows = await db
+    .select({
+      id: documents.id,
+      title: documents.title,
+      filePath: documents.filePath,
+      fileType: documents.fileType,
+      status: documents.status,
+    })
+    .from(documents)
+    .where(
+      and(
+        eq(documents.workspaceId, workspaceId),
+        inArray(documents.id, unique),
+      ),
+    );
+  if (rows.length !== unique.length) {
+    throw new TRPCError({
+      code: 'NOT_FOUND',
+      message: 'Attached image not found in this workspace',
+    });
+  }
+
+  const maxImageMb = await getSettingNumber('vision.maxImageMb');
+  const images: AttachedImage[] = [];
+  for (const row of rows) {
+    if (!isImageFileType(row.fileType) || row.status !== 'ready') {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: `"${row.title}" is not a ready image`,
+      });
+    }
+    const mime = mimeForFormat(row.fileType);
+    const buffer = await storage.get(row.filePath).catch(() => null);
+    if (!buffer) {
+      throw new TRPCError({
+        code: 'NOT_FOUND',
+        message: `The stored file for "${row.title}" is missing`,
+      });
+    }
+    try {
+      assertAnalyzableImage(buffer, mime, maxImageMb);
+    } catch (error) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: error instanceof Error ? error.message : 'Invalid image',
+      });
+    }
+    images.push({
+      documentId: row.id,
+      title: row.title,
+      dataUrl: toDataUrl(buffer, mime),
+    });
+  }
+  return images;
+}
+
+export const chatRouter = t.router({
+  /** Tutor personas for the composer, with the stored default marked. */
+  personas: protectedProcedure.query(async (): Promise<PersonaDTO[]> => {
+    const selected = await getSetting('chat.persona');
+    return PERSONAS.map((persona) => ({
+      id: persona.id,
+      label: persona.label,
+      description: persona.description,
+      isDefault: persona.id === selected,
+    }));
+  }),
+
+  /** Conversations for a workspace, most recently active first. */
+  listByWorkspace: protectedProcedure
+    .input(workspaceIdSchema)
+    .query(async ({ ctx, input }) => {
+      const [workspace] = await db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(
+          and(
+            eq(workspaces.id, input.workspaceId),
+            workspaceAccessPredicate(ctx.user.id),
+          ),
+        )
+        .limit(1);
+      if (!workspace) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Workspace not found',
+        });
+      }
+
+      const result = await db
+        .select({
+          id: conversations.id,
+          workspaceId: conversations.workspaceId,
+          title: conversations.title,
+          createdAt: conversations.createdAt,
+          updatedAt: conversations.updatedAt,
+          message_count: sql<number>`(
+            SELECT COUNT(*)::int FROM messages m
+            WHERE m.conversation_id = conversations.id
+          )`,
+        })
+        .from(conversations)
+        .where(eq(conversations.workspaceId, input.workspaceId))
+        .orderBy(desc(conversations.updatedAt));
+      return result.map(toConversationDTO);
+    }),
+
+  /** Full message history of a conversation (oldest first). */
+  messages: protectedProcedure
+    .input(conversationIdSchema)
+    .query(async ({ ctx, input }) => {
+      await assertConversationOwnership(ctx.user.id, input.conversationId);
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, input.conversationId))
+        .orderBy(asc(messages.createdAt), asc(messages.id));
+      return rows.map((m) => ({
+        id: m.id,
+        conversationId: m.conversationId,
+        role: m.role,
+        kind: m.kind,
+        content: m.content,
+        sources: m.sources,
+        attachments: m.attachments ?? null,
+        usage: m.usage,
+        feedback: m.feedback ?? null,
+        retrievalDebug: m.retrievalDebug ?? null,
+        createdAt: new Date(m.createdAt).toISOString(),
+      }));
+    }),
+
+  /**
+   * Thumbs up/down on an assistant answer. Feedback is stored per message
+   * and is the seed for retrieval quality evaluation.
+   */
+  feedback: protectedProcedure
+    .input(chatFeedbackInputSchema)
+    .mutation(async ({ ctx, input }): Promise<{ saved: boolean }> => {
+      const [row] = await db
+        .select({ id: messages.id, conversationId: messages.conversationId })
+        .from(messages)
+        .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+        .innerJoin(workspaces, eq(workspaces.id, conversations.workspaceId))
+        .where(
+          and(
+            eq(messages.id, input.messageId),
+            workspaceAccessPredicate(ctx.user.id),
+          ),
+        )
+        .limit(1);
+      if (!row) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Message not found',
+        });
+      }
+      await db
+        .update(messages)
+        .set({ feedback: input.feedback })
+        .where(eq(messages.id, row.id));
+      return { saved: true };
+    }),
+
+  delete: protectedProcedure
+    .input(conversationIdSchema)
+    .mutation(async ({ ctx, input }): Promise<{ deleted: boolean }> => {
+      await assertConversationOwnership(
+        ctx.user.id,
+        input.conversationId,
+        'editor',
+      );
+      const [deleted] = await db
+        .delete(conversations)
+        .where(eq(conversations.id, input.conversationId))
+        .returning({ id: conversations.id });
+      if (!deleted) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Conversation not found',
+        });
+      }
+      return { deleted: true };
+    }),
+
+  /**
+   * Streaming RAG chat with persistence. Every exchange is stored:
+   * the user message is inserted before the stream starts and the
+   * assistant reply (with its sources) after it finishes.
+   *
+   * Event protocol:
+   *   { type: 'conversation', conversationId } -> persisted conversation
+   *   { type: 'sources', sources }  -> retrieval results, pre-stream
+   *   { type: 'token', token }      -> incremental LLM output
+   *   { type: 'done', sources }     -> completion (final citations)
+   *   { type: 'error', message }    -> terminal failure
+   */
+  stream: protectedProcedure
+    .input(chatStreamInputSchema)
+    .subscription(({ ctx, input }) =>
+      observable<ChatEvent>((emit) => {
+        let cancelled = false;
+
+        const run = async (): Promise<void> => {
+          let conversation = input.conversationId ?? null;
+          const isNewConversation = conversation === null;
+          try {
+            const [workspace] = await db
+              .select({ id: workspaces.id })
+              .from(workspaces)
+              .where(
+                and(
+                  eq(workspaces.id, input.workspaceId),
+                  workspaceAccessPredicate(ctx.user.id),
+                ),
+              )
+              .limit(1);
+            if (!workspace) {
+              throw new TRPCError({
+                code: 'NOT_FOUND',
+                message: 'Workspace not found',
+              });
+            }
+
+            // Images attached to this turn are resolved up front: a bad
+            // attachment fails before any message is persisted.
+            const attachedImages = await loadAttachedImages(
+              input.workspaceId,
+              input.imageDocumentIds ?? [],
+            );
+            const attachedImageIds = attachedImages.map(
+              (image) => image.documentId,
+            );
+
+            // A reused conversation must belong to the workspace the caller
+            // owns; otherwise any conversation id could be written to.
+            if (conversation) {
+              const [existing] = await db
+                .select({ id: conversations.id })
+                .from(conversations)
+                .where(
+                  and(
+                    eq(conversations.id, conversation),
+                    eq(conversations.workspaceId, input.workspaceId),
+                  ),
+                )
+                .limit(1);
+              if (!existing) {
+                throw new TRPCError({
+                  code: 'NOT_FOUND',
+                  message: 'Conversation not found',
+                });
+              }
+            }
+
+            // Start (or reuse) a conversation.
+            if (!conversation) {
+              const [created] = await db
+                .insert(conversations)
+                .values({
+                  workspaceId: input.workspaceId,
+                  title:
+                    input.message.trim().length > 48
+                      ? `${input.message.trim().slice(0, 48)}…`
+                      : input.message.trim(),
+                })
+                .returning();
+              conversation = created?.id ?? null;
+            }
+            if (!conversation) {
+              throw new TRPCError({
+                code: 'INTERNAL_SERVER_ERROR',
+                message: 'Failed to create conversation',
+              });
+            }
+
+            // Resolve the question this request answers. For a regenerate
+            // the last persisted user message is re-used and the trailing
+            // assistant/error row is replaced; otherwise the new message is
+            // stored as a user turn.
+            let query = input.message;
+            let currentUserMessageId: string | undefined;
+            let regenerateImageIds: string[] = [];
+            if (input.regenerate && !isNewConversation) {
+              const [lastUser] = await db
+                .select({
+                  id: messages.id,
+                  content: messages.content,
+                  attachments: messages.attachments,
+                })
+                .from(messages)
+                .where(
+                  and(
+                    eq(messages.conversationId, conversation),
+                    eq(messages.role, 'user'),
+                  ),
+                )
+                .orderBy(desc(messages.createdAt), desc(messages.id))
+                .limit(1);
+              if (!lastUser) {
+                throw new TRPCError({
+                  code: 'BAD_REQUEST',
+                  message: 'Nothing to regenerate in this conversation',
+                });
+              }
+              query = lastUser.content;
+              currentUserMessageId = lastUser.id;
+              regenerateImageIds = lastUser.attachments?.imageDocumentIds ?? [];
+              // Replace the most recent assistant/error row so the
+              // conversation does not accumulate discarded answers.
+              const [trailing] = await db
+                .select({ id: messages.id })
+                .from(messages)
+                .where(
+                  and(
+                    eq(messages.conversationId, conversation),
+                    eq(messages.role, 'assistant'),
+                  ),
+                )
+                .orderBy(desc(messages.createdAt), desc(messages.id))
+                .limit(1);
+              if (trailing) {
+                await db.delete(messages).where(eq(messages.id, trailing.id));
+              }
+            } else {
+              const [inserted] = await db
+                .insert(messages)
+                .values({
+                  conversationId: conversation,
+                  role: 'user',
+                  content: input.message,
+                  attachments:
+                    attachedImageIds.length > 0
+                      ? { imageDocumentIds: attachedImageIds }
+                      : null,
+                })
+                .returning({ id: messages.id });
+              currentUserMessageId = inserted?.id;
+            }
+            if (cancelled) return;
+            emit.next({ type: 'conversation', conversationId: conversation });
+
+            // Title the conversation in the background - only once, when the
+            // conversation is created. Regenerating titles on every message
+            // burned an extra LLM call per turn and renamed conversations to
+            // match their latest question. Failures keep the fallback title.
+            if (isNewConversation) {
+              const firstMessage = input.message;
+              void (async () => {
+                try {
+                  const title = await generateConversationTitle(
+                    firstMessage,
+                    conversation,
+                  );
+                  await db
+                    .update(conversations)
+                    .set({ title })
+                    .where(eq(conversations.id, conversation));
+                } catch {
+                  // Non-fatal: keep the fallback title.
+                }
+              })();
+            }
+
+            // Build history from the persisted conversation (never from
+            // client-supplied turns): errors are excluded, as is the message
+            // currently being answered.
+            const history = await loadConversationHistory(
+              conversation,
+              currentUserMessageId,
+            );
+
+            // A regenerate request carries no image ids; reuse the ones the
+            // original turn stored so the answer still sees the image.
+            const turnImages =
+              attachedImages.length > 0
+                ? attachedImages
+                : await loadAttachedImages(
+                    input.workspaceId,
+                    input.regenerate ? regenerateImageIds : [],
+                  );
+            const retrieval = await retrieveForChat({
+              workspaceId: input.workspaceId,
+              query,
+              history,
+              sessionId: conversation,
+              attachedDocumentIds: turnImages.map((image) => image.documentId),
+            });
+            const sources = retrieval.sources;
+            if (cancelled) return;
+            emit.next({
+              type: 'sources',
+              sources,
+              query: retrieval.searchQuery,
+              retrieval: retrieval.debug,
+            });
+
+            const stream = await streamAnswer(
+              {
+                query,
+                history,
+                sources,
+                persona: input.persona,
+                images: turnImages.map((image) => ({
+                  dataUrl: image.dataUrl,
+                  title: image.title,
+                })),
+                visionMode: input.visionMode,
+              },
+              conversation,
+            );
+
+            let answer = '';
+            // Populated when the provider supports stream usage (OpenAI does
+            // with stream_options.include_usage; compatible providers may not).
+            let usage: {
+              promptTokens: number;
+              completionTokens: number;
+              totalTokens: number;
+            } | null = null;
+            // P-1: time to first token and reported token usage, per answer.
+            const answerStartedAt = performance.now();
+            let firstTokenAt: number | null = null;
+            for await (const chunk of stream) {
+              if (cancelled) return;
+              const token = chunk.choices[0]?.delta?.content;
+              if (token) {
+                if (firstTokenAt === null) {
+                  firstTokenAt = performance.now();
+                  chatTtft.observe((firstTokenAt - answerStartedAt) / 1000);
+                }
+                answer += token;
+                emit.next({ type: 'token', token });
+              }
+              if (chunk.usage) {
+                usage = {
+                  promptTokens: chunk.usage.prompt_tokens,
+                  completionTokens: chunk.usage.completion_tokens,
+                  totalTokens: chunk.usage.total_tokens,
+                };
+                chatTokens.inc({ kind: 'prompt' }, chunk.usage.prompt_tokens);
+                chatTokens.inc(
+                  { kind: 'completion' },
+                  chunk.usage.completion_tokens,
+                );
+              }
+            }
+            if (cancelled) return;
+
+            // Mark the sources the answer actually cited (citation integrity)
+            // and persist them with the inspector payload.
+            const cited = new Set(validateCitations(answer, sources.length));
+            const citedSources: Source[] = sources.map((source, index) => ({
+              ...source,
+              cited: cited.has(index + 1),
+            }));
+            const messageId = await persistAssistantMessage(
+              conversation,
+              answer,
+              citedSources,
+              usage,
+              'answer',
+              retrieval.debug,
+            );
+            if (!messageId) {
+              throw new Error('Failed to persist the assistant message');
+            }
+            emit.next({ type: 'done', sources: citedSources, messageId });
+          } catch (error) {
+            if (cancelled) return;
+            // Provider errors can embed whole HTML pages (wrong base URL,
+            // gateway errors) - keep the surfaced message readable.
+            const message =
+              error instanceof Error
+                ? friendlyErrorMessage(error)
+                : 'Unknown error occurred';
+            if (conversation) {
+              await persistAssistantMessage(
+                conversation,
+                message,
+                [],
+                null,
+                'error',
+              ).catch(() => undefined);
+            }
+            emit.next({ type: 'error', message });
+          } finally {
+            // The observable may already be closed (client disconnected) -
+            // completing again throws ERR_INVALID_STATE and would crash the
+            // process.
+            if (!cancelled) {
+              try {
+                emit.complete();
+              } catch {
+                // already closed - nothing to do
+              }
+            }
+          }
+        };
+
+        void run();
+        return () => {
+          cancelled = true;
+        };
+      }),
+    ),
+});
+
+/**
+ * Last `limit` non-error turns of a conversation, oldest first, excluding
+ * the message currently being answered. Used instead of the client-supplied
+ * `history` so a buggy or hostile client cannot inject assistant turns.
+ */
+async function loadConversationHistory(
+  conversationId: string,
+  excludeMessageId: string | undefined,
+  limit = 10,
+): Promise<ChatHistoryItem[]> {
+  const rows = await db
+    .select({
+      id: messages.id,
+      role: messages.role,
+      content: messages.content,
+    })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        ne(messages.kind, 'error'),
+      ),
+    )
+    .orderBy(desc(messages.createdAt), desc(messages.id))
+    .limit(limit + 1);
+
+  return rows
+    .filter((row) => row.id !== excludeMessageId)
+    .slice(0, limit)
+    .reverse()
+    .map((row) => ({ role: row.role, content: row.content }));
+}
+
+async function persistAssistantMessage(
+  conversationId: string,
+  content: string,
+  sources: Source[],
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  } | null = null,
+  kind: 'answer' | 'error' = 'answer',
+  retrievalDebug?: RetrievalDebug | null,
+): Promise<string | null> {
+  await db
+    .update(conversations)
+    .set({ updatedAt: new Date() })
+    .where(eq(conversations.id, conversationId));
+  const [inserted] = await db
+    .insert(messages)
+    .values({
+      conversationId,
+      role: 'assistant',
+      kind,
+      content,
+      sources: sources.length > 0 ? sources : null,
+      usage,
+      retrievalDebug: retrievalDebug ?? null,
+    })
+    .returning({ id: messages.id });
+  return inserted?.id ?? null;
+}

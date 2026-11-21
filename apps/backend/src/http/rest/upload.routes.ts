@@ -2,11 +2,11 @@ import { Router } from 'express';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 
-import { readSessionCookie, resolveUser } from '../../middleware/auth.js';
-import { sanitizeForLog, upload } from '../../utils/multer.config.js';
-import { ApiError } from '../../utils/errors.js';
-import { getSettingNumber } from '../../services/settings.service.js';
-import { ingestUpload } from '../../services/upload.service.js';
+import { readSessionCookie, resolveUser } from '../../platform/auth/context.js';
+import { sanitizeForLog, upload } from '../../shared/multer.js';
+import { ApiError } from '../../platform/errors.js';
+import { getSettingNumber } from '../../modules/settings/settings.service.js';
+import { ingestUpload } from '../../modules/documents/upload.service.js';
 
 /**
  * REST surface: upload. Handlers keep their original bodies; only the router

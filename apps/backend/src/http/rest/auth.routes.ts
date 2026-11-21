@@ -9,8 +9,8 @@ import {
   LOCAL_USER_EMAIL,
   readSessionCookie,
   resolveUser,
-} from '../../middleware/auth.js';
-import { sanitizeForLog } from '../../utils/multer.config.js';
+} from '../../platform/auth/context.js';
+import { sanitizeForLog } from '../../shared/multer.js';
 import {
   createSession,
   deleteSession,
@@ -18,7 +18,7 @@ import {
   SESSION_COOKIE,
   sessionTtlMs,
   verifyPassword,
-} from '../../services/auth.service.js';
+} from '../../platform/auth/service.js';
 
 /**
  * REST surface: auth. Handlers keep their original bodies; only the router

@@ -9,12 +9,12 @@
  *   S3_ACCESS_KEY_ID=... S3_SECRET_ACCESS_KEY=... \
  *     pnpm --filter @nexus/backend storage:selftest
  */
-import '../src/utils/env.js';
+import '../src/platform/env.js';
 
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
-import { storage } from '../src/services/storage/index.js';
+import { storage } from '../src/platform/storage/index.js';
 
 const key = `selftest/${randomUUID()}`;
 const payload = `nexus storage selftest ${new Date().toISOString()}\n`;
