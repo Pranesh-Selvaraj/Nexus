@@ -9,6 +9,7 @@ import {
   getUserBySessionToken,
   SESSION_COOKIE,
 } from '../services/auth.service.js';
+import { authEnabled as isAuthEnabled, config } from '../platform/config.js';
 
 // ---------------------------------------------------------------------------
 // Context
@@ -31,12 +32,9 @@ export const t = initTRPC.context<Context>().create();
 //   warning. See SECURITY.md before exposing the app publicly.
 // ---------------------------------------------------------------------------
 
-export const LOCAL_USER_EMAIL =
-  process.env.LOCAL_USER_EMAIL ?? 'local@nexus.dev';
+export const LOCAL_USER_EMAIL = config.auth.localEmail;
 
-export function authEnabled(): boolean {
-  return Boolean(process.env.AUTH_PASSWORD);
-}
+export const authEnabled = isAuthEnabled;
 
 /** Returns the local user row, creating it on first boot. */
 async function getOrCreateLocalUser(): Promise<UserDTO> {
