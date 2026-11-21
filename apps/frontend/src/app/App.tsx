@@ -32,7 +32,7 @@ const LoginScreen = lazy(() =>
   })),
 );
 const SharedWorkspacePage = lazy(() =>
-  import('../features/share/SharedWorkspacePage').then((m) => ({
+  import('../features/sharing/SharedWorkspacePage').then((m) => ({
     default: m.SharedWorkspacePage,
   })),
 );
