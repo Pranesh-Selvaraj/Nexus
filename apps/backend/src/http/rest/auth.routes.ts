@@ -90,7 +90,16 @@ export function authRoutes(): Router {
         return;
       }
       const normalized = email.trim().toLowerCase();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) {
+      // Linear scan: no backtracking regex on user input (js/polynomial-redos).
+      const at = normalized.indexOf('@');
+      const dot = normalized.lastIndexOf('.');
+      const validEmail =
+        at > 0 &&
+        dot > at + 1 &&
+        dot < normalized.length - 1 &&
+        !normalized.includes(' ') &&
+        normalized.indexOf('@', at + 1) === -1;
+      if (!validEmail) {
         res.status(400).json({ error: 'Enter a valid email address' });
         return;
       }

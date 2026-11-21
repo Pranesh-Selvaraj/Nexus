@@ -50,6 +50,18 @@ export function mediaRoutes(): Router {
   });
   const audioIdSchema = z.string().uuid();
 
+  /**
+   * Binary reads are cheap to request and expensive to serve (S3 fetch or file
+   * stream); cap them per IP so a session cannot be used to hammer storage.
+   */
+  const mediaReadLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 120,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many media requests, please retry in a minute' },
+  });
+
   router.post(
     '/api/transcribe',
     transcribeLimiter,
@@ -176,7 +188,7 @@ export function mediaRoutes(): Router {
   // and never includes client input. Only image formats are served, with a
   // restrictive CSP/sandbox so a crafted payload cannot execute as a document.
   const imageIdSchema = z.string().uuid();
-  router.get('/api/images/:documentId', async (req, res) => {
+  router.get('/api/images/:documentId', mediaReadLimiter, async (req, res) => {
     try {
       const currentUser = await resolveUser(readSessionCookie(req.headers));
       if (!currentUser) {
@@ -225,7 +237,7 @@ export function mediaRoutes(): Router {
     }
   });
 
-  router.get('/api/audio/:audioId', async (req, res) => {
+  router.get('/api/audio/:audioId', mediaReadLimiter, async (req, res) => {
     try {
       const currentUser = await resolveUser(readSessionCookie(req.headers));
       if (!currentUser) {

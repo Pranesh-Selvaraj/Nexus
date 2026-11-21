@@ -108,6 +108,9 @@ function runProcess(
       finish(null, Buffer.concat(chunks).toString('utf8'));
     });
 
+    // The child can exit before stdin is flushed (bad flags, missing binary).
+    // An EPIPE on stdin is that failure surfacing, not an unhandled rejection.
+    child.stdin.on('error', () => undefined);
     if (options.input) child.stdin.write(options.input);
     child.stdin.end();
   });
