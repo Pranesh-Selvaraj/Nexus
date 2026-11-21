@@ -273,20 +273,21 @@ git tag -a v0.4.6 -m "Nexus v0.4.6" && git push origin v0.4.6
 
 ## Scripts
 
-| Command                                    | Description                                    |
-| ------------------------------------------ | ---------------------------------------------- |
-| `pnpm dev`                                 | Run frontend, API, and worker in watch mode    |
-| `pnpm build`                               | Type-check and build all packages              |
-| `pnpm typecheck`                           | Type-check all packages                        |
-| `pnpm db:up` / `pnpm db:down`              | Start / stop Postgres + Redis (Docker)         |
-| `pnpm --filter @nexus/backend db:migrate`  | Apply Drizzle migrations                       |
-| `pnpm --filter @nexus/backend db:generate` | Generate a new Drizzle migration               |
-| `pnpm --filter @nexus/backend dev:api`     | Run only the API in watch mode                 |
-| `pnpm --filter @nexus/backend dev:worker`  | Run only the embedding worker in watch mode    |
-| `pnpm --filter @nexus/backend cli --help`  | Nexus CLI (search/ask/upload/due/note)         |
-| `pnpm --filter @nexus/backend mcp`         | Start the MCP server on stdio                  |
-| `pnpm --filter @nexus/backend backup`      | Write a `pg_dump` backup (see Backups)         |
-| `pnpm brand:assets`                        | Re-render icons and cards from the SVG masters |
+| Command                                    | Description                                                |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| `pnpm dev`                                 | Run frontend, API, and worker in watch mode                |
+| `pnpm build`                               | Type-check and build all packages                          |
+| `pnpm typecheck`                           | Type-check all packages                                    |
+| `pnpm db:up` / `pnpm db:down`              | Start / stop Postgres + Redis (Docker)                     |
+| `pnpm --filter @nexus/backend db:migrate`  | Apply Drizzle migrations                                   |
+| `pnpm --filter @nexus/backend db:generate` | Generate a new Drizzle migration                           |
+| `pnpm --filter @nexus/backend dev:api`     | Run only the API in watch mode                             |
+| `pnpm --filter @nexus/backend dev:worker`  | Run only the embedding worker in watch mode                |
+| `pnpm --filter @nexus/backend cli --help`  | Nexus CLI (search/ask/upload/due/note)                     |
+| `pnpm --filter @nexus/backend mcp`         | Start the MCP server on stdio                              |
+| `pnpm --filter @nexus/backend backup`      | Write a `pg_dump` backup (see Backups)                     |
+| `pnpm release:prepare <version>`           | Verify the changelog section and bump all package versions |
+| `pnpm brand:assets`                        | Re-render icons and cards from the SVG masters             |
 
 ## Environment variables
 
