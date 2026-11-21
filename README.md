@@ -637,14 +637,17 @@ Uses outside this repository: the GitHub repository social preview uses `assets/
 
 ## Documentation
 
-| Document                                    | What it covers                                                                                                                      |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| [docs/MISSION.md](docs/MISSION.md)          | Why Nexus exists: the problem, the learning-science mapping, the feature-to-learning map, success criteria and non-goals            |
-| [docs/brand/BRAND.md](docs/brand/BRAND.md)  | The brand kit: mark construction and clear space, lockups, palette, typography, icon rules, voice and tone                          |
-| [docs/decisions/](docs/decisions/README.md) | Architecture decision records — ingestion and vision, retrieval at scale, storage, the learning-portal shell and the brand identity |
-| [SECURITY.md](SECURITY.md)                  | Supported versions, the threat model, hardening and how to report a vulnerability                                                   |
-| [CONTRIBUTING.md](CONTRIBUTING.md)          | Development setup, branching, review checklists, commit conventions and the test suites                                             |
-| [CHANGELOG.md](CHANGELOG.md)                | Release notes, one detailed section per tag (the published release body)                                                            |
+| Document                                          | What it covers                                                                                                                      |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [docs/MISSION.md](docs/MISSION.md)                | Why Nexus exists: the problem, the learning-science mapping, the feature-to-learning map, success criteria and non-goals            |
+| [docs/brand/BRAND.md](docs/brand/BRAND.md)        | The brand kit: mark construction and clear space, lockups, palette, typography, icon rules, voice and tone                          |
+| [docs/decisions/](docs/decisions/README.md)       | Architecture decision records — ingestion and vision, retrieval at scale, storage, the learning-portal shell and the brand identity |
+| [docs/architecture/](docs/architecture/README.md) | Processes, module map, request paths and the recipe for adding a feature                                                            |
+| [docs/runbooks/](docs/runbooks/README.md)         | Restore a backup, rotate secrets, unstick the queue, read health and metrics                                                        |
+| [docs/api/](docs/api/README.md)                   | REST v1: scopes, endpoints and examples                                                                                             |
+| [SECURITY.md](SECURITY.md)                        | Supported versions, the threat model, hardening and how to report a vulnerability                                                   |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                | Development setup, branching, review checklists, commit conventions and the test suites                                             |
+| [CHANGELOG.md](CHANGELOG.md)                      | Release notes, one detailed section per tag (the published release body)                                                            |
 
 ## CI/CD and security
 
