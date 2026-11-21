@@ -22,6 +22,44 @@ export default tseslint.config(
     },
   },
   {
+    // Module boundaries (ADR 0006): a module owns its router. Cross-module
+    // code calls the owning module's service, never another module's router
+    // or test files.
+    files: ['apps/backend/src/modules/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../*/router.js', '../*/*.router.js'],
+              message:
+                'Import the owning module service instead of its router (ADR 0006).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Presentation primitives stay independent of features: ui/ must not
+    // reach into a feature, so it can be reused and tested alone.
+    files: ['apps/frontend/src/ui/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../features/*', '../features/**'],
+              message: 'src/ui must not import from src/features (ADR 0006).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['apps/frontend/**/*.{ts,tsx}'],
     languageOptions: {
       globals: globals.browser,
